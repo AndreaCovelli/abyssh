@@ -76,6 +76,7 @@ class TerminalSessionEngine(
     private val tailscaleStatusChecker: TailscaleStatusChecker,
     // Called when the shell ends on its own (exit, Ctrl+D), so the owner can close the tab.
     private val onShellExited: () -> Unit = {},
+    private val onHostKeyVerificationRequired: ((HostKeyPrompt, ByteArray) -> Unit)? = null,
 ) {
     private data class ConnectionParams(
         val host: String,
@@ -638,18 +639,24 @@ class TerminalSessionEngine(
                 is HostKeyCheck.Unknown -> result.fingerprint to null
                 is HostKeyCheck.Changed -> result.fingerprint to result.previousFingerprint
             }
+        val prompt =
+            HostKeyPrompt(
+                host = host,
+                port = port,
+                algorithm = algorithm,
+                fingerprint = fingerprint,
+                previousFingerprint = previousFingerprint,
+            )
+        val verificationHandler = onHostKeyVerificationRequired
+        if (verificationHandler != null) {
+            verificationHandler(prompt, keyBytes.copyOf())
+            return false
+        }
         val deferred =
             hostKeyDecision
                 ?: CompletableDeferred<Boolean>().also {
                     hostKeyDecision = it
-                    _hostKeyPrompt.value =
-                        HostKeyPrompt(
-                            host = host,
-                            port = port,
-                            algorithm = algorithm,
-                            fingerprint = fingerprint,
-                            previousFingerprint = previousFingerprint,
-                        )
+                    _hostKeyPrompt.value = prompt
                 }
         val accepted = runBlocking { deferred.await() }
         if (accepted) {
