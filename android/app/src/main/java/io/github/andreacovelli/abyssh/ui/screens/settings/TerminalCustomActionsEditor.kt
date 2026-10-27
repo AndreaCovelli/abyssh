@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,7 +32,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,7 +43,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -532,7 +529,7 @@ private fun CustomActionSwipeRow(
                 AbyssText("⋮", style = typography.label, color = colors.textMuted)
             }
             AbyssText(
-                text = if (shortcut != null) "$keyText [${shortcut}]" else keyText,
+                text = if (shortcut != null) "$keyText [$shortcut]" else keyText,
                 style = typography.label,
                 maxLines = 1,
                 modifier = Modifier.padding(end = 8.dp),
@@ -566,8 +563,7 @@ private fun readableStoredActionPreview(stored: String): String {
     return readableActionPreview(decoded.text, decoded.modifiers)
 }
 
-private fun readablePreview(value: String): String {
-    return buildString {
+private fun readablePreview(value: String): String = buildString {
         value.forEach { ch ->
             when (ch) {
                 '\u001b' -> append("Esc+")
@@ -577,7 +573,6 @@ private fun readablePreview(value: String): String {
             }
         }
     }
-}
 
 private fun groupsToDraftItems(groups: List<TerminalCustomKeyGroup>): List<CustomKeyValueDraft> {
     var nextId = 1L

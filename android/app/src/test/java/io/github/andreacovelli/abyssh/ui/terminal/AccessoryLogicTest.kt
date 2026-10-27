@@ -52,10 +52,10 @@ class AccessoryLogicTest {
     @Test
     fun `terminalMods encodes bits correctly`() {
         assertEquals(0, ModifierState().terminalMods())
-        assertEquals(1, ModifierState(shift = true).terminalMods())   // bit 0
-        assertEquals(2, ModifierState(ctrl = true).terminalMods())    // bit 1
-        assertEquals(4, ModifierState(alt = true).terminalMods())    // bit 2
-        assertEquals(8, ModifierState(cmd = true).terminalMods())    // bit 3
+        assertEquals(1, ModifierState(shift = true).terminalMods()) // bit 0
+        assertEquals(2, ModifierState(ctrl = true).terminalMods()) // bit 1
+        assertEquals(4, ModifierState(alt = true).terminalMods()) // bit 2
+        assertEquals(8, ModifierState(cmd = true).terminalMods()) // bit 3
         assertEquals(15, ModifierState(ctrl = true, alt = true, shift = true, cmd = true).terminalMods())
     }
 
@@ -105,8 +105,8 @@ class AccessoryLogicTest {
             AccessoryAction.ToggleModifier(TerminalModifier.Alt),
             s0,
         )
-        assertTrue(r.modifierState.ctrl)   // preserved
-        assertTrue(r.modifierState.alt)    // toggled on
+        assertTrue(r.modifierState.ctrl) // preserved
+        assertTrue(r.modifierState.alt) // toggled on
         assertNull(r.specialKey)
         assertNull(r.text)
         assertFalse(r.shouldPaste)
@@ -120,7 +120,7 @@ class AccessoryLogicTest {
             AccessoryAction.SendSpecialKey(TerminalSpecialKey.Tab),
             s,
         )
-        assertTrue(r.modifierState.shift)   // sticky — preserved
+        assertTrue(r.modifierState.shift) // sticky — preserved
         assertEquals(TerminalSpecialKey.Tab, r.specialKey)
         assertTrue(r.suppressImeInput)
         assertNull(r.text)
@@ -134,7 +134,7 @@ class AccessoryLogicTest {
             AccessoryAction.SendText("a"),
             s,
         )
-        assertTrue(r.modifierState.ctrl)   // sticky — preserved
+        assertTrue(r.modifierState.ctrl) // sticky — preserved
         assertEquals(0x01.toChar().toString(), r.text)
         assertNull(r.specialKey)
         assertFalse(r.shouldPaste)
@@ -147,7 +147,7 @@ class AccessoryLogicTest {
             AccessoryAction.Paste,
             s,
         )
-        assertTrue(r.modifierState.alt)   // sticky — preserved
+        assertTrue(r.modifierState.alt) // sticky — preserved
         assertTrue(r.shouldPaste)
         assertNull(r.specialKey)
         assertNull(r.text)

@@ -176,8 +176,8 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         _search.value?.currentMatch?.let { sessionRepository.scrollToScreenRow(it.startRow) }
     }
 
-    private val _connectionTabByTab = MutableStateFlow<Map<String, ConnectionTab>>(emptyMap())
-    private val _fileBrowserStateByTab =
+    private val connectionTabByTab = MutableStateFlow<Map<String, ConnectionTab>>(emptyMap())
+    private val fileBrowserStateByTab =
         MutableStateFlow<Map<String, FileBrowserUiState>>(emptyMap())
     private val fileHomeByTab = ConcurrentHashMap<String, String>()
     // One in-flight job per tab for each operation; launching a new one cancels
@@ -186,13 +186,13 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     private val fileBrowserResolverJobs = ConcurrentHashMap<String, Job>()
 
     val selectedTab: StateFlow<ConnectionTab> =
-        combine(activeTabId, _connectionTabByTab) { id, map ->
+        combine(activeTabId, connectionTabByTab) { id, map ->
                 if (id == null) ConnectionTab.Terminal else map[id] ?: ConnectionTab.Terminal
             }
             .stateIn(viewModelScope, SharingStarted.Eagerly, ConnectionTab.Terminal)
 
     val fileBrowserState: StateFlow<FileBrowserUiState> =
-        combine(activeTabId, _fileBrowserStateByTab) { id, map ->
+        combine(activeTabId, fileBrowserStateByTab) { id, map ->
                 if (id == null) FileBrowserUiState() else map[id] ?: FileBrowserUiState()
             }
             .stateIn(viewModelScope, SharingStarted.Eagerly, FileBrowserUiState())
@@ -575,8 +575,8 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun closeTab(id: String) {
-        _connectionTabByTab.value = _connectionTabByTab.value - id
-        _fileBrowserStateByTab.value = _fileBrowserStateByTab.value - id
+        connectionTabByTab.value = connectionTabByTab.value - id
+        fileBrowserStateByTab.value = fileBrowserStateByTab.value - id
         fileHomeByTab.remove(id)
         fileBrowserResolverJobs.remove(id)?.cancel()
         fileBrowserRefreshJobs.remove(id)?.cancel()
@@ -595,9 +595,9 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
 
     fun selectConnectionTab(tab: ConnectionTab) {
         val id = activeTabId.value ?: return
-        _connectionTabByTab.value = _connectionTabByTab.value + (id to tab)
+        connectionTabByTab.value = connectionTabByTab.value + (id to tab)
         if (tab == ConnectionTab.Files) {
-            val state = _fileBrowserStateByTab.value[id]
+            val state = fileBrowserStateByTab.value[id]
             if (state == null || state.entries.isEmpty()) {
                 resolveInitialFilePathAndRefresh(id)
             }
@@ -608,7 +608,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         id: String,
         transform: (FileBrowserUiState) -> FileBrowserUiState,
     ) {
-        _fileBrowserStateByTab.update { current ->
+        fileBrowserStateByTab.update { current ->
             val previous = current[id] ?: FileBrowserUiState()
             current + (id to transform(previous))
         }
@@ -680,7 +680,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
                 ?.value
                 ?.pwd
                 ?.takeIf { it.isNotBlank() } ?: "/"
-        val targetPath = (_fileBrowserStateByTab.value[tabId]?.currentPath?.ifBlank { pwd }) ?: pwd
+        val targetPath = (fileBrowserStateByTab.value[tabId]?.currentPath?.ifBlank { pwd }) ?: pwd
         fileBrowserRefreshJobs.remove(tabId)?.cancel()
         updateFileBrowserState(tabId) {
             it.copy(currentPath = targetPath, isLoading = true, error = null)
@@ -708,14 +708,17 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
                             FileBrowserEntry(
                                 name = name,
                                 path =
-                                    if (normalizedBase == "/") "/$name"
-                                    else "$normalizedBase/$name",
+                                    if (normalizedBase == "/") {
+                                        "/$name"
+                                    } else {
+                                        "$normalizedBase/$name"
+                                    },
                                 type = type,
                                 sizeBytes = if (size == null || size <= 0L) null else size,
                                 modifiedAtText = mtime?.takeIf { it > 0L }?.let { formatMtime(it) },
                             )
                         }
-                    val current = _fileBrowserStateByTab.value[tabId] ?: FileBrowserUiState()
+                    val current = fileBrowserStateByTab.value[tabId] ?: FileBrowserUiState()
                     val sortedEntries =
                         when (current.sort) {
                             FileSort.Name -> entries.sortedBy { it.name.lowercase() }
@@ -731,7 +734,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
                 } catch (err: CancellationException) {
                     throw err
                 } catch (err: Exception) {
-                    val current = _fileBrowserStateByTab.value[tabId]
+                    val current = fileBrowserStateByTab.value[tabId]
                     if (isActive && current?.currentPath == targetPath) {
                         updateFileBrowserState(tabId) {
                             it.copy(
@@ -748,7 +751,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
 
     suspend fun beginUpload(fileName: String) {
         val tabId = activeTabId.value ?: return
-        val current = _fileBrowserStateByTab.value[tabId] ?: return
+        val current = fileBrowserStateByTab.value[tabId] ?: return
         val targetPath = current.currentPath.trimEnd('/') + "/" + fileName
         sessionRepository.awaitTabConnected(tabId)
         sessionRepository.sftpOpenWrite(tabId, targetPath)
@@ -772,7 +775,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
 
     fun goUpDirectory() {
         val tabId = activeTabId.value ?: return
-        val current = _fileBrowserStateByTab.value[tabId]?.currentPath ?: return
+        val current = fileBrowserStateByTab.value[tabId]?.currentPath ?: return
         val parent = current.substringBeforeLast('/', "").ifBlank { "/" }
         openPath(parent)
     }
@@ -892,8 +895,11 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         val effectiveCodepoint = if (charCode > 0) charCode else codepoint
 
         val utf8 =
-            if (effectiveCodepoint > 0 && !hasNonTextModifier && !isRelease) effectiveCodepoint.toChar().toString()
-            else null
+            if (effectiveCodepoint > 0 && !hasNonTextModifier && !isRelease) {
+                effectiveCodepoint.toChar().toString()
+            } else {
+                null
+            }
         sessionRepository.writeKey(key, effectiveCodepoint, mods, action, utf8)
     }
 

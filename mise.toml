@@ -58,6 +58,7 @@ run = "actionlint"
 [tasks.check]
 description = "Run every repository check that needs no device"
 run = [
+  { task = "format:check" },
   { task = "lint" },
   { task = "test" },
   { task = "build" },

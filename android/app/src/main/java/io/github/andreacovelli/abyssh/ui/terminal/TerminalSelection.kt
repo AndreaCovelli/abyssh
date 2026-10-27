@@ -31,12 +31,18 @@ data class TerminalSelection(
     }
 
     fun withStart(newStartCell: Int, updateAnchor: Boolean): TerminalSelection =
-        if (updateAnchor) copy(anchorIndex = newStartCell)
-        else copy(focusIndex = newStartCell)
+        if (updateAnchor) {
+            copy(anchorIndex = newStartCell)
+        } else {
+            copy(focusIndex = newStartCell)
+        }
 
     fun withEnd(newEndCell: Int, updateAnchor: Boolean): TerminalSelection =
-        if (updateAnchor) copy(anchorIndex = newEndCell)
-        else copy(focusIndex = newEndCell)
+        if (updateAnchor) {
+            copy(anchorIndex = newEndCell)
+        } else {
+            copy(focusIndex = newEndCell)
+        }
 }
 
 data class TerminalSelectionState(

@@ -16,9 +16,7 @@ import org.junit.Test
  */
 class TerminalCustomActionStoreTest {
 
-    private fun roundTrip(groups: List<TerminalCustomKeyGroup>): List<TerminalCustomKeyGroup> {
-        return TerminalCustomActionStore.parse(TerminalCustomActionStore.serialize(groups))
-    }
+    private fun roundTrip(groups: List<TerminalCustomKeyGroup>): List<TerminalCustomKeyGroup> = TerminalCustomActionStore.parse(TerminalCustomActionStore.serialize(groups))
 
     private fun group(keyLabel: String, vararg actions: TerminalCustomAction) =
         TerminalCustomKeyGroup(keyLabel = keyLabel, actions = actions.toList())

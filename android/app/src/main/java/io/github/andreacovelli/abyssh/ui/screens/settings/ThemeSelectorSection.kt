@@ -424,7 +424,14 @@ private fun BatPreview(theme: GhosttyTheme, style: TextStyle) {
     }
 }
 
-private enum class TokenRole { Standard, Keyword, Type, String, Number, Function;
+private enum class TokenRole {
+    Standard,
+    Keyword,
+    Type,
+    String,
+    Number,
+    Function;
+
     fun color(theme: GhosttyTheme): Color = when (this) {
         Standard -> theme.foreground
         Keyword -> theme.palette[5]

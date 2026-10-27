@@ -28,11 +28,9 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var instance: AppDatabase? = null
 
-        fun getInstance(context: Context): AppDatabase {
-            return instance ?: synchronized(this) {
+        fun getInstance(context: Context): AppDatabase = instance ?: synchronized(this) {
                 instance ?: open(context.applicationContext).also { instance = it }
             }
-        }
 
         private fun open(context: Context): AppDatabase {
             val dataKey = DataKeyStore.load(context)

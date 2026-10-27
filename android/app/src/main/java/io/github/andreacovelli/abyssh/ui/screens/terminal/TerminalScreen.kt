@@ -6,7 +6,6 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -58,7 +57,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -1093,19 +1091,23 @@ fun TerminalScreen(
                                                     cursor.getColumnIndex(
                                                         OpenableColumns.DISPLAY_NAME
                                                     )
-                                                if (cursor.moveToFirst() && idx >= 0)
+                                                if (cursor.moveToFirst() && idx >= 0) {
                                                     cursor.getString(idx)
-                                                else null
-                                            } ?: uri.lastPathSegment ?: "uploaded_${index}"
+                                                } else {
+                                                    null
+                                                }
+                                            } ?: uri.lastPathSegment ?: "uploaded_$index"
                                     val fileSize =
                                         context.contentResolver
                                             .query(uri, null, null, null, null)
                                             ?.use { cursor ->
                                                 val idx =
                                                     cursor.getColumnIndex(OpenableColumns.SIZE)
-                                                if (cursor.moveToFirst() && idx >= 0)
+                                                if (cursor.moveToFirst() && idx >= 0) {
                                                     cursor.getLong(idx)
-                                                else 0L
+                                                } else {
+                                                    0L
+                                                }
                                             } ?: 0L
                                     try {
                                         val stream =
@@ -1184,8 +1186,9 @@ fun TerminalScreen(
                                 ActivityResultContracts.CreateDocument("application/octet-stream")
                         ) { uri: Uri? ->
                             val bytes = pendingDownloadBytes
-                            if (uri == null || bytes == null)
+                            if (uri == null || bytes == null) {
                                 return@rememberLauncherForActivityResult
+                            }
                             scope.launch(Dispatchers.IO) {
                                 runCatching {
                                         context.contentResolver.openOutputStream(uri)?.use {
@@ -1223,8 +1226,11 @@ fun TerminalScreen(
                         modifier =
                             Modifier.fillMaxSize()
                                 .blur(
-                                    if (showTabSheet || showGlobalTabManager) 10.dp
-                                    else 0.dp
+                                    if (showTabSheet || showGlobalTabManager) {
+                                        10.dp
+                                    } else {
+                                        0.dp
+                                    }
                                 )
                                 .imePadding()
                     ) {
@@ -1772,9 +1778,11 @@ fun TerminalScreen(
                                                     if (
                                                         CustomActionModifier.Enter in
                                                             decoded.modifiers
-                                                    )
+                                                    ) {
                                                         "\n"
-                                                    else ""
+                                                    } else {
+                                                        ""
+                                                    }
                                             val actionModifierState =
                                                 modifierStateForCustomAction(decoded.modifiers)
                                             vm.dispatchTextWithModifierState(
@@ -1905,15 +1913,17 @@ fun TerminalScreen(
                             when (result.specialKey) {
                                 TerminalSpecialKey.Left,
                                 TerminalSpecialKey.Up -> {
-                                    if (tabsForHost.isNotEmpty())
+                                    if (tabsForHost.isNotEmpty()) {
                                         focusedTabIndex =
                                             (focusedTabIndex - 1).mod(tabsForHost.size)
+                                    }
                                 }
                                 TerminalSpecialKey.Right,
                                 TerminalSpecialKey.Down -> {
-                                    if (tabsForHost.isNotEmpty())
+                                    if (tabsForHost.isNotEmpty()) {
                                         focusedTabIndex =
                                             (focusedTabIndex + 1).mod(tabsForHost.size)
+                                    }
                                 }
                                 TerminalSpecialKey.Enter -> {
                                     tabsForHost.getOrNull(focusedTabIndex)?.let {

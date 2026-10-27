@@ -136,8 +136,11 @@ fun TerminalTabStrip(
                         .widthIn(min = 44.dp, max = 160.dp)
                         .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
                         .background(
-                            if (isActive) colors.accent.copy(alpha = 0.16f)
-                            else Color.Transparent
+                            if (isActive) {
+                                colors.accent.copy(alpha = 0.16f)
+                            } else {
+                                Color.Transparent
+                            }
                         )
                         .clickable { onTabSelected(tab.id) }
                         .padding(horizontal = 8.dp, vertical = 3.dp),

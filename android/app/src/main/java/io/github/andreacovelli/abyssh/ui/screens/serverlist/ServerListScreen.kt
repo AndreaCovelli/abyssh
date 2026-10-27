@@ -106,8 +106,8 @@ fun ServerListScreen(
         }
     }
     LaunchedEffect(hosts, selectedHostId) {
-        val selected_id = selectedHostId
-        if (selected_id != null && hosts.none { it.id == selected_id }) {
+        val selectedId = selectedHostId
+        if (selectedId != null && hosts.none { it.id == selectedId }) {
             selectedHostId = null
         }
     }
@@ -221,8 +221,8 @@ fun ServerListScreen(
                             onLongPress = { selectedHostId = host.id },
                             onCancelSelection = { selectedHostId = null },
                             onDeleteSelection = {
-                                val is_selected_connected = host.id in connectedHostIds
-                                if (is_selected_connected) {
+                                val isSelectedConnected = host.id in connectedHostIds
+                                if (isSelectedConnected) {
                                     Toast.makeText(
                                         context,
                                         resources.getString(R.string.server_list_disconnect_before_delete),

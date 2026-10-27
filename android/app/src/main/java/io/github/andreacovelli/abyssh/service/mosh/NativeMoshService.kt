@@ -84,7 +84,7 @@ class NativeMoshService(
         return bridge.nativePumpNetwork(handle) == 0
     }
 
-    /// Poll one output event. Returns null if no event is queued.
+    // Poll one output event. Returns null if no event is queued.
     fun pollOutput(): MoshOutputEvent? {
         if (handle == 0L) return null
         var capacity = INITIAL_OUTPUT_BUFFER_SIZE

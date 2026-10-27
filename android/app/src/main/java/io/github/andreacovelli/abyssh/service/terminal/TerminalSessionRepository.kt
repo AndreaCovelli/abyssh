@@ -81,7 +81,7 @@ class TerminalSessionRepository private constructor(application: Application) {
             .flatMapLatest { tab -> tab?.sessionState ?: flowOf(SessionState()) }
             .stateIn(scope, SharingStarted.Eagerly, SessionState())
 
-    private val _preflightHostKeyPrompt = MutableStateFlow<HostKeyPrompt?>(null)
+    private val preflightHostKeyPrompt = MutableStateFlow<HostKeyPrompt?>(null)
     private val preflightMutex = Mutex()
     private var preflightEngine: TerminalSessionEngine? = null
     private var preflightHostKeyDecision: CompletableDeferred<Boolean>? = null
@@ -92,7 +92,7 @@ class TerminalSessionRepository private constructor(application: Application) {
             .stateIn(scope, SharingStarted.Eagerly, null)
 
     val hostKeyPrompt: StateFlow<HostKeyPrompt?> =
-        combine(_preflightHostKeyPrompt, activeHostKeyPrompt) { preflight, active -> preflight ?: active }
+        combine(preflightHostKeyPrompt, activeHostKeyPrompt) { preflight, active -> preflight ?: active }
             .stateIn(scope, SharingStarted.Eagerly, null)
 
     val connectedHostIds: StateFlow<Set<Long>> =
@@ -259,14 +259,14 @@ class TerminalSessionRepository private constructor(application: Application) {
     ): Boolean {
         val decision = CompletableDeferred<Boolean>()
         preflightHostKeyDecision = decision
-        _preflightHostKeyPrompt.value = verification.prompt
+        preflightHostKeyPrompt.value = verification.prompt
         return try {
             decision.await()
         } finally {
             if (preflightHostKeyDecision === decision) {
                 preflightHostKeyDecision = null
             }
-            _preflightHostKeyPrompt.value = null
+            preflightHostKeyPrompt.value = null
         }
     }
 
@@ -403,7 +403,7 @@ class TerminalSessionRepository private constructor(application: Application) {
         preflightHostKeyDecision = null
         preflightEngine?.dispose()
         preflightEngine = null
-        _preflightHostKeyPrompt.value = null
+        preflightHostKeyPrompt.value = null
         val tabs = _tabs.value
         _tabs.value = emptyList()
         _activeTabId.value = null
@@ -549,14 +549,12 @@ class TerminalSessionRepository private constructor(application: Application) {
     companion object {
         @Volatile private var instance: TerminalSessionRepository? = null
 
-        fun getInstance(application: Application): TerminalSessionRepository {
-            return instance
+        fun getInstance(application: Application): TerminalSessionRepository = instance
                 ?: synchronized(this) {
                     instance
                         ?: TerminalSessionRepository(application).also { created ->
                             instance = created
                         }
                 }
-        }
     }
 }

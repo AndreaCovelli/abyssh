@@ -9,14 +9,12 @@ class GhosttyBridge {
         }.exceptionOrNull()
     }
 
-    fun nativeStatus(): String {
-        return if (loadError == null) {
+    fun nativeStatus(): String = if (loadError == null) {
             "loaded"
         } else {
             val message = loadError.message?.takeIf { it.isNotBlank() } ?: "unknown"
             "not loaded (${loadError::class.simpleName}: $message)"
         }
-    }
 
     fun isLoaded(): Boolean = loadError == null
 

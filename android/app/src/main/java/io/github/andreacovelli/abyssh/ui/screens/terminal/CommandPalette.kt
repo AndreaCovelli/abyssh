@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -149,8 +148,11 @@ fun CommandPalette(
                           .background(if (isFocused) colors.surface else Color.Transparent)
                           .border(
                               1.dp,
-                              if (isFocused) colors.accent.copy(alpha = 0.7f)
-                              else colors.border.copy(alpha = 0.35f),
+                              if (isFocused) {
+                                  colors.accent.copy(alpha = 0.7f)
+                              } else {
+                                  colors.border.copy(alpha = 0.35f)
+                              },
                           )
                           .clickable { onSelectTab(tab.id) }
                           .padding(horizontal = 12.dp, vertical = 8.dp),

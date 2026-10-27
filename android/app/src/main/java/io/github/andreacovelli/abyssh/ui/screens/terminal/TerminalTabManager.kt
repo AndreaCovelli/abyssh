@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -60,7 +59,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSession
 import io.github.andreacovelli.abyssh.service.terminal.SessionStatus
-import io.github.andreacovelli.abyssh.service.terminal.SessionState
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
@@ -240,13 +238,19 @@ fun TerminalTabManager(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(
-                                        if (isFocused) colors.surface
-                                        else Color.Transparent
+                                        if (isFocused) {
+                                            colors.surface
+                                        } else {
+                                            Color.Transparent
+                                        }
                                     )
                                     .border(
                                         1.dp,
-                                        if (isFocused) colors.accent.copy(alpha = 0.7f)
-                                        else colors.border.copy(alpha = 0.35f),
+                                        if (isFocused) {
+                                            colors.accent.copy(alpha = 0.7f)
+                                        } else {
+                                            colors.border.copy(alpha = 0.35f)
+                                        },
                                     )
                                     .semantics {
                                         contentDescription = rowDescription
@@ -285,8 +289,11 @@ fun TerminalTabManager(
                                         AbyssText(
                                             displayLabel,
                                             style = typography.body,
-                                            color = if (isFocused) colors.accent
-                                            else colors.textPrimary,
+                                            color = if (isFocused) {
+                                                colors.accent
+                                            } else {
+                                                colors.textPrimary
+                                            },
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )

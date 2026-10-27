@@ -27,8 +27,7 @@ class TailscaleStatusChecker(
         return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
     }
 
-    private fun hasTailnetAddress(): Boolean {
-        return try {
+    private fun hasTailnetAddress(): Boolean = try {
             NetworkInterface.getNetworkInterfaces()
                 ?.toList()
                 ?.flatMap { it.inetAddresses?.toList() ?: emptyList() }
@@ -37,7 +36,6 @@ class TailscaleStatusChecker(
         } catch (_: Exception) {
             false
         }
-    }
 
     private fun isTailnetIp(addr: InetAddress): Boolean {
         val hostAddress = addr.hostAddress ?: return false

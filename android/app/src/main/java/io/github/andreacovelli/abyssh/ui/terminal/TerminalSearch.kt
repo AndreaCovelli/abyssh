@@ -58,6 +58,12 @@ data class TerminalSearchState(
     /** New results for the same query: stay on the current match when it's still there. */
     fun withMatches(found: List<SearchMatch>): TerminalSearchState {
         val kept = currentMatch?.let(found::indexOf) ?: -1
-        return copy(matches = found, current = if (kept >= 0) kept else if (found.isEmpty()) -1 else 0)
+        return copy(matches = found, current = if (kept >= 0) {
+            kept
+        } else if (found.isEmpty()) {
+            -1
+        } else {
+            0
+        })
     }
 }

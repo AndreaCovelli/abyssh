@@ -74,14 +74,14 @@ class AddServerViewModel(
     private val _testState = MutableStateFlow(ConnectionTestState())
     val testState: StateFlow<ConnectionTestState> = _testState.asStateFlow()
 
-    private val _allKeys = MutableStateFlow<List<SshKey>>(emptyList())
-    val keys: StateFlow<List<SshKey>> = _allKeys.asStateFlow()
+    private val _keys = MutableStateFlow<List<SshKey>>(emptyList())
+    val keys: StateFlow<List<SshKey>> = _keys.asStateFlow()
 
     private val _errorMessage = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val errorMessage: SharedFlow<String> = _errorMessage.asSharedFlow()
 
     init {
-        viewModelScope.launch { sshKeyRepository.observeAll().collect { _allKeys.value = it } }
+        viewModelScope.launch { sshKeyRepository.observeAll().collect { _keys.value = it } }
         if (hostId != null) {
             viewModelScope.launch {
                 val profile = hostRepository.getById(hostId) ?: return@launch
@@ -251,8 +251,11 @@ class AddServerViewModel(
                                 username = username,
                                 authMethod = current.authMethod,
                                 password =
-                                    if (current.authMethod == AuthMethod.Password) current.password
-                                    else "",
+                                    if (current.authMethod == AuthMethod.Password) {
+                                        current.password
+                                    } else {
+                                        ""
+                                    },
                                 publicKeyOpenSsh = current.publicKeyOpenSsh,
                                 privateKeyPem = current.privateKeyPem,
                                 keyPassphrase = current.keyPassphrase,

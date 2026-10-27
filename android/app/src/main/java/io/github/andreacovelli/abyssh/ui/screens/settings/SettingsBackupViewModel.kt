@@ -105,9 +105,7 @@ class SettingsBackupViewModel(
         return p.length >= BACKUP_MIN_PASSPHRASE_LENGTH && p == _exportPassphraseConfirm.value
     }
 
-    fun importPassphraseValid(): Boolean {
-        return _importPassphrase.value.length >= 1
-    }
+    fun importPassphraseValid(): Boolean = _importPassphrase.value.length >= 1
 
     // ── Export ────────────────────────────────────────────────────────────────
 

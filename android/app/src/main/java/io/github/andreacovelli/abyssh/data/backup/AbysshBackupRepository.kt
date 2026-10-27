@@ -24,16 +24,13 @@ class AbysshBackupRepository(
         passphrase: CharArray,
     ): BackupPayload = AbysshBackupCodec.decrypt(bytes, passphrase)
 
-    suspend fun planImport(payload: BackupPayload): BackupImportPlan {
-        return AbysshBackupImportPlanner.planImport(
+    suspend fun planImport(payload: BackupPayload): BackupImportPlan = AbysshBackupImportPlanner.planImport(
             payload = payload,
             existingKeys = db.sshKeyDao().getAll(),
             existingHosts = db.hostProfileDao().getAll(),
         )
-    }
 
-    suspend fun importPayload(payload: BackupPayload): BackupImportResult {
-        return db.withTransaction {
+    suspend fun importPayload(payload: BackupPayload): BackupImportResult = db.withTransaction {
             val plan = AbysshBackupImportPlanner.planImport(
                 payload = payload,
                 existingKeys = db.sshKeyDao().getAll(),
@@ -41,7 +38,6 @@ class AbysshBackupRepository(
             )
             applyImportPlan(plan)
         }
-    }
 
     suspend fun importEncryptedBackup(
         bytes: ByteArray,

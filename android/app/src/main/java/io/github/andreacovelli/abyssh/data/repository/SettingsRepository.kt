@@ -253,11 +253,9 @@ class SettingsRepository(context: Context) {
         @Volatile
         private var instance: SettingsRepository? = null
 
-        fun getInstance(context: Context): SettingsRepository {
-            return instance ?: synchronized(this) {
+        fun getInstance(context: Context): SettingsRepository = instance ?: synchronized(this) {
                 instance ?: SettingsRepository(context.applicationContext).also { instance = it }
             }
-        }
 
         private fun parseThemeMode(value: String?): ThemeMode =
             ThemeMode.entries.find { it.name == value } ?: DEFAULT_THEME_MODE

@@ -1,6 +1,5 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
-import android.content.ClipData
 import android.util.Log
 import io.github.andreacovelli.abyssh.model.AuthMethod
 import io.github.andreacovelli.abyssh.model.MultiplexerType
@@ -1284,7 +1283,7 @@ class TerminalSessionEngine(
     private fun resizeRemote(cols: Int, rows: Int, widthPx: Int, heightPx: Int) {
         when (lastConnectionParams?.transport) {
             Transport.Mosh -> {
-                Log.d("TerminalSession", "MOSH: resizeRemote ${cols}x${rows}")
+                Log.d("TerminalSession", "MOSH: resizeRemote ${cols}x$rows")
                 moshService.resize(cols, rows)
             }
             Transport.LocalShell -> localShellService.resize(cols, rows, widthPx, heightPx)

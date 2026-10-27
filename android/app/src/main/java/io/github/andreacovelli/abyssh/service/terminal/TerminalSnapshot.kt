@@ -61,8 +61,10 @@ data class TerminalSnapshot(
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is TerminalSnapshot) return false
-        return cols == other.cols && rows == other.rows &&
-            cursorX == other.cursorX && cursorY == other.cursorY &&
+        return cols == other.cols &&
+            rows == other.rows &&
+            cursorX == other.cursorX &&
+            cursorY == other.cursorY &&
             cursorVisible == other.cursorVisible &&
             cursorStyle == other.cursorStyle &&
             defaultBgArgb == other.defaultBgArgb &&
@@ -91,7 +93,9 @@ data class TerminalSnapshot(
         result = 31 * result + fgArgb.contentHashCode()
         result = 31 * result + bgArgb.contentHashCode()
         result = 31 * result + flags.contentHashCode()
-        result = 31 * result + graphemeExtras.entries.fold(0) { acc, (key, arr) ->
+        result = 31 *
+            result +
+            graphemeExtras.entries.fold(0) { acc, (key, arr) ->
             acc + key + arr.contentHashCode()
         }
         result = 31 * result + images.hashCode()
@@ -276,7 +280,9 @@ data class TerminalSnapshot(
                 val dataLen = wrapped.int
 
                 val expectedLen = imgW.toLong() * imgH.toLong() * 4L
-                if (imgW <= 0 || imgH <= 0 || dataLen <= 0 ||
+                if (imgW <= 0 ||
+                    imgH <= 0 ||
+                    dataLen <= 0 ||
                     expectedLen > Int.MAX_VALUE ||
                     dataLen != expectedLen.toInt() ||
                     wrapped.remaining() < dataLen

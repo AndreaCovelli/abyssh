@@ -8,6 +8,8 @@ package io.github.andreacovelli.abyssh.ui.terminal
  * IMPORTANT: These values must match the Ghostty Key enum declaration order exactly.
  * Reference: ghostty-vt src/input/key.zig
  */
+// Names mirror the Ghostty key enum in ghostty-vt.
+@Suppress("ktlint:standard:property-naming")
 object GhosttyKey {
     const val unidentified = 0
     const val backquote = 1

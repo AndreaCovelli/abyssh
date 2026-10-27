@@ -40,8 +40,7 @@ class KeysViewModel(application: Application) : AndroidViewModel(application) {
     private val hostRepository = HostRepository(db.hostProfileDao())
 
     val state: StateFlow<KeysUiState> =
-        combine(sshKeyRepository.observeAll(), hostRepository.observeKeyUsageCounts()) { keys, usage
-                ->
+        combine(sshKeyRepository.observeAll(), hostRepository.observeKeyUsageCounts()) { keys, usage ->
                 KeysUiState(
                     keys =
                         keys.map { key ->
