@@ -66,6 +66,7 @@ fun CommandPalette(
     chuchuKeyActive: Boolean,
     onOpenFiles: () -> Unit,
     onOpenSettings: () -> Unit,
+    onSearch: () -> Unit,
     useSingleRowAccessoryBar: Boolean,
     onSelectTab: (String) -> Unit,
     onCloseTab: (String) -> Unit,
@@ -229,6 +230,15 @@ fun CommandPalette(
           PaletteHint("↵", "open")
           PaletteHint("esc", "dismiss")
           Spacer(modifier = Modifier.weight(1f))
+          ChuButton(
+              onClick = onSearch,
+              variant = ChuButtonVariant.Outlined,
+              bracketed = true,
+              contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+              testTag = "palette_search",
+          ) {
+            ChuText("search", style = typography.labelSmall, color = colors.accent)
+          }
           ChuButton(
               onClick = onAddTab,
               variant = ChuButtonVariant.Outlined,

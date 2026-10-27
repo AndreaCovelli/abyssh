@@ -94,6 +94,11 @@ fun TerminalCanvas(
     maxFontSizeSp: Float = Float.MAX_VALUE,
     onFontSizeChange: (sizeSp: Float) -> Unit = {},
     onSelectionChanged: (TerminalSelectionState?) -> Unit = {},
+    // Scrollback search hits, painted behind the text; the current one stands out.
+    searchMatches: List<SearchMatch> = emptyList(),
+    currentSearchMatch: SearchMatch? = null,
+    searchMatchColor: Color = Color(0x66FACC15),
+    currentSearchMatchColor: Color = Color(0xCCF97316),
 ) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
@@ -211,6 +216,17 @@ fun TerminalCanvas(
     val cellHeight = cellHeightInt.toFloat()
     val selectionBackgroundArgb = selectionBackgroundColor.toArgb()
     val selectionForegroundArgb = selectionForegroundColor?.toArgb()
+    val searchMatchArgb = searchMatchColor.toArgb()
+    val currentSearchMatchArgb = currentSearchMatchColor.toArgb()
+    // Visible parts of the search matches, by viewport row, flagged when current.
+    val searchSpansByRow = remember(searchMatches, currentSearchMatch, snapshot.viewportScrollY, snapshot.rows, snapshot.cols) {
+        searchMatches
+            .flatMap { match ->
+                match.viewportSpans(snapshot.viewportScrollY, snapshot.rows, snapshot.cols)
+                    .map { span -> span to (match == currentSearchMatch) }
+            }
+            .groupBy { it.first.row }
+    }
     val hasSelectionFg = selectionForegroundArgb != null
     val cursorColorArgb = cursorColor.toArgb()
     val cursorTextColorArgb = cursorTextColor?.toArgb()
@@ -762,6 +778,17 @@ fun TerminalCanvas(
                         )
                     }
                     i = j
+                }
+
+                searchSpansByRow[row]?.forEach { (span, isCurrent) ->
+                    bgPaint.color = if (isCurrent) currentSearchMatchArgb else searchMatchArgb
+                    nCanvas.drawRect(
+                        span.firstCol * cellWidth,
+                        y,
+                        (span.lastCol + 1) * cellWidth,
+                        y + cellHeight,
+                        bgPaint,
+                    )
                 }
 
                 // Text runs

@@ -115,6 +115,7 @@ import com.jossephus.chuchu.ui.terminal.TerminalSelectionState
 import com.jossephus.chuchu.ui.terminal.TerminalSpecialKey
 import com.jossephus.chuchu.ui.terminal.decodeCustomActionValue
 import com.jossephus.chuchu.ui.terminal.isPasteShortcut
+import com.jossephus.chuchu.ui.terminal.isSearchShortcut
 import com.jossephus.chuchu.ui.terminal.modifierStateForCustomAction
 import com.jossephus.chuchu.ui.terminal.toGhosttyKey
 import com.jossephus.chuchu.ui.theme.ChuColors
@@ -400,6 +401,7 @@ fun TerminalScreen(
     val filesSupported = activeTab?.spec?.transport != Transport.LocalShell
     val fileBrowserState by vm.fileBrowserState.collectAsStateWithLifecycle()
     val hostKeyPrompt by vm.hostKeyPrompt.collectAsStateWithLifecycle()
+    val searchState by vm.search.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val haptics = LocalHapticFeedback.current
@@ -496,6 +498,10 @@ fun TerminalScreen(
                 },
                 BuiltinCommand.Actions to { settingsRepo.setShowCustomActionsFab(!showCustomActionsFab) },
                 BuiltinCommand.Settings to { onOpenSettings() },
+                BuiltinCommand.Search to {
+                    vm.selectConnectionTab(ConnectionTab.Terminal)
+                    vm.openSearch()
+                },
             )
             ChuchuKeyBindings.build(
                 builtinShortcuts = builtinShortcuts,
@@ -1392,6 +1398,18 @@ fun TerminalScreen(
                                 }
                             }
                         } else {
+                            searchState?.let { search ->
+                                TerminalSearchBar(
+                                    state = search,
+                                    onQueryChange = vm::setSearchQuery,
+                                    onOlder = vm::searchOlder,
+                                    onNewer = vm::searchNewer,
+                                    onClose = {
+                                        vm.closeSearch()
+                                        requestInputFocus()
+                                    },
+                                )
+                            }
                             Box(modifier = Modifier.weight(1f)) {
                                 TerminalCanvas(
                                     snapshot = snapshot,
@@ -1425,6 +1443,8 @@ fun TerminalScreen(
                                     onScroll = vm::onScroll,
                                     onFontSizeChange = { sizeSp -> terminalFontSizeSp = sizeSp },
                                     onSelectionChanged = { state -> selectionState = state },
+                                    searchMatches = searchState?.matches.orEmpty(),
+                                    currentSearchMatch = searchState?.currentMatch,
                                 )
 
                                 Row(
@@ -1665,6 +1685,13 @@ fun TerminalScreen(
                                                         mods or modifierState.terminalMods()
                                                     if (
                                                         shouldForwardToTerminal &&
+                                                            isSearchShortcut(key, mergedMods)
+                                                    ) {
+                                                        if (action == GhosttyKeyAction.Press) {
+                                                            vm.openSearch()
+                                                        }
+                                                    } else if (
+                                                        shouldForwardToTerminal &&
                                                             isPasteShortcut(key, mergedMods, ctrlVPastes)
                                                     ) {
                                                         // Swallow repeat and release too, so the
@@ -1904,6 +1931,11 @@ fun TerminalScreen(
                             }
                         },
                         onOpenSettings = onOpenSettings,
+                        onSearch = {
+                            vm.selectConnectionTab(ConnectionTab.Terminal)
+                            vm.openSearch()
+                            showTabSheet = false
+                        },
                         useSingleRowAccessoryBar = useSingleRowAccessoryBar,
                         onSelectTab = {
                             vm.selectTab(it)

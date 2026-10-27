@@ -470,6 +470,19 @@ class TerminalSessionEngine(
         }
     }
 
+    suspend fun search(query: String): IntArray =
+        withContext(dispatcher) {
+            if (handle == 0L || query.isEmpty()) IntArray(0) else bridge.nativeSearch(handle, query)
+        }
+
+    fun scrollToScreenRow(screenRow: Int) {
+        scope.launch(dispatcher) {
+            if (handle == 0L) return@launch
+            bridge.nativeScrollToScreenRow(handle, screenRow)
+            requestSnapshot(force = true)
+        }
+    }
+
     suspend fun sftpListDirectory(path: String): List<String> =
         withContext(dispatcher) { nativeSsh.sftpListDirectory(path) }
 

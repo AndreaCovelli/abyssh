@@ -28,6 +28,8 @@ import com.jossephus.chuchu.ui.screens.Files.FileEntryType
 import com.jossephus.chuchu.ui.screens.Files.FileSort
 import com.jossephus.chuchu.ui.screens.Files.UploadProgress
 import com.jossephus.chuchu.ui.terminal.GhosttyKeyAction
+import com.jossephus.chuchu.ui.terminal.TerminalSearchState
+import com.jossephus.chuchu.ui.terminal.parseSearchMatches
 import com.jossephus.chuchu.ui.terminal.TerminalSpecialKey
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -38,6 +40,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -86,6 +89,62 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
 
     init {
         sessionRepository.attachClient()
+    }
+
+    private val _search = MutableStateFlow<TerminalSearchState?>(null)
+    /** The open search bar, or null when it's closed. */
+    val search: StateFlow<TerminalSearchState?> = _search.asStateFlow()
+    private var searchJob: Job? = null
+
+    init {
+        // Matches belong to one terminal, so switching tabs closes the search.
+        viewModelScope.launch { activeTabId.collect { closeSearch() } }
+    }
+
+    fun openSearch() {
+        if (_search.value == null) _search.value = TerminalSearchState()
+    }
+
+    fun closeSearch() {
+        searchJob?.cancel()
+        _search.value = null
+    }
+
+    fun setSearchQuery(query: String) {
+        val state = _search.value ?: return
+        if (state.query == query) return
+        _search.value = state.copy(query = query)
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            delay(SEARCH_TYPING_DELAY_MS)
+            val found = parseSearchMatches(sessionRepository.search(query))
+            _search.update { it?.copy(matches = found, current = if (found.isEmpty()) -1 else 0) }
+            scrollToCurrentMatch()
+        }
+    }
+
+    /** Up arrow: the next match toward older output. */
+    fun searchOlder() = stepSearch(TerminalSearchState::older)
+
+    /** Down arrow: the next match toward newer output. */
+    fun searchNewer() = stepSearch(TerminalSearchState::newer)
+
+    private fun stepSearch(step: (TerminalSearchState) -> TerminalSearchState) {
+        val state = _search.value ?: return
+        if (state.query.isEmpty()) return
+        _search.value = step(state)
+        scrollToCurrentMatch()
+        // Output may have arrived since the last search: refresh the matches while
+        // keeping the one just selected.
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            val found = parseSearchMatches(sessionRepository.search(state.query))
+            _search.update { it?.withMatches(found) }
+        }
+    }
+
+    private fun scrollToCurrentMatch() {
+        _search.value?.currentMatch?.let { sessionRepository.scrollToScreenRow(it.startRow) }
     }
 
     private val _connectionTabByTab = MutableStateFlow<Map<String, ConnectionTab>>(emptyMap())
@@ -852,6 +911,8 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     }
 
     companion object {
+        private const val SEARCH_TYPING_DELAY_MS = 150L
+
         fun factory(application: Application): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {

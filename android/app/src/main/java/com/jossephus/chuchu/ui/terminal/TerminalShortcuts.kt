@@ -31,3 +31,9 @@ internal fun isPasteShortcut(text: String, modifierState: ModifierState, ctrlVPa
     }
     return isPasteShortcut(GhosttyKey.keyV, modifierState.terminalMods() or extra, ctrlVPastes)
 }
+
+/** Ctrl+Shift+F opens the scrollback search, as in desktop terminals. */
+internal fun isSearchShortcut(key: Int, mods: Int): Boolean =
+    key == GhosttyKey.keyF &&
+        mods and (MOD_CTRL or MOD_SHIFT) == (MOD_CTRL or MOD_SHIFT) &&
+        mods and (MOD_ALT or MOD_SUPER) == 0

@@ -455,6 +455,12 @@ class TerminalSessionRepository private constructor(application: Application) {
         activeEngine()?.scrollToActive()
     }
 
+    suspend fun search(query: String): IntArray = activeEngine()?.search(query) ?: IntArray(0)
+
+    fun scrollToScreenRow(screenRow: Int) {
+        activeEngine()?.scrollToScreenRow(screenRow)
+    }
+
     fun writeKey(key: Int, codepoint: Int, mods: Int, action: Int, utf8: String? = null) {
         activeEngine()?.writeKey(key, codepoint, mods, action, utf8)
     }
