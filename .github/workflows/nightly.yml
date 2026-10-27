@@ -68,7 +68,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Nightly version: ${VERSION_NAME} (code=${VERSION_CODE}, base=${VERSION}, offset=${OFFSET})"
 
-      - name: build chuchu_jni
+      - name: build ctulssh_jni
         run: |
           nix develop -c bash -c '
             set -e
@@ -102,7 +102,7 @@ jobs:
         run: |
           set -euo pipefail
           SRC="$(ls ./android/app/build/outputs/apk/release/*.apk | head -n1)"
-          DEST="./android/app/build/outputs/apk/release/chuchu-nightly.apk"
+          DEST="./android/app/build/outputs/apk/release/ctulssh-nightly.apk"
           cp "$SRC" "$DEST"
           echo "path=${DEST}" >> "$GITHUB_OUTPUT"
 
@@ -112,7 +112,7 @@ jobs:
           set -euo pipefail
           NOTES="$(mktemp)"
           {
-            echo "### Chuchu nightly"
+            echo "### ctulssh nightly"
             echo
             echo "Automated build from \`main\` (\`${{ steps.version.outputs.short_sha }}\`)."
             echo

@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.jossephus.chuchu"
+    namespace = "io.github.andreacovelli.ctulssh"
     compileSdk {
         version = release(36)
     }
@@ -20,7 +20,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.jossephus.chuchu"
+        applicationId = "io.github.andreacovelli.ctulssh"
         minSdk = 24
         targetSdk = 36
 
@@ -63,11 +63,6 @@ android {
     }
 
     buildTypes {
-        debug {
-            // Fork builds are signed with a local debug key, so give them their own
-            // package to install next to the official release instead of over it.
-            applicationIdSuffix = ".fork"
-        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

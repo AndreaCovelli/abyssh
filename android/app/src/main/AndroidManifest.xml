@@ -16,15 +16,15 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Chuchu"
+        android:theme="@style/Theme.Ctulssh"
         android:extractNativeLibs="false">
         <activity
-            android:name="com.jossephus.chuchu.MainActivity"
+            android:name="io.github.andreacovelli.ctulssh.MainActivity"
             android:enabled="true"
             android:exported="true"
             android:label="@string/app_name"
             android:windowSoftInputMode="adjustNothing"
-            android:theme="@style/Theme.Chuchu">
+            android:theme="@style/Theme.Ctulssh">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -33,7 +33,7 @@
         </activity>
 
         <service
-            android:name="com.jossephus.chuchu.service.terminal.SessionForegroundService"
+            android:name="io.github.andreacovelli.ctulssh.service.terminal.SessionForegroundService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="specialUse">

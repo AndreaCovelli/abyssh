@@ -51,7 +51,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Parsed version: $VERSION (major=$MAJOR minor=$MINOR patch=$PATCH)"
 
-      - name: build chuchu_jni
+      - name: build ctulssh_jni
         run: |
           nix develop -c bash -c '
             set -e
