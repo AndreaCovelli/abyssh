@@ -16,13 +16,13 @@ room {
 }
 
 android {
-    namespace = "io.github.andreacovelli.ctulssh"
+    namespace = "io.github.andreacovelli.abyssh"
     compileSdk {
         version = release(36)
     }
 
     defaultConfig {
-        applicationId = "io.github.andreacovelli.ctulssh"
+        applicationId = "io.github.andreacovelli.abyssh"
         minSdk = 24
         targetSdk = 36
 

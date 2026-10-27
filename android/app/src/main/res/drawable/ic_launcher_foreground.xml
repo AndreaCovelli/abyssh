@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ctulssh mark: a shell prompt chevron with a trailing cursor.
+  abyssh mark: a shell prompt chevron with a trailing cursor.
   Keep the glyph inside the 66dp safe zone (a circle of radius 33 at 54,54)
   so launcher masks never clip it. ic_launcher_monochrome.xml and
   ic_notification.xml draw the same shapes.

@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="./assets/logo.png" alt="ctulssh logo" width="64" height="64" />
+  <img src="./assets/logo.png" alt="Abyssh logo" width="64" height="64" />
 </p>
 
-<h1 align="center">ctulssh</h1>
+<h1 align="center">Abyssh</h1>
 
 <p align="center">
   A native Android SSH and Mosh client powered by libghostty
@@ -10,7 +10,7 @@
 
 ---
 
-ctulssh is a personal fork of [jossephus/chuchu](https://github.com/jossephus/chuchu),
+Abyssh is a personal fork of [jossephus/chuchu](https://github.com/jossephus/chuchu),
 a native Android SSH client with a terminal-first Compose UI that supports standard
 SSH, Mosh, and Tailscale SSH.
 
@@ -24,7 +24,7 @@ SSH, Mosh, and Tailscale SSH.
 - Encrypted import and export of SSH keys and server profiles
 - A terminal renderer with resize, scrollback, focus, modifier keys, and mouse support
 
-ctulssh installs as a separate app and does not read chuchu data or backups.
+Abyssh installs as a separate app and does not read chuchu data or backups.
 
 ## Stack
 
@@ -41,7 +41,7 @@ Android SDK (`ANDROID_HOME`) with an NDK installed.
 ```sh
 mise install
 
-# Build libctulssh_jni.so into android/app/src/main/jniLibs.
+# Build libabyssh_jni.so into android/app/src/main/jniLibs.
 # ANDROID_NDK_HOME must point at one NDK version.
 export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/<version>"
 mise run native -Dtarget=aarch64-linux-android
@@ -59,7 +59,7 @@ same commands directly:
 (cd android && ./gradlew lintDebug testDebugUnitTest assembleDebug)
 ```
 
-The APK must contain `lib/arm64-v8a/libctulssh_jni.so`; without it, SSH and key
+The APK must contain `lib/arm64-v8a/libabyssh_jni.so`; without it, SSH and key
 generation fail on device.
 
 ## License

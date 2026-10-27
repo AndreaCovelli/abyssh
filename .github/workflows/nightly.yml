@@ -94,7 +94,7 @@ jobs:
         run: |
           set -euo pipefail
           SRC="$(find ./android/app/build/outputs/apk/release -name '*.apk' -print -quit)"
-          DEST="./android/app/build/outputs/apk/release/ctulssh-nightly.apk"
+          DEST="./android/app/build/outputs/apk/release/abyssh-nightly.apk"
           cp "$SRC" "$DEST"
           echo "path=${DEST}" >> "$GITHUB_OUTPUT"
 
@@ -104,7 +104,7 @@ jobs:
           set -euo pipefail
           NOTES="$(mktemp)"
           {
-            echo "### ctulssh nightly"
+            echo "### Abyssh nightly"
             echo
             echo "Automated build from \`main\` (\`${{ steps.version.outputs.short_sha }}\`)."
             echo

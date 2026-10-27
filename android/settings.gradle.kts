@@ -19,6 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ctulssh"
+rootProject.name = "abyssh"
 include(":app")
  

@@ -1,5 +1,5 @@
 .{
-    .name = .ctulssh,
+    .name = .abyssh,
     .version = "0.0.0",
     .dependencies = .{
         .ghostty = .{
@@ -22,7 +22,7 @@
             .hash = "openssl-3.6.0-wZcA76Qb8gHOC9xYtu7mOgCh_5Fdf-ysBWyDaR9vvwgL",
         },
     },
-    .fingerprint = 0xe68ff483f014ce6a,
+    .fingerprint = 0x9663a331acb2f96a,
     .paths = .{
         "build.zig",
         "build.zig.zon",
