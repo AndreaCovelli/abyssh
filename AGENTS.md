@@ -125,7 +125,13 @@ Kotlin declares `external fun native*` methods in five bridge classes: `GhosttyB
   `com.jossephus.chuchu` → `io.github.andreacovelli.abyssh`, `chuchu` → `abyssh`,
   `Chuchu` → `Abyssh`, `Chu*` classes → `Abyss*`, and upstream's `chuchu_*` Zig files and
   `Java_com_jossephus_chuchu_*` exports to their `abyssh` names.
-- GitHub Actions: CI (`ci.yml`) builds and checks without the native library; Nightly
-  publishes an APK on every push to `main`; Release builds signed artifacts from
-  `v*.*.*` tags. Pin actions to a commit SHA, and run `mise run check:actions` after
-  editing workflows.
+- GitHub Actions: CI (`ci.yml`) runs `mise run check` through the shared workflow in
+  AndreaCovelli/repo-baseline, without the native library, and its `Validate` job is
+  the only check the `main` ruleset requires. Add any new CI job to `Validate`'s
+  `needs`. Nightly publishes an APK on every push to `main`; Release builds signed
+  artifacts from `v*.*.*` tags. Pin actions to a full commit SHA with a version
+  comment, and run `mise run check:actions` after editing workflows.
+- Renovate extends AndreaCovelli/renovate-config: one weekly grouped PR that
+  automerges non-breaking updates after CI passes. `forkProcessing` is enabled
+  because GitHub still lists this repository as a fork. Merge pull requests by
+  squash; `main` keeps a linear history.
