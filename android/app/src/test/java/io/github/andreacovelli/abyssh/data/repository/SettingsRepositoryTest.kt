@@ -52,7 +52,8 @@ class SettingsRepositoryTest {
         assertEquals(TerminalTabMode.Classic, repo.terminalTabMode.first())
         assertEquals(false, repo.appLockEnabled.first())
         assertEquals(true, repo.localShellEnabled.first())
-        assertEquals(true, repo.showCustomActionsFab.first())
+        assertEquals(false, repo.showCustomActionsFab.first())
+        assertEquals(true, repo.remoteClipboardWriteEnabled.first())
     }
 
     @Test
