@@ -3,7 +3,7 @@ package io.github.andreacovelli.abyssh.data.repository
 import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import io.github.andreacovelli.abyssh.ui.screens.Terminal.TerminalTabMode
+import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalTabMode
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals

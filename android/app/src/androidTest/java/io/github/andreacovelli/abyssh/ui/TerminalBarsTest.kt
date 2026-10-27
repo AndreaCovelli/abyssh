@@ -14,8 +14,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import io.github.andreacovelli.abyssh.ui.screens.Terminal.TerminalLinkBar
-import io.github.andreacovelli.abyssh.ui.screens.Terminal.TerminalSearchBar
+import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalLinkBar
+import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalSearchBar
 import io.github.andreacovelli.abyssh.ui.terminal.SearchMatch
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalSearchState
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTheme

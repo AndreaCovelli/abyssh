@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.service.ssh
 
+// One external fun per JNI export in zig-src/src/bridge.
+@Suppress("TooManyFunctions")
 class NativeSshBridge {
     companion object {
         private val loadError: Throwable? =
@@ -8,14 +10,12 @@ class NativeSshBridge {
 
     fun isLoaded(): Boolean = loadError == null
 
-    fun nativeStatus(): String {
-        return if (loadError == null) {
+    fun nativeStatus(): String = if (loadError == null) {
             "loaded"
         } else {
             val message = loadError.message?.takeIf { it.isNotBlank() } ?: "unknown"
             "not loaded (${loadError::class.simpleName}: $message)"
         }
-    }
 
     external fun nativeCreateSession(): Long
 

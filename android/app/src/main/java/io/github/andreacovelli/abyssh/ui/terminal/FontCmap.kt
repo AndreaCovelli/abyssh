@@ -118,8 +118,6 @@ internal object FontCmap {
  * Private Use Area ranges where Nerd Font glyphs live (devicons, powerline,
  * weather icons, file-type icons, etc.).
  */
-internal fun isNerdFontPrivateUse(cp: Int): Boolean {
-    return (cp in 0xE000..0xF8FF) ||
+internal fun isNerdFontPrivateUse(cp: Int): Boolean = (cp in 0xE000..0xF8FF) ||
         (cp in 0xF0000..0xFFFFD) ||
         (cp in 0x100000..0x10FFFD)
-}

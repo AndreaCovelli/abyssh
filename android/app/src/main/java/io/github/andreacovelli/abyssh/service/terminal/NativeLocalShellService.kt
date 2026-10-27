@@ -33,7 +33,7 @@ class NativeLocalShellService(
         if (!ok) {
             val message = bridge.nativeGetLastError(handle) ?: "Native local shell start failed"
             close()
-            throw IllegalStateException(message)
+            error(message)
         }
     }
 
@@ -47,7 +47,7 @@ class NativeLocalShellService(
         if (data.isEmpty()) return
         val written = bridge.nativeWrite(handle, data)
         if (written < 0) {
-            throw IllegalStateException(bridge.nativeGetLastError(handle) ?: "Local shell write failed")
+            error(bridge.nativeGetLastError(handle) ?: "Local shell write failed")
         }
         check(written == data.size) { "Local shell write incomplete" }
     }
@@ -55,7 +55,7 @@ class NativeLocalShellService(
     fun resize(cols: Int, rows: Int, widthPx: Int, heightPx: Int) {
         if (handle == 0L) return
         if (!bridge.nativeResize(handle, cols, rows, widthPx, heightPx)) {
-            throw IllegalStateException(bridge.nativeGetLastError(handle) ?: "Local shell resize failed")
+            error(bridge.nativeGetLastError(handle) ?: "Local shell resize failed")
         }
     }
 

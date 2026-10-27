@@ -9,14 +9,12 @@ class NativeMoshBridge {
 
     fun isLoaded(): Boolean = loadError == null
 
-    fun nativeStatus(): String {
-        return if (loadError == null) {
+    fun nativeStatus(): String = if (loadError == null) {
             "loaded"
         } else {
             val message = loadError.message?.takeIf { it.isNotBlank() } ?: "unknown"
             "not loaded (${loadError::class.simpleName}: $message)"
         }
-    }
 
     external fun nativeCreate(configJson: String): Long
     external fun nativeStart(handle: Long): Int
@@ -25,13 +23,13 @@ class NativeMoshBridge {
     external fun nativeMaintenanceTick(handle: Long): Int
     external fun nativePumpNetwork(handle: Long): Int
 
-    /// outBuf: byte array to receive payload (host bytes or diagnostic text).
-    /// outMeta: long[5] array receiving [eventType, written, cols, rows, echoAck].
-    /// Returns 0 on success, non-zero on error.
+    // outBuf: byte array to receive payload (host bytes or diagnostic text).
+    // outMeta: long[5] array receiving [eventType, written, cols, rows, echoAck].
+    // Returns 0 on success, non-zero on error.
     external fun nativePollOutput(handle: Long, outBuf: ByteArray, outMeta: LongArray): Int
 
-    /// outState: long[7] array receiving [state, lastFailure, lastSent, lastReceived, pendingOut, pendingHostOps, rtoMs].
-    /// Returns 0 on success.
+    // outState: long[7] array receiving [state, lastFailure, lastSent, lastReceived, pendingOut, pendingHostOps, rtoMs].
+    // Returns 0 on success.
     external fun nativePollState(handle: Long, outState: LongArray): Int
 
     external fun nativeStop(handle: Long): Int

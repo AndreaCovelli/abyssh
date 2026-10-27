@@ -19,7 +19,6 @@ object AbysshBackupCodec {
     const val IV_SIZE_BYTES: Int = 12
     const val MAX_BACKUP_SIZE_BYTES: Int = 32 * 1024 * 1024
 
-    private const val CONTAINER_MAGIC: Int = 0x4348424b // CHBK
     private const val PAYLOAD_MAGIC: Int = 0x4348504c // CHPL
     private const val MAX_ITEMS: Int = 100_000
     private const val MAX_STRING_BYTES: Int = 4 * 1024 * 1024

@@ -68,14 +68,12 @@ fun decodeCustomActionValue(payload: String): DecodedCustomActionValue {
     )
 }
 
-fun modifierStateForCustomAction(modifiers: Set<CustomActionModifier>): ModifierState {
-    return ModifierState(
+fun modifierStateForCustomAction(modifiers: Set<CustomActionModifier>): ModifierState = ModifierState(
         ctrl = CustomActionModifier.Ctrl in modifiers,
         alt = CustomActionModifier.Alt in modifiers,
         shift = CustomActionModifier.Shift in modifiers,
         cmd = CustomActionModifier.Cmd in modifiers,
     )
-}
 
 object TerminalCustomActionStore {
     // encodeDefaults is left at its default (false) so a null `shortcut` is omitted

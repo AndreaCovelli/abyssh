@@ -1,6 +1,5 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
-import android.content.ClipData
 import android.util.Log
 import io.github.andreacovelli.abyssh.model.AuthMethod
 import io.github.andreacovelli.abyssh.model.MultiplexerType
@@ -20,7 +19,6 @@ import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSessi
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyCheck
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
 import io.github.andreacovelli.abyssh.service.ssh.NativeSshService
-import io.github.andreacovelli.abyssh.service.ssh.TailscaleStatusChecker
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -74,12 +72,14 @@ data class HostKeyPrompt(
     val previousFingerprint: String?,
 )
 
+// Native and transport calls throw a mix of IllegalStateException, IOException, and
+// runtime errors; the broad catches turn them into session state instead of crashes.
+@Suppress("TooGenericExceptionCaught", "LargeClass", "TooManyFunctions")
 class TerminalSessionEngine(
     private val publishClipboardText: (String) -> Unit,
     private val scope: CoroutineScope,
     private val localShellService: NativeLocalShellService,
     private val hostKeyStore: HostKeyStore,
-    private val tailscaleStatusChecker: TailscaleStatusChecker,
     // Called when the shell ends on its own (exit, Ctrl+D), so the owner can close the tab.
     private val onShellExited: () -> Unit = {},
     private val onHostKeyVerificationRequired: ((HostKeyPrompt, ByteArray) -> Unit)? = null,
@@ -303,9 +303,7 @@ class TerminalSessionEngine(
             val encoded =
                 bridge.nativeEncodeKey(handle, key, codepoint, mods, action, utf8) ?: return@launch
             if (encoded.isEmpty()) return@launch
-            try {
-                writeRemote(encoded)
-            } catch (_: Exception) {}
+            writeRemoteBestEffort(encoded)
         }
     }
 
@@ -313,9 +311,7 @@ class TerminalSessionEngine(
         scope.launch(dispatcher) {
             if (handle == 0L) return@launch
             if (text.isEmpty()) return@launch
-            try {
-                writeRemote(text.toByteArray(Charsets.UTF_8))
-            } catch (_: Exception) {}
+            writeRemoteBestEffort(text.toByteArray(Charsets.UTF_8))
         }
     }
 
@@ -325,9 +321,7 @@ class TerminalSessionEngine(
             if (text.isEmpty()) return@launch
             val encoded = bridge.nativeEncodePaste(handle, text) ?: return@launch
             if (encoded.isEmpty()) return@launch
-            try {
-                writeRemote(encoded)
-            } catch (_: Exception) {}
+            writeRemoteBestEffort(encoded)
         }
     }
 
@@ -354,9 +348,7 @@ class TerminalSessionEngine(
             if (handle == 0L) return@launch
             val encoded = bridge.nativeEncodeFocus(handle, focused) ?: return@launch
             if (encoded.isEmpty()) return@launch
-            try {
-                writeRemote(encoded)
-            } catch (_: Exception) {}
+            writeRemoteBestEffort(encoded)
         }
     }
 
@@ -383,9 +375,7 @@ class TerminalSessionEngine(
                     trackLastCell,
                 ) ?: return@launch
             if (encoded.isEmpty()) return@launch
-            try {
-                writeRemote(encoded)
-            } catch (_: Exception) {}
+            writeRemoteBestEffort(encoded)
         }
     }
 
@@ -551,15 +541,15 @@ class TerminalSessionEngine(
 
     suspend fun listMultiplexerSessions(spec: TabSpec): List<RemoteMultiplexerSession> =
         withContext(dispatcher) {
-            val type = spec.multiplexer ?: throw IllegalStateException("No multiplexer selected")
+            val type = spec.multiplexer ?: error("No multiplexer selected")
             val multiplexer = MultiplexerRegistry.forType(type)
-                ?: throw IllegalStateException("${type.label} is not supported yet")
+                ?: error("${type.label} is not supported yet")
             if (spec.transport == Transport.Mosh || spec.transport == Transport.LocalShell) {
-                throw IllegalStateException("${type.label} is not supported for ${spec.transport} connections")
+                error("${type.label} is not supported for ${spec.transport} connections")
             }
             val result = runMultiplexerCommand(spec.toConnectionParams(), multiplexer.listSessionsCommand())
             if (!result.isSuccess) {
-                throw IllegalStateException(result.stderr.ifBlank { "Failed to list ${type.label} sessions" })
+                error(result.stderr.ifBlank { "Failed to list ${type.label} sessions" })
             }
             multiplexer.parseSessions(result.stdout)
         }
@@ -571,29 +561,29 @@ class TerminalSessionEngine(
     ): String = withContext(dispatcher) {
         val type = spec.multiplexer ?: MultiplexerRegistry.defaultType
         val multiplexer = MultiplexerRegistry.forType(type)
-            ?: throw IllegalStateException("${type.label} is not supported yet")
+            ?: error("${type.label} is not supported yet")
         if (spec.transport == Transport.Mosh || spec.transport == Transport.LocalShell) {
-            throw IllegalStateException("${type.label} is not supported for ${spec.transport} connections")
+            error("${type.label} is not supported for ${spec.transport} connections")
         }
         when (val availability = checkMultiplexerAvailability(spec.copy(multiplexer = type))) {
             MultiplexerAvailability.Available -> Unit
-            is MultiplexerAvailability.Missing -> throw IllegalStateException(
+            is MultiplexerAvailability.Missing -> error(
                 "${availability.multiplexer.label} executable was not found on the remote host",
             )
-            is MultiplexerAvailability.UnsupportedMultiplexer -> throw IllegalStateException(
+            is MultiplexerAvailability.UnsupportedMultiplexer -> error(
                 "${availability.multiplexer.label} is not supported yet",
             )
-            is MultiplexerAvailability.UnsupportedTransport -> throw IllegalStateException(
+            is MultiplexerAvailability.UnsupportedTransport -> error(
                 "${type.label} is not supported for ${availability.transport}",
             )
-            is MultiplexerAvailability.Error -> throw IllegalStateException(availability.message)
+            is MultiplexerAvailability.Error -> error(availability.message)
         }
         val remoteSessions = listMultiplexerSessions(spec.copy(multiplexer = type))
         val existingName = spec.multiplexerSessionName?.takeIf { it.isNotBlank() }
         if (existingName != null && spec.multiplexerCreateIfMissing) return@withContext existingName
         if (existingName != null) {
             if (remoteSessions.any { it.name == existingName }) return@withContext existingName
-            throw IllegalStateException("${type.label} session \"$existingName\" is no longer available")
+            error("${type.label} session \"$existingName\" is no longer available")
         }
         if (reuseDetachedAbysshSession) {
             MultiplexerSessionAllocator.reusableDetachedAbysshSessionName(
@@ -748,21 +738,19 @@ class TerminalSessionEngine(
         val buf = ByteArray(65536)
         var lastActivityMs = System.currentTimeMillis()
         while (currentCoroutineContext().isActive) {
-            val chunk = nativeSsh.read(buf.size)
-            if (chunk == null) {
-                break
-            }
-            if (chunk.isEmpty()) {
+            val chunk = nativeSsh.read(buf.size) ?: break
+            if (chunk.isNotEmpty()) {
+                lastActivityMs = System.currentTimeMillis()
+                feedRemoteChunk(chunk)
+            } else if (nativeSsh.isChannelEof()) {
                 // The native read reports a closed channel the same way as "no data
                 // yet", so check EOF here; otherwise a finished shell is polled forever.
-                if (nativeSsh.isChannelEof()) return true
+                return true
+            } else {
                 // Adaptive poll: stay snappy while data is flowing, back off when
                 // idle so a quiet session doesn't spin at 500 wakeups/sec.
                 delay(idleReadDelayMs(System.currentTimeMillis() - lastActivityMs))
-                continue
             }
-            lastActivityMs = System.currentTimeMillis()
-            feedRemoteChunk(chunk)
         }
         return false
     }
@@ -771,16 +759,13 @@ class TerminalSessionEngine(
         val buf = ByteArray(65536)
         var lastActivityMs = System.currentTimeMillis()
         while (currentCoroutineContext().isActive) {
-            val chunk = localShellService.read(buf.size)
-            if (chunk == null) {
-                break
-            }
-            if (chunk.isEmpty()) {
+            val chunk = localShellService.read(buf.size) ?: break
+            if (chunk.isNotEmpty()) {
+                lastActivityMs = System.currentTimeMillis()
+                feedRemoteChunk(chunk)
+            } else {
                 delay(idleReadDelayMs(System.currentTimeMillis() - lastActivityMs))
-                continue
             }
-            lastActivityMs = System.currentTimeMillis()
-            feedRemoteChunk(chunk)
         }
     }
 
@@ -1005,11 +990,11 @@ class TerminalSessionEngine(
                                 }
                                 .toString()
                         if (!moshService.create(configJson)) {
-                            throw IllegalStateException("Failed to create mosh client")
+                            error("Failed to create mosh client")
                         }
                         Log.d("TerminalSession", "MOSH: mosh client created, starting...")
                         if (!moshService.start()) {
-                            throw IllegalStateException("Failed to start mosh client")
+                            error("Failed to start mosh client")
                         }
                         Log.d("TerminalSession", "MOSH: mosh client started, resizing $cols x $rows")
                         moshService.resize(cols, rows)
@@ -1046,7 +1031,7 @@ class TerminalSessionEngine(
                     rawOutput.trim()
                 }
             Log.e("TerminalSession", "MOSH: Bootstrap failed: $reason")
-            throw IllegalStateException(reason)
+            error(reason)
         }
         Log.d("TerminalSession", "MOSH: Phase 2 — mosh client ready")
     }
@@ -1215,6 +1200,12 @@ class TerminalSessionEngine(
         }
     }
 
+    // User input is best-effort: a dropped transport ends the read loop, which then
+    // reports the error or reconnects, so a failed write needs no handling here.
+    private fun writeRemoteBestEffort(data: ByteArray) {
+        runCatching { writeRemote(data) }
+    }
+
     private fun writeRemote(data: ByteArray) {
         when (lastConnectionParams?.transport) {
             Transport.Mosh -> moshService.sendInput(data)
@@ -1284,7 +1275,7 @@ class TerminalSessionEngine(
     private fun resizeRemote(cols: Int, rows: Int, widthPx: Int, heightPx: Int) {
         when (lastConnectionParams?.transport) {
             Transport.Mosh -> {
-                Log.d("TerminalSession", "MOSH: resizeRemote ${cols}x${rows}")
+                Log.d("TerminalSession", "MOSH: resizeRemote ${cols}x$rows")
                 moshService.resize(cols, rows)
             }
             Transport.LocalShell -> localShellService.resize(cols, rows, widthPx, heightPx)

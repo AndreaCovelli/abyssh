@@ -2,6 +2,8 @@ package io.github.andreacovelli.abyssh.service.terminal
 
 import java.nio.ByteBuffer
 
+// One external fun per JNI export in zig-src/src/bridge.
+@Suppress("TooManyFunctions")
 class GhosttyBridge {
     companion object {
         private val loadError: Throwable? = runCatching {
@@ -9,14 +11,12 @@ class GhosttyBridge {
         }.exceptionOrNull()
     }
 
-    fun nativeStatus(): String {
-        return if (loadError == null) {
+    fun nativeStatus(): String = if (loadError == null) {
             "loaded"
         } else {
             val message = loadError.message?.takeIf { it.isNotBlank() } ?: "unknown"
             "not loaded (${loadError::class.simpleName}: $message)"
         }
-    }
 
     fun isLoaded(): Boolean = loadError == null
 

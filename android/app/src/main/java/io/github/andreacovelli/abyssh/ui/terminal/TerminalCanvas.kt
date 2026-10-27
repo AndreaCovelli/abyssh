@@ -60,6 +60,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeoutOrNull
 
+@Suppress("LongMethod", "CyclomaticComplexMethod", "LoopWithTooManyJumpStatements")
 @Composable
 fun TerminalCanvas(
     snapshot: TerminalSnapshot,
@@ -364,8 +365,8 @@ fun TerminalCanvas(
                     awaitPointerEventScope {
                         while (true) {
                             val event = awaitPointerEvent()
-                            if (event.type != PointerEventType.Scroll) continue
-                            val change = event.changes.firstOrNull() ?: continue
+                            val change = event.changes.firstOrNull()
+                            if (event.type != PointerEventType.Scroll || change == null) continue
                             remainder += change.scrollDelta.y * WHEEL_ROWS_PER_NOTCH
                             val rows = remainder.toInt()
                             if (rows != 0) {
@@ -573,7 +574,9 @@ fun TerminalCanvas(
                                     }
                                     val heldMs = (event.changes.maxOfOrNull { it.uptimeMillis } ?: lastEventUptime) -
                                         down.uptimeMillis
-                                    if (didPinch && !fingersMoved && !didScroll &&
+                                    if (didPinch &&
+                                        !fingersMoved &&
+                                        !didScroll &&
                                         heldMs < currentLongPressTimeoutMillis.value * 2
                                     ) {
                                         val s = currentSnapshot.value
@@ -843,7 +846,6 @@ fun TerminalCanvas(
                             cache = singlePaintChoiceCache,
                             primaryPaint = primaryTextPaint,
                             primaryPuaCoverage = primaryPuaCoverage,
-                            symbolsPaint = symbolsTextPaint,
                             fallbackPaint = fallbackTextPaint,
                             emojiPaint = emojiTextPaint,
                         )
@@ -853,7 +855,6 @@ fun TerminalCanvas(
                             cache = clusterPaintChoiceCache,
                             primaryPaint = primaryTextPaint,
                             primaryPuaCoverage = primaryPuaCoverage,
-                            symbolsPaint = symbolsTextPaint,
                             fallbackPaint = fallbackTextPaint,
                             emojiPaint = emojiTextPaint,
                         )
@@ -896,7 +897,6 @@ fun TerminalCanvas(
                                 cache = singlePaintChoiceCache,
                                 primaryPaint = primaryTextPaint,
                                 primaryPuaCoverage = primaryPuaCoverage,
-                                symbolsPaint = symbolsTextPaint,
                                 fallbackPaint = fallbackTextPaint,
                                 emojiPaint = emojiTextPaint,
                             )
@@ -906,7 +906,6 @@ fun TerminalCanvas(
                                 cache = clusterPaintChoiceCache,
                                 primaryPaint = primaryTextPaint,
                                 primaryPuaCoverage = primaryPuaCoverage,
-                                symbolsPaint = symbolsTextPaint,
                                 fallbackPaint = fallbackTextPaint,
                                 emojiPaint = emojiTextPaint,
                             )
@@ -1004,7 +1003,8 @@ fun TerminalCanvas(
 
                 val cursorIndex = snapshot.cursorY * cols + snapshot.cursorX
                 if (snapshot.cursorStyle == TerminalSnapshot.CURSOR_STYLE_BLOCK &&
-                    cursorTextColorArgb != null && cursorIndex in snapshot.codepoints.indices
+                    cursorTextColorArgb != null &&
+                    cursorIndex in snapshot.codepoints.indices
                 ) {
                     val codepoint = snapshot.codepoints[cursorIndex]
                     if (codepoint != 0 && codepoint != 32) {
@@ -1021,7 +1021,6 @@ fun TerminalCanvas(
                                 cache = singlePaintChoiceCache,
                                 primaryPaint = primaryTextPaint,
                                 primaryPuaCoverage = primaryPuaCoverage,
-                                symbolsPaint = symbolsTextPaint,
                                 fallbackPaint = fallbackTextPaint,
                                 emojiPaint = emojiTextPaint,
                             )
@@ -1031,7 +1030,6 @@ fun TerminalCanvas(
                                 cache = clusterPaintChoiceCache,
                                 primaryPaint = primaryTextPaint,
                                 primaryPuaCoverage = primaryPuaCoverage,
-                                symbolsPaint = symbolsTextPaint,
                                 fallbackPaint = fallbackTextPaint,
                                 emojiPaint = emojiTextPaint,
                             )
@@ -1107,8 +1105,11 @@ private fun remapSelectionForViewportScroll(
     val deltaCells = (startBaseline - cur) * max(snapshot.cols, 1)
     onBaselineChange(cur)
     onSelectionChange(
-        if (autoScrollingSelection) sel.copy(anchorIndex = sel.anchorIndex + deltaCells)
-        else sel.copy(anchorIndex = sel.anchorIndex + deltaCells, focusIndex = sel.focusIndex + deltaCells),
+        if (autoScrollingSelection) {
+            sel.copy(anchorIndex = sel.anchorIndex + deltaCells)
+        } else {
+            sel.copy(anchorIndex = sel.anchorIndex + deltaCells, focusIndex = sel.focusIndex + deltaCells)
+        },
     )
 }
 
@@ -1119,9 +1120,7 @@ private fun TerminalSnapshot.cellAt(x: Float, y: Float, cellWidth: Float, cellHe
     return row * cols + col
 }
 
-internal fun TerminalSnapshot.isSpacerContinuation(cellIndex: Int): Boolean {
-    return ((flags[cellIndex].toInt() and 0xFF) and TerminalSnapshot.CELL_FLAG_SPACER) != 0
-}
+internal fun TerminalSnapshot.isSpacerContinuation(cellIndex: Int): Boolean = ((flags[cellIndex].toInt() and 0xFF) and TerminalSnapshot.CELL_FLAG_SPACER) != 0
 
 internal fun TerminalSnapshot.glyphAt(cellIndex: Int): String {
     val codepoint = codepoints[cellIndex]
@@ -1171,7 +1170,6 @@ private fun pickPaintChoice(
     cache: HashMap<String, Int>,
     primaryPaint: Paint,
     primaryPuaCoverage: IntArray,
-    symbolsPaint: Paint,
     fallbackPaint: Paint,
     emojiPaint: Paint,
 ): Int {
@@ -1191,7 +1189,6 @@ private fun pickPaintChoice(
     cache: HashMap<Int, Int>,
     primaryPaint: Paint,
     primaryPuaCoverage: IntArray,
-    symbolsPaint: Paint,
     fallbackPaint: Paint,
     emojiPaint: Paint,
 ): Int {

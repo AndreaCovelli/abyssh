@@ -33,8 +33,8 @@ data class ModifierState(
         var mods = 0
         if (shift) mods = mods or (1 shl 0) // shift
         if (ctrl) mods = mods or (1 shl 1) // ctrl
-        if (alt) mods = mods or (1 shl 2)  // alt
-        if (cmd) mods = mods or (1 shl 3)  // super
+        if (alt) mods = mods or (1 shl 2) // alt
+        if (cmd) mods = mods or (1 shl 3) // super
         return mods
     }
 

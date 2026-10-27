@@ -27,8 +27,7 @@ class TailscaleStatusChecker(
         return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
     }
 
-    private fun hasTailnetAddress(): Boolean {
-        return try {
+    private fun hasTailnetAddress(): Boolean = try {
             NetworkInterface.getNetworkInterfaces()
                 ?.toList()
                 ?.flatMap { it.inetAddresses?.toList() ?: emptyList() }
@@ -37,11 +36,11 @@ class TailscaleStatusChecker(
         } catch (_: Exception) {
             false
         }
-    }
 
     private fun isTailnetIp(addr: InetAddress): Boolean {
-        if (addr.isLoopbackAddress || !addr.hostAddress.startsWith("100.")) return false
-        val octets = addr.hostAddress.split(".")
+        val hostAddress = addr.hostAddress ?: return false
+        if (addr.isLoopbackAddress || !hostAddress.startsWith("100.")) return false
+        val octets = hostAddress.split(".")
         if (octets.size != 4) return false
         val second = octets.getOrNull(1)?.toIntOrNull() ?: return false
         // 100.64.0.0/10 means second octet must be in [64, 127]

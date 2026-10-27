@@ -2,6 +2,8 @@ package io.github.andreacovelli.abyssh.ui.terminal
 
 import android.view.KeyEvent
 
+// Names mirror the Ghostty key action enum.
+@Suppress("ktlint:standard:property-naming")
 object GhosttyKeyAction {
     const val Release = 0
     const val Press = 1

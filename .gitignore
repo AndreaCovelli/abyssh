@@ -20,7 +20,7 @@ scripts/
 # Android
 android/app/src/main/jniLibs/
 android/app/key.jks
-/build
+build/
 /captures
 
 # Zig

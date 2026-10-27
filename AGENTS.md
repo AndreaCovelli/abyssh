@@ -13,7 +13,9 @@ version catalog pins AGP, Kotlin, and libraries. Run `mise install` once.
 | Command | Use |
 | --- | --- |
 | `mise run native` | Build `libabyssh_jni.so` for every ABI into `android/app/src/main/jniLibs/`. Needs `ANDROID_NDK_HOME` set to one NDK version, such as `$ANDROID_HOME/ndk/28.2.13676358`. Add `-Dtarget=aarch64-linux-android` to build arm64 only |
-| `mise run check` | Android Lint, unit tests, the debug build, and actionlint. Run before every commit |
+| `mise run check` | Formatting, Detekt, Android Lint, unit tests, the debug build, and actionlint. Run before every commit |
+| `mise run format` | Format Kotlin sources and Gradle scripts with ktlint through Spotless. `mise run format:check` only reports |
+| `mise run detekt` | Detekt static analysis, configured in `android/config/detekt/detekt.yml`, with no baseline |
 | `mise run test` | Unit tests only. Filter with `cd android && ./gradlew testDebugUnitTest --tests '<pattern>'` |
 | `mise run test:device` | Instrumented tests on a connected device or emulator |
 | `mise run install` | Install the debug APK on a connected device and launch it |
@@ -70,11 +72,21 @@ Kotlin declares `external fun native*` methods in five bridge classes: `GhosttyB
 - The UI uses Compose Foundation without Material. Build screens from the `Abyss*`
   components in `ui/components/`, with colors from `AbyssColors.current` and type from
   `AbyssTypography`. The active Ghostty theme drives the colors.
+- Each screen lives in a lowercase package under `ui/screens/` (`addserver`,
+  `terminal`, `settings`, …).
+- User-visible text goes in `res/values/strings.xml`, with plurals for counts. Read it
+  with `stringResource` in composables and with `LocalResources.current` inside
+  callbacks; Lint rejects `LocalContext.current.getString`. Product names, key caps,
+  and log or exception messages stay in code.
 - ViewModels expose `StateFlow`; screens collect it with `collectAsStateWithLifecycle`.
 - Declare every dependency in `android/gradle/libs.versions.toml`. Room uses KSP and
   the Room Gradle plugin.
-- SDK levels: compileSdk and targetSdk 36, minSdk 24. Change them only in a dedicated
+- SDK levels: compileSdk 37, targetSdk 36, minSdk 24. Change them only in a dedicated
   commit, and ask before raising minSdk.
+- Kotlin style is ktlint's `android_studio` style, set in the root `.editorconfig`.
+  Detekt thresholds come from `detekt.yml`. The oversized composables and classes
+  inherited from upstream carry targeted `@Suppress` annotations; keep new code within
+  the thresholds, and drop a suppression when splitting the function it covers.
 - Database changes: bump `version` in `data/db/AppDatabase.kt`, add an `AutoMigration`
   (with a spec for renames and deletes), build to generate the new schema JSON, and
   commit it. Version 11 is the baseline; there are no migrations from older versions.
@@ -133,10 +145,12 @@ Kotlin declares `external fun native*` methods in five bridge classes: `GhosttyB
   `Chuchu` → `Abyssh`, `Chu*` classes → `Abyss*`, and upstream's `chuchu_*` Zig files and
   `Java_com_jossephus_chuchu_*` exports to their `abyssh` names.
 - GitHub Actions: CI (`ci.yml`) runs `mise run check` through the shared workflow in
-  AndreaCovelli/repo-baseline, without the native library, and its `Validate` job is
-  the only check the `main` ruleset requires. Add any new CI job to `Validate`'s
+  AndreaCovelli/repo-baseline, without the native library, and scans new commits with
+  Gitleaks (`.gitleaks.toml`). Its `Validate` job is the only check the `main` ruleset
+  requires. Add any new CI job to `Validate`'s
   `needs`. Nightly publishes an APK on every push to `main`; Release builds signed
-  artifacts from `v*.*.*` tags. Pin actions to a full commit SHA with a version
+  artifacts from `v*.*.*` tags; Dependency Submission sends the Gradle dependency graph
+  to GitHub when build files change on `main`. Pin actions to a full commit SHA with a version
   comment, and run `mise run check:actions` after editing workflows.
 - Renovate extends AndreaCovelli/renovate-config: one weekly grouped PR that
   automerges non-breaking updates after CI passes. `forkProcessing` is enabled

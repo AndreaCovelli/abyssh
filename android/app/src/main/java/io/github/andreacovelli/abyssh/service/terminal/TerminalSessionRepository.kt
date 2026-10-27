@@ -9,7 +9,6 @@ import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerRegistry
 import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSession
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
-import io.github.andreacovelli.abyssh.service.ssh.TailscaleStatusChecker
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +31,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
+@Suppress("TooManyFunctions")
 @OptIn(ExperimentalCoroutinesApi::class)
 class TerminalSessionRepository private constructor(application: Application) {
     private sealed interface PreflightAttempt<out T> {
@@ -52,7 +52,6 @@ class TerminalSessionRepository private constructor(application: Application) {
 
     private val hostKeyStore =
         HostKeyStore(appContext.getSharedPreferences(HostKeyStore.PREFS_NAME, Application.MODE_PRIVATE))
-    private val tailscaleStatusChecker = TailscaleStatusChecker(appContext)
     private val clipboard = appContext.getSystemService(ClipboardManager::class.java)
     private val settingsRepository = SettingsRepository.getInstance(appContext)
 
@@ -81,7 +80,7 @@ class TerminalSessionRepository private constructor(application: Application) {
             .flatMapLatest { tab -> tab?.sessionState ?: flowOf(SessionState()) }
             .stateIn(scope, SharingStarted.Eagerly, SessionState())
 
-    private val _preflightHostKeyPrompt = MutableStateFlow<HostKeyPrompt?>(null)
+    private val preflightHostKeyPrompt = MutableStateFlow<HostKeyPrompt?>(null)
     private val preflightMutex = Mutex()
     private var preflightEngine: TerminalSessionEngine? = null
     private var preflightHostKeyDecision: CompletableDeferred<Boolean>? = null
@@ -92,7 +91,7 @@ class TerminalSessionRepository private constructor(application: Application) {
             .stateIn(scope, SharingStarted.Eagerly, null)
 
     val hostKeyPrompt: StateFlow<HostKeyPrompt?> =
-        combine(_preflightHostKeyPrompt, activeHostKeyPrompt) { preflight, active -> preflight ?: active }
+        combine(preflightHostKeyPrompt, activeHostKeyPrompt) { preflight, active -> preflight ?: active }
             .stateIn(scope, SharingStarted.Eagerly, null)
 
     val connectedHostIds: StateFlow<Set<Long>> =
@@ -210,7 +209,7 @@ class TerminalSessionRepository private constructor(application: Application) {
                 is PreflightAttempt.Completed -> return attempt.value
                 is PreflightAttempt.HostKeyVerificationRequired -> {
                     if (!awaitPreflightHostKeyDecision(attempt.verification)) {
-                        throw IllegalStateException("Host key rejected")
+                        error("Host key rejected")
                     }
                     val prompt = attempt.verification.prompt
                     hostKeyStore.saveKey(
@@ -234,7 +233,6 @@ class TerminalSessionRepository private constructor(application: Application) {
                 scope,
                 newLocalShellService(),
                 hostKeyStore,
-                tailscaleStatusChecker,
                 onHostKeyVerificationRequired = { prompt, keyBytes ->
                     verification = PreflightHostKeyVerification(prompt, keyBytes)
                 },
@@ -259,14 +257,14 @@ class TerminalSessionRepository private constructor(application: Application) {
     ): Boolean {
         val decision = CompletableDeferred<Boolean>()
         preflightHostKeyDecision = decision
-        _preflightHostKeyPrompt.value = verification.prompt
+        preflightHostKeyPrompt.value = verification.prompt
         return try {
             decision.await()
         } finally {
             if (preflightHostKeyDecision === decision) {
                 preflightHostKeyDecision = null
             }
-            _preflightHostKeyPrompt.value = null
+            preflightHostKeyPrompt.value = null
         }
     }
 
@@ -278,7 +276,6 @@ class TerminalSessionRepository private constructor(application: Application) {
                 scope,
                 newLocalShellService(),
                 hostKeyStore,
-                tailscaleStatusChecker,
                 onShellExited = { scope.launch { closeTab(id) } },
             )
         val tab = TabSession(id, spec, engine)
@@ -403,7 +400,7 @@ class TerminalSessionRepository private constructor(application: Application) {
         preflightHostKeyDecision = null
         preflightEngine?.dispose()
         preflightEngine = null
-        _preflightHostKeyPrompt.value = null
+        preflightHostKeyPrompt.value = null
         val tabs = _tabs.value
         _tabs.value = emptyList()
         _activeTabId.value = null
@@ -433,7 +430,7 @@ class TerminalSessionRepository private constructor(application: Application) {
         if (tab.sessionState.value.status == SessionStatus.Connected) return
         withTimeoutOrNull(timeoutMs) {
             tab.sessionState.first { it.status == SessionStatus.Connected }
-        } ?: throw IllegalStateException("Timed out waiting for the session to reconnect")
+        } ?: error("Timed out waiting for the session to reconnect")
     }
 
     fun resize(
@@ -549,14 +546,12 @@ class TerminalSessionRepository private constructor(application: Application) {
     companion object {
         @Volatile private var instance: TerminalSessionRepository? = null
 
-        fun getInstance(application: Application): TerminalSessionRepository {
-            return instance
+        fun getInstance(application: Application): TerminalSessionRepository = instance
                 ?: synchronized(this) {
                     instance
                         ?: TerminalSessionRepository(application).also { created ->
                             instance = created
                         }
                 }
-        }
     }
 }

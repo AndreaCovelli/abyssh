@@ -61,8 +61,10 @@ data class TerminalSnapshot(
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is TerminalSnapshot) return false
-        return cols == other.cols && rows == other.rows &&
-            cursorX == other.cursorX && cursorY == other.cursorY &&
+        return cols == other.cols &&
+            rows == other.rows &&
+            cursorX == other.cursorX &&
+            cursorY == other.cursorY &&
             cursorVisible == other.cursorVisible &&
             cursorStyle == other.cursorStyle &&
             defaultBgArgb == other.defaultBgArgb &&
@@ -91,7 +93,9 @@ data class TerminalSnapshot(
         result = 31 * result + fgArgb.contentHashCode()
         result = 31 * result + bgArgb.contentHashCode()
         result = 31 * result + flags.contentHashCode()
-        result = 31 * result + graphemeExtras.entries.fold(0) { acc, (key, arr) ->
+        result = 31 *
+            result +
+            graphemeExtras.entries.fold(0) { acc, (key, arr) ->
             acc + key + arr.contentHashCode()
         }
         result = 31 * result + images.hashCode()
@@ -201,29 +205,7 @@ data class TerminalSnapshot(
                 if (extrasOffset > 0 && extrasOffset < wrapped.capacity()) {
                     val extras = wrapped.duplicate().order(ByteOrder.LITTLE_ENDIAN)
                     extras.position(extrasOffset)
-                    if (extras.remaining() < 4) {
-                        emptyMap()
-                    } else {
-                        val recordCount = extras.int
-                        val parsed = HashMap<Int, IntArray>(recordCount.coerceAtLeast(0))
-                        var valid = true
-                        for (record in 0 until recordCount) {
-                            if (extras.remaining() < 8) {
-                                valid = false
-                                break
-                            }
-                            val cellIndex = extras.int
-                            val count = extras.int
-                            if (cellIndex !in 0 until cellCount || count < 0 || extras.remaining() < count * 4) {
-                                valid = false
-                                break
-                            }
-                            val cps = IntArray(count)
-                            for (j in 0 until count) cps[j] = extras.int
-                            parsed[cellIndex] = cps
-                        }
-                        if (valid) parsed else emptyMap()
-                    }
+                    parseGraphemeExtras(extras, cellCount)
                 } else {
                     emptyMap()
                 }
@@ -251,6 +233,24 @@ data class TerminalSnapshot(
             return snapshot
         }
 
+        // Returns an empty map when any record is truncated or out of range, so a
+        // corrupt extras section never yields partial clusters.
+        private fun parseGraphemeExtras(extras: ByteBuffer, cellCount: Int): Map<Int, IntArray> {
+            if (extras.remaining() < 4) return emptyMap()
+            val recordCount = extras.int
+            val parsed = HashMap<Int, IntArray>(recordCount.coerceAtLeast(0))
+            repeat(recordCount) {
+                if (extras.remaining() < 8) return emptyMap()
+                val cellIndex = extras.int
+                val count = extras.int
+                if (cellIndex !in 0 until cellCount || count < 0 || extras.remaining() < count * 4) {
+                    return emptyMap()
+                }
+                parsed[cellIndex] = IntArray(count) { extras.int }
+            }
+            return parsed
+        }
+
         fun parseImages(buffer: ByteBuffer?): List<ImagePlacement> {
             if (buffer == null || buffer.capacity() < 4) return emptyList()
             val wrapped = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
@@ -259,8 +259,7 @@ data class TerminalSnapshot(
             if (count <= 0) return emptyList()
 
             val images = ArrayList<ImagePlacement>(count)
-            for (i in 0 until count) {
-                if (wrapped.remaining() < IMAGE_HEADER_BYTES) break
+            while (images.size < count && wrapped.remaining() >= IMAGE_HEADER_BYTES) {
                 val cellCol = wrapped.int
                 val cellRow = wrapped.int
                 val cellXOffset = wrapped.int
@@ -276,7 +275,9 @@ data class TerminalSnapshot(
                 val dataLen = wrapped.int
 
                 val expectedLen = imgW.toLong() * imgH.toLong() * 4L
-                if (imgW <= 0 || imgH <= 0 || dataLen <= 0 ||
+                // Positive dimensions make expectedLen positive, so a matching dataLen is too.
+                if (imgW <= 0 ||
+                    imgH <= 0 ||
                     expectedLen > Int.MAX_VALUE ||
                     dataLen != expectedLen.toInt() ||
                     wrapped.remaining() < dataLen

@@ -11,7 +11,6 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -77,10 +76,10 @@ class SessionForegroundService : Service() {
         if (existing != null) return
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "SSH sessions",
+            getString(R.string.notification_channel_sessions),
             NotificationManager.IMPORTANCE_LOW,
         )
-        channel.description = "Keeps active terminal sessions alive"
+        channel.description = getString(R.string.notification_channel_sessions_description)
         manager.createNotificationChannel(channel)
     }
 
@@ -107,7 +106,7 @@ class SessionForegroundService : Service() {
 
         val notificationBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("abyssh connected")
+            .setContentTitle(getString(R.string.notification_connected_title))
             .setContentText(label)
             .setOngoing(true)
             .setAutoCancel(false)
@@ -116,7 +115,7 @@ class SessionForegroundService : Service() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setContentIntent(tapPending)
-            .addAction(0, "Disconnect", disconnectPending)
+            .addAction(0, getString(R.string.server_list_disconnect_confirm), disconnectPending)
 
         resolveNotificationColor()?.let { argb ->
             notificationBuilder

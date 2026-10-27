@@ -1,0 +1,14 @@
+title = "Abyssh Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Ignore generated, cached, and machine-local directories"
+paths = [
+  '''(?:^|/)(?:\.gradle|\.kotlin|build|captures|\.externalNativeBuild|\.cxx)(?:/.*)?$''',
+  '''(?:^|/)\.idea/(?:caches|libraries)(?:/.*)?$''',
+  '''(?:^|/)(?:\.zig-cache|zig-out)(?:/.*)?$''',
+  '''(?:^|/)jniLibs(?:/.*)?$''',
+  '''(?:^|/)(?:\.agents|\.claude|\.codex)(?:/.*)?$''',
+]

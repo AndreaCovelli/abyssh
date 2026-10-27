@@ -280,12 +280,10 @@ class AbysshBackupCoreTest {
         return offset
     }
 
-    private fun readIntAt(bytes: ByteArray, offset: Int): Int {
-        return ((bytes[offset].toInt() and 0xff) shl 24) or
+    private fun readIntAt(bytes: ByteArray, offset: Int): Int = ((bytes[offset].toInt() and 0xff) shl 24) or
             ((bytes[offset + 1].toInt() and 0xff) shl 16) or
             ((bytes[offset + 2].toInt() and 0xff) shl 8) or
             (bytes[offset + 3].toInt() and 0xff)
-    }
 
     private fun writeIntAt(bytes: ByteArray, offset: Int, value: Int) {
         bytes[offset] = (value ushr 24).toByte()

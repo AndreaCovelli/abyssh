@@ -2,7 +2,7 @@ package io.github.andreacovelli.abyssh.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
-import io.github.andreacovelli.abyssh.ui.screens.Terminal.TerminalTabMode
+import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalTabMode
 import io.github.andreacovelli.abyssh.ui.terminal.BuiltinShortcutStore
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalAccessoryLayoutStore
 import io.github.andreacovelli.abyssh.ui.theme.AbyssFontOption
@@ -253,11 +253,9 @@ class SettingsRepository(context: Context) {
         @Volatile
         private var instance: SettingsRepository? = null
 
-        fun getInstance(context: Context): SettingsRepository {
-            return instance ?: synchronized(this) {
+        fun getInstance(context: Context): SettingsRepository = instance ?: synchronized(this) {
                 instance ?: SettingsRepository(context.applicationContext).also { instance = it }
             }
-        }
 
         private fun parseThemeMode(value: String?): ThemeMode =
             ThemeMode.entries.find { it.name == value } ?: DEFAULT_THEME_MODE

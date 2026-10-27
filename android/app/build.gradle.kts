@@ -1,10 +1,10 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.room)
+    alias(libs.plugins.detekt)
 }
 
 kotlin {
@@ -18,7 +18,7 @@ room {
 android {
     namespace = "io.github.andreacovelli.abyssh"
     compileSdk {
-        version = release(36)
+        version = release(37)
     }
 
     defaultConfig {
@@ -48,18 +48,28 @@ android {
 
     }
 
-    signingConfigs {
-        create("release") {
-            val keystoreFile = file("key.jks")
-            val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
-            val keyAliasEnv = System.getenv("KEY_ALIAS")
-            val keyPasswordEnv = System.getenv("KEY_PASSWORD")
+    val keystoreFile = file("key.jks")
+    val signing = mapOf(
+        "key.jks" to keystoreFile.takeIf { it.exists() }?.path,
+        "KEYSTORE_PASSWORD" to System.getenv("KEYSTORE_PASSWORD"),
+        "KEY_ALIAS" to System.getenv("KEY_ALIAS"),
+        "KEY_PASSWORD" to System.getenv("KEY_PASSWORD"),
+    )
+    val missingSigning = signing.filterValues { it.isNullOrBlank() }.keys
+    // Sign only when everything is present, and fail rather than ship an
+    // unsigned release when only part of the signing setup is there.
+    if (missingSigning.isNotEmpty() && missingSigning.size != signing.size) {
+        throw GradleException("Partial release signing configuration. Missing: ${missingSigning.joinToString()}")
+    }
+    val releaseSigningConfigured = missingSigning.isEmpty()
 
-            if (keystorePassword != null && keyAliasEnv != null && keyPasswordEnv != null && keystoreFile.exists()) {
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
                 storeFile = keystoreFile
-                storePassword = keystorePassword
-                keyAlias = keyAliasEnv
-                keyPassword = keyPasswordEnv
+                storePassword = signing.getValue("KEYSTORE_PASSWORD")
+                keyAlias = signing.getValue("KEY_ALIAS")
+                keyPassword = signing.getValue("KEY_PASSWORD")
             }
         }
     }
@@ -68,7 +78,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (releaseSigningConfigured) signingConfigs.getByName("release") else null
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -107,6 +117,24 @@ android {
                 )
             }
         }
+    }
+}
+
+detekt {
+    buildUponDefaultConfig = true
+    allRules = false
+    config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
+}
+
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    jvmTarget = "21"
+    setSource(files("src/main/java", "src/test/java", "src/androidTest/java"))
+    include("**/*.kt")
+    reports {
+        html.required.set(true)
+        sarif.required.set(true)
+        txt.required.set(false)
+        md.required.set(false)
     }
 }
 

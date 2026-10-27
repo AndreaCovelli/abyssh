@@ -27,7 +27,8 @@ abstract class SshKeyDao(private val db: AppDatabase) {
     @Query("SELECT EXISTS(SELECT 1 FROM ssh_keys WHERE name = :name AND id != :excludeId)")
     abstract suspend fun nameExists(name: String, excludeId: Long): Boolean
 
-    @Query("DELETE FROM ssh_keys WHERE id = :id") abstract suspend fun deleteById(id: Long)
+    @Query("DELETE FROM ssh_keys WHERE id = :id")
+    abstract suspend fun deleteById(id: Long)
 
     @Query("SELECT * FROM ssh_keys ORDER BY name")
     protected abstract fun observeAllSealed(): Flow<List<SshKey>>

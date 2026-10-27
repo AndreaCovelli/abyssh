@@ -41,6 +41,21 @@ description = "Run instrumented tests on a connected device or emulator"
 dir = "android"
 run = "./gradlew connectedDebugAndroidTest"
 
+[tasks.format]
+description = "Format Kotlin sources and Gradle scripts with ktlint"
+dir = "android"
+run = "./gradlew spotlessApply"
+
+[tasks."format:check"]
+description = "Check Kotlin and Gradle script formatting"
+dir = "android"
+run = "./gradlew spotlessCheck"
+
+[tasks.detekt]
+description = "Run Detekt static analysis"
+dir = "android"
+run = "./gradlew detekt"
+
 [tasks."check:actions"]
 description = "Lint GitHub Actions workflows"
 run = "actionlint"
@@ -48,6 +63,8 @@ run = "actionlint"
 [tasks.check]
 description = "Run every repository check that needs no device"
 run = [
+  { task = "format:check" },
+  { task = "detekt" },
   { task = "lint" },
   { task = "test" },
   { task = "build" },
