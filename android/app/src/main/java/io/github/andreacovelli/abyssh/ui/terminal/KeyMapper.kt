@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
+import android.view.KeyCharacterMap
 import android.view.KeyEvent
 
 object KeyMapper {
@@ -127,6 +128,25 @@ object KeyMapper {
         KeyEvent.KEYCODE_PERIOD -> '.'.code
         KeyEvent.KEYCODE_SLASH -> '/'.code
         else -> 0
+    }
+
+    /**
+     * The text an AltGr (right Alt) chord types, or null when it isn't one.
+     *
+     * Layouts such as Italian or German put characters like @, #, [ and { on
+     * AltGr. Android reports AltGr as right Alt, which would otherwise reach the
+     * terminal as an Alt chord (ESC + key). [unicodeChar] is what the key types
+     * with the full meta state and [plainUnicodeChar] what it types without Alt;
+     * when they differ, the layout defines an AltGr character to send as text.
+     */
+    fun altGrText(metaState: Int, unicodeChar: Int, plainUnicodeChar: Int): String? {
+        if (metaState and KeyEvent.META_ALT_RIGHT_ON == 0) return null
+        if (metaState and (KeyEvent.META_ALT_LEFT_ON or KeyEvent.META_CTRL_ON or KeyEvent.META_META_ON) != 0) {
+            return null
+        }
+        if (unicodeChar == 0 || unicodeChar and KeyCharacterMap.COMBINING_ACCENT != 0) return null
+        if (unicodeChar == plainUnicodeChar) return null
+        return StringBuilder().appendCodePoint(unicodeChar).toString()
     }
 
     private fun translateMods(metaState: Int): Int {
