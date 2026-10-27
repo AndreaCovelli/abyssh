@@ -1,4 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
-    android:src="@drawable/chuchu_logo_fg"
-    android:gravity="fill" />
+<!--
+  ctulssh mark: a shell prompt chevron with a trailing cursor.
+  Keep the glyph inside the 66dp safe zone (a circle of radius 33 at 54,54)
+  so launcher masks never clip it. ic_launcher_monochrome.xml and
+  ic_notification.xml draw the same shapes.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M36,36 L52,54 L36,72"
+        android:strokeWidth="9"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M60,66 h16 a2.5,2.5 0 0 1 2.5,2.5 v4 a2.5,2.5 0 0 1 -2.5,2.5 h-16 a2.5,2.5 0 0 1 -2.5,-2.5 v-4 a2.5,2.5 0 0 1 2.5,-2.5 z" />
+</vector>
