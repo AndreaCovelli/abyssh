@@ -99,6 +99,11 @@ fun TerminalCanvas(
                 ?: Typeface.MONOSPACE
         }.getOrDefault(Typeface.MONOSPACE)
     }
+    // Icon codepoints the primary font file itself maps (e.g. its own Powerline
+    // arrows). Read from the file because Paint.hasGlyph() also counts system fonts.
+    val primaryPuaCoverage = remember(context, fontOption) {
+        FontCmap.privateUseCoverage(context, fontOption.regularFontResId)
+    }
     val symbolsTypeface = remember(context) {
         runCatching {
             ResourcesCompat.getFont(context, R.font.symbols_nerd_font_mono_regular)
@@ -671,6 +676,7 @@ fun TerminalCanvas(
                             glyphCache = singleGlyphCache,
                             cache = singlePaintChoiceCache,
                             primaryPaint = primaryTextPaint,
+                            primaryPuaCoverage = primaryPuaCoverage,
                             symbolsPaint = symbolsTextPaint,
                             fallbackPaint = fallbackTextPaint,
                             emojiPaint = emojiTextPaint,
@@ -680,6 +686,7 @@ fun TerminalCanvas(
                             glyph = firstGlyph,
                             cache = clusterPaintChoiceCache,
                             primaryPaint = primaryTextPaint,
+                            primaryPuaCoverage = primaryPuaCoverage,
                             symbolsPaint = symbolsTextPaint,
                             fallbackPaint = fallbackTextPaint,
                             emojiPaint = emojiTextPaint,
@@ -722,6 +729,7 @@ fun TerminalCanvas(
                                 glyphCache = singleGlyphCache,
                                 cache = singlePaintChoiceCache,
                                 primaryPaint = primaryTextPaint,
+                                primaryPuaCoverage = primaryPuaCoverage,
                                 symbolsPaint = symbolsTextPaint,
                                 fallbackPaint = fallbackTextPaint,
                                 emojiPaint = emojiTextPaint,
@@ -731,6 +739,7 @@ fun TerminalCanvas(
                                 glyph = glyph,
                                 cache = clusterPaintChoiceCache,
                                 primaryPaint = primaryTextPaint,
+                                primaryPuaCoverage = primaryPuaCoverage,
                                 symbolsPaint = symbolsTextPaint,
                                 fallbackPaint = fallbackTextPaint,
                                 emojiPaint = emojiTextPaint,
@@ -845,6 +854,7 @@ fun TerminalCanvas(
                                 glyphCache = singleGlyphCache,
                                 cache = singlePaintChoiceCache,
                                 primaryPaint = primaryTextPaint,
+                                primaryPuaCoverage = primaryPuaCoverage,
                                 symbolsPaint = symbolsTextPaint,
                                 fallbackPaint = fallbackTextPaint,
                                 emojiPaint = emojiTextPaint,
@@ -854,6 +864,7 @@ fun TerminalCanvas(
                                 glyph = glyph,
                                 cache = clusterPaintChoiceCache,
                                 primaryPaint = primaryTextPaint,
+                                primaryPuaCoverage = primaryPuaCoverage,
                                 symbolsPaint = symbolsTextPaint,
                                 fallbackPaint = fallbackTextPaint,
                                 emojiPaint = emojiTextPaint,
@@ -967,8 +978,8 @@ private const val TEXT_STYLE_MASK: Int =
         TerminalSnapshot.CELL_FLAG_UNDERLINE or
         TerminalSnapshot.CELL_FLAG_FAINT
 
-private const val PAINT_PRIMARY: Int = 0
-private const val PAINT_SYMBOLS: Int = 1
+internal const val PAINT_PRIMARY: Int = 0
+internal const val PAINT_SYMBOLS: Int = 1
 private const val PAINT_FALLBACK: Int = 2
 private const val PAINT_EMOJI: Int = 3
 
@@ -976,10 +987,10 @@ private const val PAINT_EMOJI: Int = 3
  * Decide which paint should render a grapheme cluster.
  *
  * Order of preference:
- *  1. If the primary text font can render the cluster, use it (keeps code
+ *  1. If the first codepoint lives in a Nerd Font private-use range, use the
+ *     primary font when its file maps it, else the symbols (Nerd Font) paint.
+ *  2. Else, if the primary text font can render the cluster, use it (keeps code
  *     glyph metrics intact).
- *  2. Else, if the first codepoint lives in a Nerd Font private-use range
- *     and the symbols paint has the glyph, use the symbols (Nerd Font) paint.
  *  3. Else, use Android's system fallback when it covers the complete glyph.
  *  4. Else, use bundled Noto Sans Symbols 2 as a deterministic symbol fallback.
  *  5. Finally, use the system paint to render its missing-glyph marker.
@@ -993,16 +1004,15 @@ private fun pickPaintChoice(
     glyph: String,
     cache: HashMap<String, Int>,
     primaryPaint: Paint,
+    primaryPuaCoverage: IntArray,
     symbolsPaint: Paint,
     fallbackPaint: Paint,
     emojiPaint: Paint,
 ): Int {
     return cache.getOrPut(glyph) {
-        if (primaryPaint.hasGlyph(glyph)) return@getOrPut PAINT_PRIMARY
         val firstCp = glyph.codePointAt(0)
-        if (isNerdFontPrivateUse(firstCp) && symbolsPaint.hasGlyph(glyph)) {
-            return@getOrPut PAINT_SYMBOLS
-        }
+        if (isNerdFontPrivateUse(firstCp)) return@getOrPut privateUseChoice(firstCp, primaryPuaCoverage)
+        if (primaryPaint.hasGlyph(glyph)) return@getOrPut PAINT_PRIMARY
         if (emojiPaint.hasGlyph(glyph)) return@getOrPut PAINT_EMOJI
         if (fallbackPaint.hasGlyph(glyph)) return@getOrPut PAINT_FALLBACK
         PAINT_EMOJI
@@ -1014,6 +1024,7 @@ private fun pickPaintChoice(
     glyphCache: HashMap<Int, String>,
     cache: HashMap<Int, Int>,
     primaryPaint: Paint,
+    primaryPuaCoverage: IntArray,
     symbolsPaint: Paint,
     fallbackPaint: Paint,
     emojiPaint: Paint,
@@ -1022,11 +1033,9 @@ private fun pickPaintChoice(
     if (codepoint in 0x21..0x7E) return PAINT_PRIMARY
 
     return cache.getOrPut(codepoint) {
+        if (isNerdFontPrivateUse(codepoint)) return@getOrPut privateUseChoice(codepoint, primaryPuaCoverage)
         val glyph = glyphCache.getOrPut(codepoint) { String(Character.toChars(codepoint)) }
         if (primaryPaint.hasGlyph(glyph)) return@getOrPut PAINT_PRIMARY
-        if (isNerdFontPrivateUse(codepoint) && symbolsPaint.hasGlyph(glyph)) {
-            return@getOrPut PAINT_SYMBOLS
-        }
         if (emojiPaint.hasGlyph(glyph)) return@getOrPut PAINT_EMOJI
         if (fallbackPaint.hasGlyph(glyph)) return@getOrPut PAINT_FALLBACK
         PAINT_EMOJI
@@ -1047,15 +1056,13 @@ private fun paintForChoice(
 }
 
 /**
- * Private Use Area ranges where Nerd Font glyphs live (devicons, powerline,
- * weather icons, file-type icons, etc.). Everything outside these ranges that
- * the primary font cannot render is treated as an emoji/symbol cluster.
+ * Icon codepoints use the primary font only when its file really maps them
+ * (its own Powerline arrows match the cell metrics best). Everything else goes
+ * to the bundled Nerd Font, never to a system font that may map the codepoint
+ * to an unrelated glyph.
  */
-private fun isNerdFontPrivateUse(cp: Int): Boolean {
-    return (cp in 0xE000..0xF8FF) ||
-        (cp in 0xF0000..0xFFFFD) ||
-        (cp in 0x100000..0x10FFFD)
-}
+internal fun privateUseChoice(codepoint: Int, primaryPuaCoverage: IntArray): Int =
+    if (primaryPuaCoverage.binarySearch(codepoint) >= 0) PAINT_PRIMARY else PAINT_SYMBOLS
 
 private enum class DragMode {
     None,
