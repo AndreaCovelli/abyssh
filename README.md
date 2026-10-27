@@ -1,111 +1,111 @@
 <p align="center">
-  <img src="./assets/logo.png" alt="Chuchu logo" width="48" height="48" />
+  <img src="./assets/logo.png" alt="Abyssh logo" width="64" height="64" />
 </p>
 
-<h1 align="center">Chuchu</h1>
+<h1 align="center">Abyssh</h1>
 
-<p align="center">
- A Modern, Better, Native Android SSH client powered by libghostty
-</p>
-
-<p align="center">
-  <a href="https://github.com/jossephus/chuchu/releases/latest">Download Latest</a> ·
-  <a href="https://github.com/jossephus/chuchu/releases/">ChangeLog</a> ·
-</p>
+<p align="center">An Android terminal for SSH and Mosh, built on libghostty.</p>
 
 ---
 
+Abyssh connects your Android phone to remote machines over SSH, Tailscale SSH, or
+Mosh, and renders the session with the same terminal engine as
+[Ghostty](https://ghostty.org). It is a fork of
+[jossephus/chuchu](https://github.com/jossephus/chuchu).
 
-<table align="center" cellpadding="10">
-  <tr>
-    <td><img src="./assets/sample-3.jpg" alt="Chuchu sample 3" height="420" /></td>
-    <td><img src="./assets/sample-2.jpg" alt="Chuchu sample 2" height="420" /></td>
-    <td><img src="./assets/sample-1.jpg" alt="Chuchu sample 1" height="420" /></td>
-    <td><img src="./assets/sample-4.jpg" alt="Chuchu sample 4" height="420" /></td>
-</table>
+## Features
 
-Chuchu is a native Android SSH client powered by libghostty, a terminal-first Compose UI, and has support for both standard SSH and Tailscale SSH workflows.
+**Connections**
 
-### Features 
-- tailscale, ssh password + key authentication
-- image display using libghostty's kitty image protocol support
-- more than 400 themes from the official ghostty repository
-- configurable accessory keys and custom terminal actions
-- per-host post-connect actions that autorun a selected custom action after SSH/Mosh connects or reconnects
-- encrypted local import/export backups for SSH keys and server profiles
-- beautiful and working terminal renderer with fully working resize, scrollback, focus, modifier keys, mouse actions 
+- SSH with a password, a key, or a key with a passphrase; Tailscale SSH; and Mosh,
+  which keeps a session alive across network changes and sleep
+- A local shell on the phone
+- Host key checks on first connect, with a warning when a known key changes
+- A command per host that runs after each connect or reconnect
+- tmux and zmx session lists, so you can reattach to a session from the app
 
-## Status
+**Terminal**
 
-Chuchu is in active development. I am daily driving it and improving any issues i found in the way. Join the journey and report any bugs you find. And I welcome any contributions.
+- Ghostty's terminal emulation, with scrollback, mouse support, and images through
+  the Kitty graphics protocol
+- 463 color themes from Ghostty, with separate light and dark choices
+- Fira Code, Geist Mono, Hack, and JetBrains Mono, with Nerd Font symbols
+- Search through the scrollback, and tap links in the output to open or copy them
+- Mouse and touchpad support: scroll with the wheel, select by dragging
+- A configurable row of extra keys above the keyboard, and custom actions
+- Several sessions at once in tabs
 
+**Files and keys**
 
-### Getting Started
+- An SFTP file browser
+- Ed25519 and RSA key generation, and import of existing keys
+- Encrypted export and import of hosts and keys
 
-Checkout our [releases](https://github.com/jossephus/chuchu/releases) and download the APK from there.
+**Privacy**
 
-- **Stable:** the latest non-prerelease build
-- **Nightly:** every push to `main` publishes a rolling prerelease at the [`nightly`](https://github.com/jossephus/chuchu/releases/tag/nightly) tag
+- Saved passwords and private keys are encrypted with a key that the Android Keystore
+  protects
+- An optional app lock that uses your fingerprint or the phone's screen lock
+- An option that hides the app's contents from screenshots and the recent apps list
 
-I don't have a personal Play Store account right now (and I can't open one because of the payment limitation in my country, feel free to contact me if you want to publish it.)
+## Install
 
+There is no published release yet. Build the APK from source, as described below.
+Abyssh needs Android 7.0 or later. Release builds include the native library only for
+64-bit ARM phones (`arm64-v8a`), which covers nearly all current devices.
 
-## Stack
+## Build from source
 
-- Kotlin + Jetpack Compose for the Android app
-- Zig for native build orchestration and JNI/native bridge code
-- Ghostty VT for terminal emulation
-- `libssh2` + `openssl` for the current native SSH path
-- Room for local data storage
+You need:
 
-
-### Development - Prerequisites
-
-If you have nix installed, the following three steps will get you started
-
-1. nix develop - will set you up with everything you will need.
-2. running 'make build' will build the native code needed 
-3. running 'make app' will build the apk and install it in a connected device. 
-
-If you don't have nix installed, you will need
-
-1. setup tools
-- Android Studio - This will set up the needed Android SDK, Android NDK and Java runtime (JDK 17+).
-- Zig 0.15.2
-2. build the native library
-
-Set `ANDROID_NDK_HOME` or `ANDROID_NDK_ROOT`, then build the JNI library for Android arm64:
+- [mise](https://mise.jdx.dev), which installs the pinned JDK 21, Zig 0.15.2, and
+  actionlint
+- The Android SDK, with `ANDROID_HOME` set and an NDK installed
 
 ```sh
-zig build jni -Dtarget=aarch64-linux-android
+mise install
+
+# Build the native library. Point ANDROID_NDK_HOME at one installed NDK version.
+export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/<version>"
+mise run native                                   # every ABI
+mise run native -Dtarget=aarch64-linux-android    # 64-bit ARM only, faster
+
+mise run install   # build the debug APK, install it on a connected phone, and open it
 ```
 
-That copies `libchuchu_jni.so` into `app/src/main/jniLibs/arm64-v8a/`.
+The native build copies `libabyssh_jni.so` into `android/app/src/main/jniLibs/`. Run
+it again whenever you change Zig code. Without it the app still builds and opens, but
+connections, key generation, and the terminal don't work.
 
-3. From android studio run 
-```sh
-./gradlew assembleDebug
-```
+Other tasks (`mise tasks ls` lists them all):
 
-For a manual debug APK, run the native build first, then assemble the app:
+| Task | What it does |
+| --- | --- |
+| `mise run build` | Build the debug APK |
+| `mise run check` | Android Lint, unit tests, the debug build, and a lint of the GitHub workflows |
+| `mise run test` | Unit tests only |
+| `mise run test:device` | Tests on a connected phone or emulator |
 
-```sh
-make build
-cd android && ./gradlew assembleDebug
-```
+## Project layout
 
-The APK should include `lib/arm64-v8a/libchuchu_jni.so`; without it native SSH/key generation will fail on device.
+| Path | Contents |
+| --- | --- |
+| `android/` | The Kotlin and Jetpack Compose app, built with Gradle |
+| `zig-src/` | The native library: the terminal engine, SSH, Mosh, the local shell, and backup encryption, built with Zig |
+| `.github/workflows/` | CI checks, nightly builds, and releases |
+| `assets/` | The logo used in this README |
 
-## Inspiration
+The native library links [libghostty-vt](https://github.com/ghostty-org/ghostty) for
+terminal emulation, libssh2 and OpenSSL for SSH, and a Zig Mosh client.
 
-I have been using [vvterm](https://github.com/vivy-company/vvterm) on iOS for the past few weeks and i really liked it.  This project came from my desire to have native ssh client but for android.
+## Releases
 
-## Project Name
-chuchu is one of my favorite characters from the amharic book [Yesinbit Kelemat](https://www.goodreads.com/book/show/30759971) [translated to colors of adios]. 
+Every push to `main` publishes a nightly APK as a GitHub prerelease. Pushing a tag such
+as `v1.2.3` builds a signed APK and app bundle and attaches them to a draft release.
+Signing reads the `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and
+`KEY_PASSWORD` repository secrets.
 
-## Demo
+## License
 
-<p align="center">
-  <img src="./assets/chuchu_demo.gif" width="400" alt="Chuchu demo" />
-</p>
-
+MIT; see [LICENSE](LICENSE). Abyssh is based on chuchu by jossephus and its
+contributors.

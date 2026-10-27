@@ -143,7 +143,7 @@ fn buildNativeLibrary(
 
     const lib = b.addLibrary(.{
         .linkage = .dynamic,
-        .name = "chuchu_jni",
+        .name = "abyssh_jni",
         .root_module = root_module,
     });
     lib.link_function_sections = true;
@@ -196,7 +196,7 @@ pub fn build(b: *std.Build) void {
             const copy_to_jni_libs = b.addSystemCommand(&.{"cp"});
             copy_to_jni_libs.step.dependOn(&mkdir_jni_libs.step);
             copy_to_jni_libs.addFileArg(native_lib.getEmittedBin());
-            _ = copy_to_jni_libs.addArg(b.fmt("{s}/libchuchu_jni.so", .{jni_lib_dir}));
+            _ = copy_to_jni_libs.addArg(b.fmt("{s}/libabyssh_jni.so", .{jni_lib_dir}));
 
             jni_step.dependOn(&copy_to_jni_libs.step);
         }

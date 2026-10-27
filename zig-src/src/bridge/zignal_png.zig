@@ -6,15 +6,15 @@ const c = @cImport({
 });
 
 comptime {
-    _ = @import("chuchu_snapshot.zig");
-    _ = @import("chuchu_ssh.zig");
-    _ = @import("chuchu_mosh.zig");
-    _ = @import("chuchu_local_shell.zig");
-    _ = @import("chuchu_backup.zig");
+    _ = @import("abyssh_snapshot.zig");
+    _ = @import("abyssh_ssh.zig");
+    _ = @import("abyssh_mosh.zig");
+    _ = @import("abyssh_local_shell.zig");
+    _ = @import("abyssh_backup.zig");
 }
 
 const c_allocator = std.heap.c_allocator;
-const LOG_TAG = "ChuKittyNative";
+const LOG_TAG = "AbyssKittyNative";
 
 fn logLine(prio: c_int, message: []const u8) void {
     _ = c.__android_log_print(prio, LOG_TAG, "%.*s", @as(c_int, @intCast(message.len)), message.ptr);
