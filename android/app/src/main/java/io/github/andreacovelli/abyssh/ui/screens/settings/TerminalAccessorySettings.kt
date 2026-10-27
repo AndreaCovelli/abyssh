@@ -60,6 +60,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
+import io.github.andreacovelli.abyssh.ui.components.AbyssCloseButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssCard
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
@@ -306,10 +307,13 @@ internal fun TerminalSettings(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
                         AbyssText(stringResource(R.string.settings_accessory_keys), style = typography.label)
                         AbyssText(
                             if (selectedEntries.isEmpty()) stringResource(R.string.settings_no_keys_enabled) else pluralStringResource(R.plurals.settings_keys_enabled, selectedEntries.size, selectedEntries.size),
@@ -330,7 +334,7 @@ internal fun TerminalSettings(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(
@@ -381,10 +385,13 @@ internal fun TerminalSettings(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
                         AbyssText(stringResource(R.string.settings_custom_actions), style = typography.label)
                         val actionCount = currentTerminalCustomKeyGroups.sumOf { it.actions.size }
                         AbyssText(
@@ -412,7 +419,7 @@ internal fun TerminalSettings(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(
@@ -441,10 +448,13 @@ internal fun TerminalSettings(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
                         AbyssText(stringResource(R.string.settings_app_commands), style = typography.label)
                         val boundCount = builtinShortcuts.count { it.value.isNotEmpty() }
                         AbyssText(
@@ -478,7 +488,7 @@ internal fun TerminalSettings(
                     .fillMaxWidth()
                     .defaultMinSize(minHeight = 48.dp)
                     .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(
@@ -505,7 +515,7 @@ internal fun TerminalSettings(
                     .fillMaxWidth()
                     .defaultMinSize(minHeight = 48.dp)
                     .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(
@@ -532,7 +542,7 @@ internal fun TerminalSettings(
                     .fillMaxWidth()
                     .defaultMinSize(minHeight = 48.dp)
                     .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(
@@ -559,7 +569,7 @@ internal fun TerminalSettings(
                     .fillMaxWidth()
                     .defaultMinSize(minHeight = 48.dp)
                     .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(
@@ -586,7 +596,7 @@ internal fun TerminalSettings(
                     .fillMaxWidth()
                     .defaultMinSize(minHeight = 48.dp)
                     .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(
@@ -629,7 +639,7 @@ private fun DisableAutocorrectSetting(
                     .fillMaxWidth()
                     .defaultMinSize(minHeight = 48.dp)
                     .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(
@@ -717,10 +727,13 @@ internal fun AbysshCommandsEditorSheet(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
                         AbyssText(stringResource(R.string.settings_app_commands), style = typography.headline)
                         AbyssText(
                             stringResource(R.string.settings_app_commands_sheet_hint),
@@ -729,15 +742,10 @@ internal fun AbysshCommandsEditorSheet(
                         )
                     }
 
-                    AbyssButton(
+                    AbyssCloseButton(
                         onClick = onDismiss,
-                        variant = AbyssButtonVariant.Ghost,
-                        bracketed = true,
-                        borderColor = colors.textMuted,
-                        contentPadding = PaddingValues(6.dp),
-                    ) {
-                        AbyssText("x", style = typography.label, color = colors.textMuted)
-                    }
+                        contentDescription = stringResource(R.string.action_close),
+                    )
                 }
 
                 Column(
@@ -892,10 +900,13 @@ internal fun AccessoryLayoutEditorSheet(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
                         AbyssText(stringResource(R.string.settings_accessory_keys), style = typography.headline)
                         AbyssText(
                             stringResource(R.string.settings_accessory_sheet_hint),
@@ -904,15 +915,10 @@ internal fun AccessoryLayoutEditorSheet(
                         )
                     }
 
-                    AbyssButton(
+                    AbyssCloseButton(
                         onClick = onDismiss,
-                        variant = AbyssButtonVariant.Ghost,
-                        bracketed = true,
-                        borderColor = colors.textMuted,
-                        contentPadding = PaddingValues(6.dp),
-                    ) {
-                        AbyssText("x", style = typography.label, color = colors.textMuted)
-                    }
+                        contentDescription = stringResource(R.string.action_close),
+                    )
                 }
 
                 AbyssCard(modifier = Modifier.fillMaxWidth()) {

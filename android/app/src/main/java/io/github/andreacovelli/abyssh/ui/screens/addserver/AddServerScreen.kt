@@ -301,10 +301,14 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
         if (showAdditionalSettings) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             ) {
-                AbyssText(stringResource(R.string.server_require_biometric), style = typography.label)
+                AbyssText(
+                    stringResource(R.string.server_require_biometric),
+                    style = typography.label,
+                    modifier = Modifier.weight(1f),
+                )
                 AbyssSwitch(
                     checked = form.requireAuthOnConnect,
                     onCheckedChange = vm::updateRequireAuthOnConnect,

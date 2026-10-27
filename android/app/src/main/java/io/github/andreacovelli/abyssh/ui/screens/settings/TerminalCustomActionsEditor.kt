@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
+import io.github.andreacovelli.abyssh.ui.components.AbyssCloseButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssCard
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
@@ -214,15 +215,10 @@ internal fun TerminalCustomActionsEditorSheet(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AbyssText(stringResource(R.string.settings_custom_actions), style = typography.headline)
-                    AbyssButton(
+                    AbyssCloseButton(
                         onClick = onDismiss,
-                        variant = AbyssButtonVariant.Ghost,
-                        bracketed = true,
-                        borderColor = colors.textMuted,
-                        contentPadding = PaddingValues(6.dp),
-                    ) {
-                        AbyssText("x", style = typography.label, color = colors.textMuted)
-                    }
+                        contentDescription = stringResource(R.string.action_close),
+                    )
                 }
 
                 Column(

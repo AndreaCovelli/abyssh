@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
+import io.github.andreacovelli.abyssh.ui.components.AbyssCloseButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssSwitch
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
@@ -124,15 +125,10 @@ fun SettingsScreen(
                         AbyssText("$ ", style = typography.headline, color = colors.textMuted)
                         AbyssText(stringResource(R.string.server_list_settings), style = typography.headline)
                     }
-                    AbyssButton(
+                    AbyssCloseButton(
                         onClick = onBack,
-                        variant = AbyssButtonVariant.Ghost,
-                        bracketed = true,
-                        borderColor = colors.textMuted,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                    ) {
-                        AbyssText("x", style = typography.label, color = colors.textMuted)
-                    }
+                        contentDescription = stringResource(R.string.action_close),
+                    )
                 }
             }
 
@@ -289,19 +285,27 @@ private fun GeneralSettings(
     Spacer(modifier = Modifier.height(12.dp))
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AbyssText(stringResource(R.string.settings_lock_app), style = typography.label)
+        AbyssText(
+            stringResource(R.string.settings_lock_app),
+            style = typography.label,
+            modifier = Modifier.weight(1f),
+        )
         AbyssSwitch(checked = appLockEnabled, onCheckedChange = onAppLockEnabledChanged)
     }
     Spacer(modifier = Modifier.height(20.dp))
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AbyssText(stringResource(R.string.settings_verify_before_connect), style = typography.label)
+        AbyssText(
+            stringResource(R.string.settings_verify_before_connect),
+            style = typography.label,
+            modifier = Modifier.weight(1f),
+        )
         AbyssSwitch(checked = requireAuthOnConnect, onCheckedChange = onRequireAuthOnConnectChanged)
     }
     Spacer(modifier = Modifier.height(4.dp))
