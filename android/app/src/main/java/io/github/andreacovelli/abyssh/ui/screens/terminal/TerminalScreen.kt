@@ -1011,9 +1011,10 @@ fun TerminalScreen(
                         fun check() {
                             hasClipboardText =
                                 try {
-                                    clipboard?.hasPrimaryClip() == true &&
-                                        clipboard.primaryClip?.getItemAt(0)?.text?.isNotEmpty() ==
-                                            true
+                                    // The description says whether the clip holds text
+                                    // without reading it, so Android shows no paste notice.
+                                    clipboard?.primaryClipDescription?.hasMimeType("text/*") ==
+                                        true
                                 } catch (_: SecurityException) {
                                     false
                                 }
