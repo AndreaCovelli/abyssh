@@ -35,7 +35,7 @@ class SettingsRepository(context: Context) {
     private val _terminalCustomKeyGroups = MutableStateFlow(loadTerminalCustomKeyGroups())
     val terminalCustomKeyGroups: StateFlow<List<TerminalCustomKeyGroup>> = _terminalCustomKeyGroups.asStateFlow()
 
-    private val _showCustomActionsFab = MutableStateFlow(prefs.getBoolean(KEY_SHOW_CUSTOM_ACTIONS_FAB, true))
+    private val _showCustomActionsFab = MutableStateFlow(prefs.getBoolean(KEY_SHOW_CUSTOM_ACTIONS_FAB, false))
     val showCustomActionsFab: StateFlow<Boolean> = _showCustomActionsFab.asStateFlow()
 
     private val _builtinShortcuts = MutableStateFlow(loadBuiltinShortcuts())
@@ -62,7 +62,7 @@ class SettingsRepository(context: Context) {
     private val _disableAutocorrect = MutableStateFlow(prefs.getBoolean(KEY_DISABLE_AUTOCORRECT, true))
     val disableAutocorrect: StateFlow<Boolean> = _disableAutocorrect.asStateFlow()
     private val _remoteClipboardWriteEnabled =
-        MutableStateFlow(prefs.getBoolean(KEY_REMOTE_CLIPBOARD_WRITE_ENABLED, false))
+        MutableStateFlow(prefs.getBoolean(KEY_REMOTE_CLIPBOARD_WRITE_ENABLED, true))
     val remoteClipboardWriteEnabled: StateFlow<Boolean> = _remoteClipboardWriteEnabled.asStateFlow()
     private val _ctrlVPastes = MutableStateFlow(prefs.getBoolean(KEY_CTRL_V_PASTES, true))
     val ctrlVPastes: StateFlow<Boolean> = _ctrlVPastes.asStateFlow()

@@ -17,7 +17,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -55,6 +54,7 @@ import io.github.andreacovelli.abyssh.data.backup.ABYSSH_BACKUP_MIME_TYPE
 import io.github.andreacovelli.abyssh.data.backup.KeyImportAction
 import io.github.andreacovelli.abyssh.model.SshKey
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
+import io.github.andreacovelli.abyssh.ui.components.AbyssCloseButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssCard
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
@@ -219,10 +219,13 @@ internal fun SshBackupSheet(
                 // ── Header ────────────────────────────────────────────────
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
                         AbyssText(stringResource(R.string.backup_title), style = typography.headline)
                         AbyssText(
                             text = when (effectiveStep) {
@@ -236,15 +239,10 @@ internal fun SshBackupSheet(
                         )
                     }
 
-                    AbyssButton(
+                    AbyssCloseButton(
                         onClick = { handleDismiss() },
-                        variant = AbyssButtonVariant.Ghost,
-                        bracketed = false,
-                        borderColor = colors.textMuted,
-                        contentPadding = PaddingValues(6.dp),
-                    ) {
-                        AbyssText("x", style = typography.label, color = colors.textMuted)
-                    }
+                        contentDescription = stringResource(R.string.action_close),
+                    )
                 }
 
                 // ── Scrollable content ─────────────────────────────────────
@@ -419,15 +417,10 @@ internal fun SshBackupSheet(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         AbyssText(stringResource(R.string.key_details_title), style = typography.headline)
-                        AbyssButton(
+                        AbyssCloseButton(
                             onClick = { selectedKeyDetails = null },
-                            variant = AbyssButtonVariant.Ghost,
-                            bracketed = false,
-                            borderColor = colors.textMuted,
-                            contentPadding = PaddingValues(6.dp),
-                        ) {
-                            AbyssText("x", style = typography.label, color = colors.textMuted)
-                        }
+                            contentDescription = stringResource(R.string.action_close),
+                        )
                     }
 
                     KeyDetailsContent(

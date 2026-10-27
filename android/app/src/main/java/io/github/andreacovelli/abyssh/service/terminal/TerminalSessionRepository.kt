@@ -370,6 +370,14 @@ class TerminalSessionRepository private constructor(application: Application) {
         }
     }
 
+    /**
+     * Reconnects the host's tabs that failed or dropped, so opening the host again retries
+     * with its current settings instead of showing the last error.
+     */
+    fun reconnectIdleTabsForHost(hostId: Long) {
+        reconnectTabs(tabsForHost(hostId).filterNot { it.sessionState.value.status.isLive })
+    }
+
     /** Reconnects tabs after [applyHostUpdate], picking a multiplexer session where needed. */
     fun reconnectTabs(tabs: List<TabSession>) {
         tabs.forEach { tab ->

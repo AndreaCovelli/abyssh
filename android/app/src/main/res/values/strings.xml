@@ -266,6 +266,11 @@
     <string name="server_list_local_badge">android</string>
     <string name="server_list_local_subtitle">> this device · app sandbox</string>
     <string name="server_list_open_local_shell">Open local shell</string>
+    <string name="server_list_disconnect_local_shell">Disconnect local shell</string>
+    <plurals name="server_list_disconnect_local_body">
+        <item quantity="one">This closes %1$d local shell session.</item>
+        <item quantity="other">This closes %1$d local shell sessions.</item>
+    </plurals>
     <string name="action_open">open</string>
     <string name="server_list_swipe_disconnect">[disconnect]</string>
     <string name="action_edit">edit</string>
@@ -303,6 +308,8 @@
     <string name="files_loading">Loading…</string>
     <string name="files_empty">Empty directory</string>
     <string name="files_no_matches">No matches</string>
+    <string name="files_back_to_terminal">back to terminal</string>
+    <string name="files_copy_path">copy path</string>
     <string name="action_download">download</string>
     <string name="multiplexer_sessions">multiplexer sessions</string>
     <string name="action_refresh">refresh</string>

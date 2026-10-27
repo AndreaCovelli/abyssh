@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
@@ -18,8 +19,13 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssCard
+import io.github.andreacovelli.abyssh.ui.components.AbyssCloseButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssSwitch
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
+import io.github.andreacovelli.abyssh.ui.screens.files.CopyIcon
+import io.github.andreacovelli.abyssh.ui.screens.files.RefreshIcon
+import io.github.andreacovelli.abyssh.ui.screens.files.TerminalIcon
+import androidx.compose.ui.Alignment
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -100,6 +106,17 @@ class ThemeScreenshotTest {
                             AbyssSwitch(checked = false, onCheckedChange = {})
                             AbyssSwitch(checked = false, onCheckedChange = {}, enabled = false)
                         }
+                    }
+                    // Vector icons, tinted with theme colors.
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val colors = AbyssColors.current
+                        TerminalIcon(color = colors.success, modifier = Modifier.size(20.dp))
+                        RefreshIcon(color = colors.textSecondary, modifier = Modifier.size(18.dp))
+                        CopyIcon(color = colors.textMuted, modifier = Modifier.size(16.dp))
+                        AbyssCloseButton(onClick = {}, contentDescription = "close")
                     }
                     }
                 }

@@ -170,10 +170,22 @@ class TerminalInputView(context: Context) : EditText(context) {
 
     override fun onCheckIsTextEditor(): Boolean = true
 
+    private fun altGrText(event: KeyEvent): String? = KeyMapper.altGrText(
+        metaState = event.metaState,
+        unicodeChar = event.unicodeChar,
+        plainUnicodeChar = event.getUnicodeChar(event.metaState and KeyEvent.META_ALT_MASK.inv()),
+    )
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         logInput(
             "onKeyDown keyCode=$keyCode unicode=${event.unicodeChar} meta=${event.metaState} flags=${event.flags}",
         )
+        val altGr = altGrText(event)
+        if (altGr != null) {
+            clearSuppression("onKeyDown.altGr keyCode=$keyCode")
+            emitTerminalText("onKeyDown.altGr", altGr)
+            return true
+        }
         val ghosttyAction = GhosttyKeyAction.fromAndroid(event.action, event.repeatCount)
         val mapped = KeyMapper.map(keyCode, event.unicodeChar, event.metaState)
         if (mapped != null && ghosttyAction != null) {
@@ -197,6 +209,7 @@ class TerminalInputView(context: Context) : EditText(context) {
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         logInput("onKeyUp keyCode=$keyCode flags=${event.flags}")
+        if (altGrText(event) != null) return true
         val ghosttyAction = GhosttyKeyAction.fromAndroid(event.action, event.repeatCount)
         val mapped = KeyMapper.map(keyCode, event.unicodeChar, event.metaState)
         if (mapped != null && ghosttyAction != null) {
@@ -578,6 +591,13 @@ class TerminalInputView(context: Context) : EditText(context) {
             logConn(
                 "sendKeyEvent action=${event.action} keyCode=${event.keyCode} unicode=${event.unicodeChar} meta=${event.metaState} flags=${event.flags}",
             )
+            val altGr = view.altGrText(event)
+            if (altGr != null) {
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    view.emitTerminalText("sendKeyEvent.altGr", altGr)
+                }
+                return true
+            }
             val ghosttyAction = GhosttyKeyAction.fromAndroid(event.action, event.repeatCount)
             if (ghosttyAction != null) {
                 val mapped = KeyMapper.map(event.keyCode, event.unicodeChar, event.metaState)

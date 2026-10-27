@@ -37,3 +37,24 @@ internal fun isSearchShortcut(key: Int, mods: Int): Boolean =
     key == GhosttyKey.keyF &&
         mods and (MOD_CTRL or MOD_SHIFT) == (MOD_CTRL or MOD_SHIFT) &&
         mods and (MOD_ALT or MOD_SUPER) == 0
+
+/**
+ * Whether a key press should copy the selection instead of reaching the terminal.
+ * With text selected, Ctrl+C and Ctrl+Shift+C copy it; without a selection, Ctrl+C
+ * stays an interrupt for the shell.
+ */
+internal fun isCopyShortcut(key: Int, mods: Int, hasSelection: Boolean): Boolean {
+    if (!hasSelection || key != GhosttyKey.keyC) return false
+    return mods and MOD_CTRL != 0 && mods and (MOD_ALT or MOD_SUPER) == 0
+}
+
+/** Same check for soft keyboard text, as in the text [isPasteShortcut]. */
+internal fun isCopyShortcut(text: String, modifierState: ModifierState, hasSelection: Boolean): Boolean {
+    val extra = when (text) {
+        "c" -> 0
+        "C" -> MOD_SHIFT
+        "\u0003" -> MOD_CTRL
+        else -> return false
+    }
+    return isCopyShortcut(GhosttyKey.keyC, modifierState.terminalMods() or extra, hasSelection)
+}

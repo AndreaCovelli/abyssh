@@ -61,4 +61,22 @@ class TerminalShortcutsTest {
         assertFalse(isSearchShortcut(GhosttyKey.keyF, ctrl or shift or alt))
         assertFalse(isSearchShortcut(GhosttyKey.keyG, ctrl or shift))
     }
+
+    @Test
+    fun `ctrl c copies only with a selection`() {
+        assertTrue(isCopyShortcut(GhosttyKey.keyC, ctrl, hasSelection = true))
+        assertTrue(isCopyShortcut(GhosttyKey.keyC, ctrl or shift, hasSelection = true))
+        assertFalse(isCopyShortcut(GhosttyKey.keyC, ctrl, hasSelection = false))
+        assertFalse(isCopyShortcut(GhosttyKey.keyC, ctrl or alt, hasSelection = true))
+        assertFalse(isCopyShortcut(GhosttyKey.keyC, 0, hasSelection = true))
+        assertFalse(isCopyShortcut(GhosttyKey.keyV, ctrl, hasSelection = true))
+    }
+
+    @Test
+    fun `soft keyboard c with accessory ctrl copies a selection`() {
+        assertTrue(isCopyShortcut("c", ModifierState(ctrl = true), hasSelection = true))
+        assertTrue(isCopyShortcut("\u0003", ModifierState(), hasSelection = true))
+        assertFalse(isCopyShortcut("c", ModifierState(), hasSelection = true))
+        assertFalse(isCopyShortcut("c", ModifierState(ctrl = true), hasSelection = false))
+    }
 }

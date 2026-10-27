@@ -1,11 +1,9 @@
 package io.github.andreacovelli.abyssh.ui.screens.addserver
 
+import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -246,13 +244,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
                             Toast.makeText(context, resources.getString(R.string.public_key_unavailable), Toast.LENGTH_SHORT)
                                 .show()
                         } else {
-                            val clipboard =
-                                context.getSystemService(Context.CLIPBOARD_SERVICE)
-                                    as ClipboardManager
-                            clipboard.setPrimaryClip(
-                                ClipData.newPlainText("SSH Public Key", form.publicKeyOpenSsh)
-                            )
-                            Toast.makeText(context, resources.getString(R.string.public_key_copied), Toast.LENGTH_SHORT).show()
+                            copyToClipboard(context, "SSH Public Key", form.publicKeyOpenSsh, R.string.public_key_copied)
                         }
                     },
                 )
@@ -309,10 +301,14 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
         if (showAdditionalSettings) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             ) {
-                AbyssText(stringResource(R.string.server_require_biometric), style = typography.label)
+                AbyssText(
+                    stringResource(R.string.server_require_biometric),
+                    style = typography.label,
+                    modifier = Modifier.weight(1f),
+                )
                 AbyssSwitch(
                     checked = form.requireAuthOnConnect,
                     onCheckedChange = vm::updateRequireAuthOnConnect,
