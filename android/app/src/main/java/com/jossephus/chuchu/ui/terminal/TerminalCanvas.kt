@@ -3,6 +3,7 @@ package com.jossephus.chuchu.ui.terminal
 import com.jossephus.chuchu.R
 import com.jossephus.chuchu.service.terminal.GhosttyBridge
 import com.jossephus.chuchu.service.terminal.TerminalMouseAction
+import com.jossephus.chuchu.service.terminal.TerminalMouseButton
 
 import android.graphics.Paint
 import android.graphics.Rect
@@ -30,7 +31,12 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerButtons
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.isPrimaryPressed
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
+import androidx.compose.ui.input.pointer.isTertiaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -71,6 +77,10 @@ fun TerminalCanvas(
         { _, _, _, _, _, _ -> },
     onTap: () -> Unit = {},
     onPrimaryClick: (x: Float, y: Float) -> Unit = { _, _ -> },
+    // Two-finger tap. Sent as a right click to apps that take mouse input.
+    onSecondaryClick: (x: Float, y: Float) -> Unit = { _, _ -> },
+    // Right or middle button of a physical mouse: press, motion and release.
+    onMouseButton: (button: Int, action: Int, x: Float, y: Float) -> Unit = { _, _, _, _ -> },
     onAppSelectionDrag: (action: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
     // Shift held (accessory bar or hardware keyboard) makes a long-press select text
     // even when the remote app takes mouse input, like Shift+drag in desktop terminals.
@@ -208,6 +218,8 @@ fun TerminalCanvas(
     val currentOnSelectionChange = rememberUpdatedState(onSelectionChange)
     val currentOnTap = rememberUpdatedState(onTap)
     val currentOnPrimaryClick = rememberUpdatedState(onPrimaryClick)
+    val currentOnSecondaryClick = rememberUpdatedState(onSecondaryClick)
+    val currentOnMouseButton = rememberUpdatedState(onMouseButton)
     val currentOnAppSelectionDrag = rememberUpdatedState(onAppSelectionDrag)
     val currentShiftActive = rememberUpdatedState(shiftActive)
     val currentOnShiftSelectionStart = rememberUpdatedState(onShiftSelectionStart)
@@ -324,12 +336,44 @@ fun TerminalCanvas(
                             val offsetY = ((canvasSize.height - (contentHeight * scale)) * 0.5f).coerceAtLeast(0f)
                             return Offset((position.x - offsetX) / scale, (position.y - offsetY) / scale)
                         }
+                        val mouseButton = if (down.type == PointerType.Mouse) {
+                            nonPrimaryMouseButton(currentEvent.buttons)
+                        } else {
+                            null
+                        }
+                        if (mouseButton != null) {
+                            // A physical right or middle click: pass it through as is,
+                            // with motion while held, instead of treating it as a touch.
+                            fun send(action: Int, position: Offset) {
+                                val p = toSnapshotSpace(position, currentSnapshot.value)
+                                currentOnMouseButton.value(mouseButton, action, p.x, p.y)
+                            }
+                            send(TerminalMouseAction.Press, down.position)
+                            down.consume()
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id }
+                                    ?: event.changes.first()
+                                if (!change.pressed || nonPrimaryMouseButton(event.buttons) != mouseButton) {
+                                    send(TerminalMouseAction.Release, change.position)
+                                    break
+                                }
+                                if (change.position != change.previousPosition) {
+                                    send(TerminalMouseAction.Motion, change.position)
+                                }
+                                change.consume()
+                            }
+                            return@awaitEachGesture
+                        }
                         var dragRemainder = 0f
                         var startPinchDistance: Float? = null
                         var anchorFontSp = 0f
                         var lastSentSp = 0f
                         var didScroll = false
                         var didPinch = false
+                        // A two-finger tap is a pinch where neither finger moved.
+                        val fingerStarts = mutableMapOf(down.id to down.position)
+                        var fingersMoved = false
                         var didDragGesture = false
                         var selectionCleared = false
                         var lastSinglePointerId = down.id
@@ -407,6 +451,16 @@ fun TerminalCanvas(
                                     if (releasedDragMode != DragMode.None) {
                                         break
                                     }
+                                    val heldMs = (event.changes.maxOfOrNull { it.uptimeMillis } ?: lastEventUptime) -
+                                        down.uptimeMillis
+                                    if (didPinch && !fingersMoved && !didScroll &&
+                                        heldMs < currentLongPressTimeoutMillis.value * 2
+                                    ) {
+                                        val s = currentSnapshot.value
+                                        val tapPos = toSnapshotSpace(down.position, s)
+                                        currentOnSecondaryClick.value(tapPos.x, tapPos.y)
+                                        break
+                                    }
                                     if (!didScroll && !didPinch && !didDragGesture) {
                                         val tapTime = event.changes.maxOfOrNull { it.uptimeMillis } ?: lastEventUptime
                                         val s = currentSnapshot.value
@@ -449,6 +503,12 @@ fun TerminalCanvas(
                                     break
                                 }
 
+                                pressed.forEach { change ->
+                                    val start = fingerStarts.getOrPut(change.id) { change.position }
+                                    if ((change.position - start).getDistance() > currentTouchSlopPx.value) {
+                                        fingersMoved = true
+                                    }
+                                }
                                 if (pressed.size >= 2) {
                                     didPinch = true
                                     val first = pressed[0].position
@@ -1085,4 +1145,12 @@ private enum class DragMode {
 private class DoubleTapState {
     var lastTime: Long = 0L
     var lastPos: Offset = Offset.Zero
+}
+
+/** Ghostty button for a right or middle mouse press, or null for the left button. */
+private fun nonPrimaryMouseButton(buttons: PointerButtons): Int? = when {
+    buttons.isPrimaryPressed -> null
+    buttons.isSecondaryPressed -> TerminalMouseButton.Right
+    buttons.isTertiaryPressed -> TerminalMouseButton.Middle
+    else -> null
 }

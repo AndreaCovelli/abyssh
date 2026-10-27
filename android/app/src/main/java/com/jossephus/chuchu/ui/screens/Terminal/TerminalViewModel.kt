@@ -740,6 +740,33 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         sendPrimaryMouseEvent(TerminalMouseAction.Release, x, y, anyButtonPressed = false, trackLastCell = false)
     }
 
+    fun onSecondaryMouseClick(x: Float, y: Float) {
+        for (action in listOf(TerminalMouseAction.Press, TerminalMouseAction.Release)) {
+            sessionRepository.sendMouseEvent(
+                action = action,
+                button = TerminalMouseButton.Right,
+                mods = 0,
+                x = x,
+                y = y,
+                anyButtonPressed = false,
+                trackLastCell = false,
+            )
+        }
+    }
+
+    /** Press, motion or release of a non-left button from a physical mouse. */
+    fun onMouseButton(button: Int, action: Int, x: Float, y: Float) {
+        sessionRepository.sendMouseEvent(
+            action = action,
+            button = button,
+            mods = 0,
+            x = x,
+            y = y,
+            anyButtonPressed = action != TerminalMouseAction.Release,
+            trackLastCell = true,
+        )
+    }
+
     fun onAppSelectionDrag(action: Int, x: Float, y: Float) {
         sendPrimaryMouseEvent(
             action = action,

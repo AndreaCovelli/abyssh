@@ -1414,6 +1414,8 @@ fun TerminalScreen(
                                     onResize = vm::onCanvasSizeChanged,
                                     onTap = requestInputFocus,
                                     onPrimaryClick = vm::onPrimaryMouseClick,
+                                    onSecondaryClick = vm::onSecondaryMouseClick,
+                                    onMouseButton = vm::onMouseButton,
                                     onAppSelectionDrag = vm::onAppSelectionDrag,
                                     shiftActive = modifierState.shift,
                                     // The sticky Shift was spent on the selection, not on the next key.

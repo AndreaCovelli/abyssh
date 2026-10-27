@@ -8,4 +8,6 @@ object TerminalMouseAction {
 
 object TerminalMouseButton {
     const val Left = 1
+    const val Right = 2
+    const val Middle = 3
 }
