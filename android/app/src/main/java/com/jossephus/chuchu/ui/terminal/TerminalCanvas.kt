@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -71,6 +72,10 @@ fun TerminalCanvas(
     onTap: () -> Unit = {},
     onPrimaryClick: (x: Float, y: Float) -> Unit = { _, _ -> },
     onAppSelectionDrag: (action: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
+    // Shift held (accessory bar or hardware keyboard) makes a long-press select text
+    // even when the remote app takes mouse input, like Shift+drag in desktop terminals.
+    shiftActive: Boolean = false,
+    onShiftSelectionStart: () -> Unit = {},
     onScroll: (delta: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
     minFontSizeSp: Float = 1f,
     maxFontSizeSp: Float = Float.MAX_VALUE,
@@ -204,6 +209,8 @@ fun TerminalCanvas(
     val currentOnTap = rememberUpdatedState(onTap)
     val currentOnPrimaryClick = rememberUpdatedState(onPrimaryClick)
     val currentOnAppSelectionDrag = rememberUpdatedState(onAppSelectionDrag)
+    val currentShiftActive = rememberUpdatedState(shiftActive)
+    val currentOnShiftSelectionStart = rememberUpdatedState(onShiftSelectionStart)
     val currentOnScroll = rememberUpdatedState(onScroll)
     val currentOnFontSizeChange = rememberUpdatedState(onFontSizeChange)
     val currentFontSizeSp = rememberUpdatedState(fontSizeSp)
@@ -302,6 +309,8 @@ fun TerminalCanvas(
                 baseModifier.pointerInput(Unit) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
+                        val shiftOnDown =
+                            currentShiftActive.value || currentEvent.keyboardModifiers.isShiftPressed
                         fun toSnapshotSpace(position: Offset, s: TerminalSnapshot): Offset {
                             if (!currentFitSnapshotToCanvas.value) return position
                             val cols = max(s.cols, 1)
@@ -346,7 +355,8 @@ fun TerminalCanvas(
                                     if (dragMode == DragMode.None) {
                                         val s = currentSnapshot.value
                                         val downPos = toSnapshotSpace(down.position, s)
-                                        if (s.appHandlesSelectionDrag) {
+                                        val appTakesDrag = s.appHandlesSelectionDrag && !shiftOnDown
+                                        if (appTakesDrag) {
                                             currentOnAppSelectionDrag.value(TerminalMouseAction.Press, downPos.x, downPos.y)
                                             currentHaptics.value.performHapticFeedback(
                                                 HapticFeedbackType.LongPress,
@@ -364,6 +374,7 @@ fun TerminalCanvas(
                                             currentHaptics.value.performHapticFeedback(
                                                 HapticFeedbackType.LongPress,
                                             )
+                                            if (s.appHandlesSelectionDrag) currentOnShiftSelectionStart.value()
                                             dragMode = DragMode.ClientSelectionDrag
                                         }
                                         continue

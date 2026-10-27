@@ -1415,6 +1415,11 @@ fun TerminalScreen(
                                     onTap = requestInputFocus,
                                     onPrimaryClick = vm::onPrimaryMouseClick,
                                     onAppSelectionDrag = vm::onAppSelectionDrag,
+                                    shiftActive = modifierState.shift,
+                                    // The sticky Shift was spent on the selection, not on the next key.
+                                    onShiftSelectionStart = {
+                                        if (modifierState.shift) modifierState = modifierState.copy(shift = false)
+                                    },
                                     onScroll = vm::onScroll,
                                     onFontSizeChange = { sizeSp -> terminalFontSizeSp = sizeSp },
                                     onSelectionChanged = { state -> selectionState = state },
