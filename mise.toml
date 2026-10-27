@@ -1,0 +1,55 @@
+[settings]
+lockfile = true
+
+[tools]
+java = "temurin-21.0.13+9.0.LTS"
+zig = "0.15.2"
+"github:kjanat/actionlint" = "1.17.0"
+
+# The native build needs ANDROID_NDK_HOME (or ANDROID_NDK_ROOT) set to one
+# installed NDK version, such as $ANDROID_HOME/ndk/28.2.13676358.
+[tasks.native]
+description = "Build libctulssh_jni.so into android/app/src/main/jniLibs"
+dir = "zig-src"
+run = "zig build -Doptimize=ReleaseSmall jni"
+
+[tasks.build]
+description = "Assemble the debug APK"
+dir = "android"
+run = "./gradlew assembleDebug"
+
+[tasks.install]
+description = "Install the debug APK on a connected device and launch it"
+dir = "android"
+run = [
+  "./gradlew installDebug",
+  "adb shell am start -n io.github.andreacovelli.ctulssh/.MainActivity",
+]
+
+[tasks.lint]
+description = "Run Android Lint on the debug variant"
+dir = "android"
+run = "./gradlew lintDebug"
+
+[tasks.test]
+description = "Run local JVM unit tests"
+dir = "android"
+run = "./gradlew testDebugUnitTest"
+
+[tasks."test:device"]
+description = "Run instrumented tests on a connected device or emulator"
+dir = "android"
+run = "./gradlew connectedDebugAndroidTest"
+
+[tasks."check:actions"]
+description = "Lint GitHub Actions workflows"
+run = "actionlint"
+
+[tasks.check]
+description = "Run every repository check that needs no device"
+run = [
+  { task = "lint" },
+  { task = "test" },
+  { task = "build" },
+  { task = "check:actions" },
+]

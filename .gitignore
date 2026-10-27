@@ -4,12 +4,11 @@
 .externalNativeBuild
 .cxx
 local.properties
-.agents/*
-!.agents/setup
-!.agents/resume
+mise.local.toml
+mise.local.lock
+.agents/
 .idea/
 .kotlin/
-.npm/
 .plans/
 .zig-cache/
 references/

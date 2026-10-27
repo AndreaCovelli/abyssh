@@ -16,16 +16,22 @@ jobs:
     permissions:
       contents: write
       id-token: write
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: nix shell
-        run: nix develop -L --verbose
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
+      - name: Set up locked tools
+        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        with:
+          version: 2026.10.14
+          install_args: java zig
 
       - name: parse version from tag
         id: version
@@ -45,19 +51,16 @@ jobs:
               exit 1
             fi
           done
-          echo "major=$MAJOR" >> "$GITHUB_OUTPUT"
-          echo "minor=$MINOR" >> "$GITHUB_OUTPUT"
-          echo "patch=$PATCH" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          {
+            echo "major=$MAJOR"
+            echo "minor=$MINOR"
+            echo "patch=$PATCH"
+            echo "version=$VERSION"
+          } >> "$GITHUB_OUTPUT"
           echo "Parsed version: $VERSION (major=$MAJOR minor=$MINOR patch=$PATCH)"
 
-      - name: build ctulssh_jni
-        run: |
-          nix develop -c bash -c '
-            set -e
-            cd zig-src
-            zig build -Doptimize=ReleaseSmall -Dtarget=aarch64-linux-android.24 jni
-          '
+      - name: build native library
+        run: ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME" mise run native -Dtarget=aarch64-linux-android.24
 
       - name: generate release key
         run: |
@@ -72,18 +75,12 @@ jobs:
           VERSION_MINOR: ${{ steps.version.outputs.minor }}
           VERSION_PATCH: ${{ steps.version.outputs.patch }}
           ANDROID_ABI_FILTERS: arm64-v8a
-        run: |
-          nix develop -c bash -c '
-            set -e
-            cd android
-            chmod +x ./gradlew
-            if [ -f local.properties ]; then chmod -w local.properties; fi
-            ./gradlew assembleRelease bundleRelease
-          '
+        working-directory: android
+        run: ./gradlew assembleRelease bundleRelease --console=plain
 
       - name: upload release
         if: ${{ github.ref_type == 'tag' || inputs.release_tag != '' }}
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
           target_commitish: ${{ github.sha }}

@@ -1,5 +1,12 @@
 # AGENTS.md
 
+## Commands
+
+mise pins the JDK, Zig, and actionlint; `mise tasks ls` lists the tasks.
+
+- `mise run native` builds the JNI library (needs `ANDROID_NDK_HOME` set to one NDK version)
+- `mise run check` runs Android Lint, unit tests, the debug build, and actionlint
+
 ## Zig Development
 
 Always use `zigdoc` to discover APIs for the Zig standard library and any third-party dependencies.
