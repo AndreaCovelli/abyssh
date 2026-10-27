@@ -35,8 +35,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import android.content.ClipData
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
+import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -553,7 +556,8 @@ private fun KeyDetailsContent(
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
 
     AbyssCard(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -572,7 +576,11 @@ private fun KeyDetailsContent(
             AbyssText("back", style = typography.label, color = colors.textMuted)
         }
         AbyssButton(
-            onClick = { clipboard.setText(AnnotatedString(key.publicKeyOpenSsh)) },
+            onClick = {
+                scope.launch {
+                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("public key", key.publicKeyOpenSsh)))
+                }
+            },
             variant = AbyssButtonVariant.Outlined,
             bracketed = true,
             modifier = Modifier.weight(1f),

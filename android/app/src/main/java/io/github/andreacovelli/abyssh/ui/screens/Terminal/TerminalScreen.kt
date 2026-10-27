@@ -1016,7 +1016,7 @@ fun TerminalScreen(
                             hasClipboardText =
                                 try {
                                     clipboard?.hasPrimaryClip() == true &&
-                                        clipboard!!.primaryClip?.getItemAt(0)?.text?.isNotEmpty() ==
+                                        clipboard.primaryClip?.getItemAt(0)?.text?.isNotEmpty() ==
                                             true
                                 } catch (_: SecurityException) {
                                     false
