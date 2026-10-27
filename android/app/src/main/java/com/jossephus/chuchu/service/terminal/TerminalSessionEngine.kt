@@ -46,6 +46,11 @@ enum class SessionStatus {
     Reconnecting,
     Connected,
     Error,
+    ;
+
+    /** Connected, or on its way there. */
+    val isLive: Boolean
+        get() = this == Connecting || this == Reconnecting || this == Connected
 }
 
 data class SessionState(

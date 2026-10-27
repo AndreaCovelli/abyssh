@@ -39,6 +39,7 @@ import com.jossephus.chuchu.model.MultiplexerType
 import com.jossephus.chuchu.model.Transport
 import com.jossephus.chuchu.ui.components.ChuButton
 import com.jossephus.chuchu.ui.components.ChuButtonVariant
+import com.jossephus.chuchu.ui.components.ChuDialog
 import com.jossephus.chuchu.ui.components.ChuSegmentedControl
 import com.jossephus.chuchu.ui.components.ChuSwitch
 import com.jossephus.chuchu.ui.components.ChuText
@@ -61,6 +62,32 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
     LaunchedEffect(vm) {
         vm.errorMessage.collect { message ->
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+    val pendingReconnect by vm.pendingReconnect.collectAsStateWithLifecycle()
+    pendingReconnect?.let { pending ->
+        val count = pending.tabs.size
+        ChuDialog(
+            title = "Reconnect ${if (count == 1) "open session" else "$count open sessions"}?",
+            confirmLabel = "Reconnect",
+            dismissLabel = "Keep",
+            onConfirm = { vm.finishPendingReconnect(reconnect = true) },
+            onDismiss = { vm.finishPendingReconnect(reconnect = false) },
+        ) {
+            ChuText(
+                if (count == 1) {
+                    "A session to this server is still using the old settings. Reconnect it now with the new ones?"
+                } else {
+                    "$count sessions to this server are still using the old settings. Reconnect them now with the new ones?"
+                },
+                style = typography.body,
+                color = colors.textMuted,
+            )
+            ChuText(
+                "Programs running in them stop, unless they run inside tmux. If you keep them, they switch over on their next reconnect.",
+                style = typography.bodySmall,
+                color = colors.textMuted,
+            )
         }
     }
     Column(

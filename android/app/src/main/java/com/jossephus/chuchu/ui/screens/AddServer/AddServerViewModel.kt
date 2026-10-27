@@ -18,6 +18,9 @@ import com.jossephus.chuchu.service.ssh.HostKeyCheck
 import com.jossephus.chuchu.service.ssh.HostKeyPolicy
 import com.jossephus.chuchu.service.ssh.HostKeyStore
 import com.jossephus.chuchu.service.ssh.NativeSshService
+import com.jossephus.chuchu.service.terminal.TabSession
+import com.jossephus.chuchu.service.terminal.TabSpec
+import com.jossephus.chuchu.service.terminal.TerminalSessionRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,6 +50,7 @@ class AddServerViewModel(application: Application, private val hostId: Long?) :
     private val db = AppDatabase.getInstance(application)
     private val hostRepository = HostRepository(db.hostProfileDao())
     private val sshKeyRepository = SshKeyRepository(db.sshKeyDao())
+    private val sessionRepository = TerminalSessionRepository.getInstance(application)
     private val hostKeyStore =
         HostKeyStore(
             application.applicationContext.getSharedPreferences(
@@ -292,8 +296,37 @@ class AddServerViewModel(application: Application, private val hostId: Long?) :
                         },
                 )
             hostRepository.upsert(profile)
-            onComplete()
+            val stale = if (current.id != null) applyToOpenTabs(profile) else emptyList()
+            if (stale.isEmpty()) {
+                onComplete()
+            } else {
+                _pendingReconnect.value = PendingReconnect(stale, onComplete)
+            }
         }
+    }
+
+    /** Open tabs of this host still running on the settings it had before the save. */
+    class PendingReconnect(val tabs: List<TabSession>, val onDone: () -> Unit)
+
+    private val _pendingReconnect = MutableStateFlow<PendingReconnect?>(null)
+    val pendingReconnect: StateFlow<PendingReconnect?> = _pendingReconnect.asStateFlow()
+
+    private suspend fun applyToOpenTabs(profile: HostProfile): List<TabSession> {
+        if (sessionRepository.tabsForHost(profile.id).isEmpty()) return emptyList()
+        val key = profile.keyId?.let { sshKeyRepository.getById(it) }
+        val spec = TabSpec.fromHostProfile(
+            host = profile,
+            publicKeyOpenSsh = key?.publicKeyOpenSsh.orEmpty(),
+            privateKeyPem = key?.privateKeyPem.orEmpty(),
+        )
+        return sessionRepository.applyHostUpdate(spec)
+    }
+
+    fun finishPendingReconnect(reconnect: Boolean) {
+        val pending = _pendingReconnect.value ?: return
+        _pendingReconnect.value = null
+        if (reconnect) sessionRepository.reconnectTabs(pending.tabs)
+        pending.onDone()
     }
 }
 

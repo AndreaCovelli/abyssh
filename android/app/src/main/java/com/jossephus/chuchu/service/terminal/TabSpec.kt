@@ -78,3 +78,23 @@ data class TabSpec(
         )
     }
 }
+
+/**
+ * This tab's spec after its host was edited. [updated] comes from the saved host,
+ * so it lacks what each tab picks at connect time: the multiplexer session it
+ * attached to and the key passphrase the user typed. Keep those when they still apply.
+ */
+internal fun TabSpec.withHostUpdate(updated: TabSpec): TabSpec {
+    val sameMultiplexer = updated.multiplexer != null && updated.multiplexer == multiplexer
+    val sameKey =
+        updated.privateKeyPem == privateKeyPem && updated.authMethod == authMethod
+    return updated.copy(
+        multiplexerSessionName = if (sameMultiplexer) multiplexerSessionName else null,
+        multiplexerCreateIfMissing = if (sameMultiplexer) multiplexerCreateIfMissing else true,
+        keyPassphrase = updated.keyPassphrase.ifEmpty { if (sameKey) keyPassphrase else "" },
+    )
+}
+
+/** Whether a running session would connect differently with [other]. The name doesn't count. */
+internal fun TabSpec.connectsDifferentlyThan(other: TabSpec): Boolean =
+    copy(displayName = other.displayName) != other

@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -356,6 +357,45 @@ class TerminalSessionRepository private constructor(application: Application) {
             multiplexerSessionName = spec.multiplexerSessionName,
             multiplexerCreateIfMissing = spec.multiplexerCreateIfMissing,
         )
+    }
+
+    /**
+     * Points the open tabs of an edited host at its new settings, so the next reconnect
+     * uses them. Returns the tabs that are still running on the old settings.
+     */
+    fun applyHostUpdate(updated: TabSpec): List<TabSession> {
+        val hostId = updated.hostId ?: return emptyList()
+        return tabsForHost(hostId).filter { tab ->
+            val next = tab.spec.withHostUpdate(updated)
+            val stale = tab.spec.connectsDifferentlyThan(next) && tab.sessionState.value.status.isLive
+            tab.spec = next
+            stale
+        }
+    }
+
+    /** Reconnects tabs after [applyHostUpdate], picking a multiplexer session where needed. */
+    fun reconnectTabs(tabs: List<TabSession>) {
+        tabs.forEach { tab ->
+            val spec = tab.spec
+            if (!spec.usesRuntimeMultiplexer || !spec.multiplexerSessionName.isNullOrBlank()) {
+                reconnectTab(tab)
+                return@forEach
+            }
+            // The host just got a multiplexer, or a different one: find a session first.
+            scope.launch {
+                val name = runCatching {
+                    withContext(Dispatchers.IO) { resolveMultiplexerSessionName(spec) }
+                }.getOrNull()
+                if (_tabs.value.none { it.id == tab.id } || tab.spec != spec) return@launch
+                tab.spec =
+                    if (name != null) {
+                        spec.copy(multiplexerSessionName = name)
+                    } else {
+                        spec.copy(multiplexer = null)
+                    }
+                reconnectTab(tab)
+            }
+        }
     }
 
     fun disconnect() {
