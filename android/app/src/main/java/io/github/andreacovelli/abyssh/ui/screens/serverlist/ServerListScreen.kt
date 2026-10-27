@@ -91,6 +91,7 @@ fun ServerListScreen(
 
     var selectedHostId by remember { mutableStateOf<Long?>(null) }
     var pendingDisconnectHostId by remember { mutableStateOf<Long?>(null) }
+    var pendingDisconnectLocalShell by remember { mutableStateOf(false) }
     var pendingConnectHostId by remember { mutableStateOf<Long?>(null) }
     var pendingLocalShell by remember { mutableStateOf(false) }
     var isSearchVisible by remember { mutableStateOf(false) }
@@ -197,6 +198,7 @@ fun ServerListScreen(
                         LocalShellCard(
                             isOpen = hasOpenLocalShell,
                             onOpen = { openLocalShellWithPermission() },
+                            onDisconnect = { pendingDisconnectLocalShell = true },
                         )
                     }
                 }
@@ -273,6 +275,35 @@ fun ServerListScreen(
             AbyssText(stringResource(R.string.server_list_add), style = typography.label, color = colors.onAccent)
         }
 
+        if (pendingDisconnectLocalShell) {
+            val localShellTabIds =
+                openTabs.filter { it.spec.transport == Transport.LocalShell }.map { it.id }
+            AbyssDialog(
+                title =
+                    stringResource(
+                        R.string.server_list_disconnect_title,
+                        stringResource(R.string.server_list_local_shell),
+                    ),
+                confirmLabel = stringResource(R.string.server_list_disconnect_confirm),
+                dismissLabel = stringResource(R.string.action_cancel),
+                onConfirm = {
+                    localShellTabIds.forEach(sessionRepo::closeTab)
+                    pendingDisconnectLocalShell = false
+                },
+                onDismiss = { pendingDisconnectLocalShell = false },
+            ) {
+                AbyssText(
+                    pluralStringResource(
+                        R.plurals.server_list_disconnect_local_body,
+                        localShellTabIds.size,
+                        localShellTabIds.size,
+                    ),
+                    style = typography.body,
+                    color = colors.warning,
+                )
+            }
+        }
+
         val pendingDisconnectHost = hosts.firstOrNull { it.id == pendingDisconnectHostId }
         if (pendingDisconnectHost != null) {
             val sessionCount = openTabs.count { it.spec.hostId == pendingDisconnectHost.id }
@@ -347,6 +378,7 @@ private fun EmptyState() {
 private fun LocalShellCard(
     isOpen: Boolean,
     onOpen: () -> Unit,
+    onDisconnect: () -> Unit,
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
@@ -394,6 +426,18 @@ private fun LocalShellCard(
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 ) {
                     AbyssText(stringResource(R.string.action_open), style = typography.label, color = colors.accentSecondary)
+                }
+                if (isOpen) {
+                    AbyssButton(
+                        onClick = onDisconnect,
+                        variant = AbyssButtonVariant.Outlined,
+                        bracketed = true,
+                        borderColor = colors.warning,
+                        contentDescription = stringResource(R.string.server_list_disconnect_local_shell),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        AbyssText(stringResource(R.string.action_disconnect), style = typography.label, color = colors.warning)
+                    }
                 }
             }
         }
