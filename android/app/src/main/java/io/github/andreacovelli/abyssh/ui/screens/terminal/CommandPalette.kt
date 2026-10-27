@@ -54,6 +54,7 @@ import io.github.andreacovelli.abyssh.ui.terminal.TerminalCanvas
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
+@Suppress("LongMethod", "LongParameterList")
 @Composable
 fun CommandPalette(
     tabs: List<TabSession>,

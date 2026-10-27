@@ -3,7 +3,6 @@ package io.github.andreacovelli.abyssh.ui.screens.settings
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
-import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,12 +38,7 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 import io.github.andreacovelli.abyssh.ui.theme.ThemeMode
 
-enum class SettingsCategory(@StringRes val label: Int) {
-    General(R.string.settings_category_general),
-    Terminal(R.string.settings_category_terminal),
-    Keys(R.string.settings_category_keys),
-}
-
+@Suppress("LongMethod", "LongParameterList")
 @Composable
 fun SettingsScreen(
     currentTheme: String,
@@ -256,6 +250,7 @@ fun SettingsScreen(
     }
 }
 
+@Suppress("LongParameterList")
 @Composable
 private fun GeneralSettings(
     currentTheme: String,

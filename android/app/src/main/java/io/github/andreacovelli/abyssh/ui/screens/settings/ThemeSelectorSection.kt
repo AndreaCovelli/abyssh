@@ -414,7 +414,7 @@ private fun BatPreview(theme: GhosttyTheme, style: TextStyle) {
         ZigPreviewLines.forEach { (lineNo, segments) ->
             BasicText(
                 text = buildAnnotatedString {
-                    withStyle(SpanStyle(color = chromeColor)) { append(String.format("%4d   │ ", lineNo)) }
+                    withStyle(SpanStyle(color = chromeColor)) { append("${lineNo.toString().padStart(4)}   │ ") }
                     segments.forEach { seg -> withStyle(SpanStyle(color = seg.role.color(theme))) { append(seg.text) } }
                 },
                 style = style,

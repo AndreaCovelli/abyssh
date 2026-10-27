@@ -43,7 +43,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -73,6 +72,7 @@ private data class CustomKeyValueDraft(
     val shortcut: String? = null,
 )
 
+@Suppress("LongMethod", "CyclomaticComplexMethod")
 @Composable
 internal fun TerminalCustomActionsEditorSheet(
     visible: Boolean,
@@ -281,15 +281,13 @@ internal fun TerminalCustomActionsEditorSheet(
                                     dragOffsetPx += deltaY
                                     while (dragRemainderPx >= reorderStepPx) {
                                         val activeIndex = draftItems.indexOfFirst { it.id == draggingId }
-                                        if (activeIndex < 0) break
-                                        if (!moveDraftItem(activeIndex, 1)) break
+                                        if (activeIndex < 0 || !moveDraftItem(activeIndex, 1)) break
                                         dragRemainderPx -= reorderStepPx
                                         dragOffsetPx -= reorderStepPx
                                     }
                                     while (dragRemainderPx <= -reorderStepPx) {
                                         val activeIndex = draftItems.indexOfFirst { it.id == draggingId }
-                                        if (activeIndex < 0) break
-                                        if (!moveDraftItem(activeIndex, -1)) break
+                                        if (activeIndex < 0 || !moveDraftItem(activeIndex, -1)) break
                                         dragRemainderPx += reorderStepPx
                                         dragOffsetPx += reorderStepPx
                                     }
@@ -462,7 +460,6 @@ private fun CustomActionSwipeRow(
     val maxSwipePx = with(density) { 120.dp.toPx() }
     val deleteThresholdPx = with(density) { 72.dp.toPx() }
     val offsetX = remember(keyText, valueText) { Animatable(0f) }
-    val cardShape = RectangleShape
 
     Box(
         modifier = Modifier

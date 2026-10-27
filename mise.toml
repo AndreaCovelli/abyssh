@@ -51,6 +51,11 @@ description = "Check Kotlin and Gradle script formatting"
 dir = "android"
 run = "./gradlew spotlessCheck"
 
+[tasks.detekt]
+description = "Run Detekt static analysis"
+dir = "android"
+run = "./gradlew detekt"
+
 [tasks."check:actions"]
 description = "Lint GitHub Actions workflows"
 run = "actionlint"
@@ -59,6 +64,7 @@ run = "actionlint"
 description = "Run every repository check that needs no device"
 run = [
   { task = "format:check" },
+  { task = "detekt" },
   { task = "lint" },
   { task = "test" },
   { task = "build" },

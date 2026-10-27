@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.service.ssh
 
+// One external fun per JNI export in zig-src/src/bridge.
+@Suppress("TooManyFunctions")
 class NativeSshBridge {
     companion object {
         private val loadError: Throwable? =

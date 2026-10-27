@@ -60,6 +60,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeoutOrNull
 
+@Suppress("LongMethod", "CyclomaticComplexMethod", "LoopWithTooManyJumpStatements")
 @Composable
 fun TerminalCanvas(
     snapshot: TerminalSnapshot,
@@ -364,8 +365,8 @@ fun TerminalCanvas(
                     awaitPointerEventScope {
                         while (true) {
                             val event = awaitPointerEvent()
-                            if (event.type != PointerEventType.Scroll) continue
-                            val change = event.changes.firstOrNull() ?: continue
+                            val change = event.changes.firstOrNull()
+                            if (event.type != PointerEventType.Scroll || change == null) continue
                             remainder += change.scrollDelta.y * WHEEL_ROWS_PER_NOTCH
                             val rows = remainder.toInt()
                             if (rows != 0) {
@@ -845,7 +846,6 @@ fun TerminalCanvas(
                             cache = singlePaintChoiceCache,
                             primaryPaint = primaryTextPaint,
                             primaryPuaCoverage = primaryPuaCoverage,
-                            symbolsPaint = symbolsTextPaint,
                             fallbackPaint = fallbackTextPaint,
                             emojiPaint = emojiTextPaint,
                         )
@@ -855,7 +855,6 @@ fun TerminalCanvas(
                             cache = clusterPaintChoiceCache,
                             primaryPaint = primaryTextPaint,
                             primaryPuaCoverage = primaryPuaCoverage,
-                            symbolsPaint = symbolsTextPaint,
                             fallbackPaint = fallbackTextPaint,
                             emojiPaint = emojiTextPaint,
                         )
@@ -898,7 +897,6 @@ fun TerminalCanvas(
                                 cache = singlePaintChoiceCache,
                                 primaryPaint = primaryTextPaint,
                                 primaryPuaCoverage = primaryPuaCoverage,
-                                symbolsPaint = symbolsTextPaint,
                                 fallbackPaint = fallbackTextPaint,
                                 emojiPaint = emojiTextPaint,
                             )
@@ -908,7 +906,6 @@ fun TerminalCanvas(
                                 cache = clusterPaintChoiceCache,
                                 primaryPaint = primaryTextPaint,
                                 primaryPuaCoverage = primaryPuaCoverage,
-                                symbolsPaint = symbolsTextPaint,
                                 fallbackPaint = fallbackTextPaint,
                                 emojiPaint = emojiTextPaint,
                             )
@@ -1024,7 +1021,6 @@ fun TerminalCanvas(
                                 cache = singlePaintChoiceCache,
                                 primaryPaint = primaryTextPaint,
                                 primaryPuaCoverage = primaryPuaCoverage,
-                                symbolsPaint = symbolsTextPaint,
                                 fallbackPaint = fallbackTextPaint,
                                 emojiPaint = emojiTextPaint,
                             )
@@ -1034,7 +1030,6 @@ fun TerminalCanvas(
                                 cache = clusterPaintChoiceCache,
                                 primaryPaint = primaryTextPaint,
                                 primaryPuaCoverage = primaryPuaCoverage,
-                                symbolsPaint = symbolsTextPaint,
                                 fallbackPaint = fallbackTextPaint,
                                 emojiPaint = emojiTextPaint,
                             )
@@ -1175,7 +1170,6 @@ private fun pickPaintChoice(
     cache: HashMap<String, Int>,
     primaryPaint: Paint,
     primaryPuaCoverage: IntArray,
-    symbolsPaint: Paint,
     fallbackPaint: Paint,
     emojiPaint: Paint,
 ): Int {
@@ -1195,7 +1189,6 @@ private fun pickPaintChoice(
     cache: HashMap<Int, Int>,
     primaryPaint: Paint,
     primaryPuaCoverage: IntArray,
-    symbolsPaint: Paint,
     fallbackPaint: Paint,
     emojiPaint: Paint,
 ): Int {

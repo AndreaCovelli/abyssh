@@ -30,6 +30,9 @@ object DataKeyStore {
     /** The data key, and whether it was just created (so nothing sealed before can be opened). */
     data class Loaded(val key: SecretKey, val created: Boolean)
 
+    // Keystore and cipher failures arrive as many unrelated exception types; any of them
+    // means the saved key is unusable or the new one was not written.
+    @Suppress("TooGenericExceptionCaught")
     fun load(context: Context): Loaded {
         val file = AtomicFile(File(context.noBackupFilesDir, FILE_NAME))
         val wrapping = wrappingKey()

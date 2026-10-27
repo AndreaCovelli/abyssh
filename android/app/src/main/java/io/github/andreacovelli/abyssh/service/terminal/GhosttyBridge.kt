@@ -2,6 +2,8 @@ package io.github.andreacovelli.abyssh.service.terminal
 
 import java.nio.ByteBuffer
 
+// One external fun per JNI export in zig-src/src/bridge.
+@Suppress("TooManyFunctions")
 class GhosttyBridge {
     companion object {
         private val loadError: Throwable? = runCatching {

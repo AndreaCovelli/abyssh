@@ -34,6 +34,7 @@ import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalViewModel
 import io.github.andreacovelli.abyssh.ui.security.VerificationResult
 import io.github.andreacovelli.abyssh.ui.security.requireUserVerification
 
+@Suppress("LongMethod")
 @Composable
 fun ApplicationNavController() {
     val navController = rememberNavController()

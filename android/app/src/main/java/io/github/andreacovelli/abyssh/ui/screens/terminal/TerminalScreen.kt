@@ -96,7 +96,6 @@ import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
 import io.github.andreacovelli.abyssh.ui.screens.files.FileBrowserScreen
 import io.github.andreacovelli.abyssh.ui.screens.files.UploadProgress
 import io.github.andreacovelli.abyssh.ui.screens.files.formatFileSize
-import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalTabMode
 import io.github.andreacovelli.abyssh.ui.terminal.AccessoryAction
 import io.github.andreacovelli.abyssh.ui.terminal.BuiltinCommand
 import io.github.andreacovelli.abyssh.ui.terminal.AbysshKeyBindings
@@ -374,6 +373,7 @@ private fun TerminalCustomActionsFab(
     }
 }
 
+@Suppress("LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth", "TooGenericExceptionCaught")
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TerminalScreen(
@@ -997,19 +997,12 @@ fun TerminalScreen(
                         }
                     }
 
-                    val titleText = sessionState.title?.takeIf { it.isNotBlank() }
                     val pwdText = sessionState.pwd?.takeIf { it.isNotBlank() }
                     val inputMethodManager = remember {
                         context.getSystemService(InputMethodManager::class.java)
                     }
                     val requestInputFocus: () -> Unit = {
                         inputViewRef.value?.let { view -> view.showKeyboard(inputMethodManager) }
-                    }
-                    val hideSoftKeyboard: () -> Unit = {
-                        val view = inputViewRef.value
-                        if (view != null) {
-                            inputMethodManager?.hideSoftInputFromWindow(view.windowToken, 0)
-                        }
                     }
                     var hasClipboardText by remember { mutableStateOf(false) }
                     val scope = rememberCoroutineScope()
@@ -1112,7 +1105,7 @@ fun TerminalScreen(
                                     try {
                                         val stream =
                                             context.contentResolver.openInputStream(uri)
-                                                ?: throw IllegalStateException("Cannot open file")
+                                                ?: error("Cannot open file")
                                         stream.use { input ->
                                             vm.beginUpload(fileName)
                                             vm.setUploadProgress(

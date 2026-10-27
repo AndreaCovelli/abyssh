@@ -43,6 +43,7 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
+@Suppress("LongMethod")
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FileBrowserScreen(

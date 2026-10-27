@@ -51,6 +51,7 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
+@Suppress("LongMethod")
 @Composable
 fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifier = Modifier) {
     val form by vm.form.collectAsStateWithLifecycle()

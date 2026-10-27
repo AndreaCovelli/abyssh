@@ -82,6 +82,7 @@ private data class TabRowState(
  * status, optional terminal title, user@host, PWD.  Each row exposes
  * labeled duplicate and close actions.
  */
+@Suppress("LongMethod", "CyclomaticComplexMethod")
 @Composable
 fun TerminalTabManager(
     visible: Boolean,
@@ -152,23 +153,27 @@ fun TerminalTabManager(
                 .onPreviewKeyEvent { event ->
                     when (event.key) {
                         Key.Escape -> {
-                            if (event.type == KeyEventType.KeyUp) { onDismiss() }; true
+                            if (event.type == KeyEventType.KeyUp) { onDismiss() }
+                            true
                         }
                         Key.Enter -> {
                             if (event.type == KeyEventType.KeyUp) {
                                 entries.getOrNull(focusedTabIndex)?.let { onSelectTab(it.id) }
                                 onDismiss()
-                            }; true
+                            }
+                            true
                         }
                         Key.DirectionUp, Key.PageUp -> {
                             if (event.type == KeyEventType.KeyUp && entries.isNotEmpty()) {
                                 onFocusedTabIndexChange((focusedTabIndex - 1).mod(entries.size))
-                            }; true
+                            }
+                            true
                         }
                         Key.DirectionDown, Key.PageDown -> {
                             if (event.type == KeyEventType.KeyUp && entries.isNotEmpty()) {
                                 onFocusedTabIndexChange((focusedTabIndex + 1).mod(entries.size))
-                            }; true
+                            }
+                            true
                         }
                         else -> false
                     }

@@ -76,6 +76,7 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 import kotlin.math.roundToInt
 
+@Suppress("LongMethod")
 @Composable
 internal fun TerminalSettings(
     currentAccessoryLayoutIds: List<String>,
@@ -807,6 +808,7 @@ private fun tabModeLabel(mode: TerminalTabMode): String = when (mode) {
 
 
 
+@Suppress("LongMethod")
 @Composable
 internal fun AccessoryLayoutEditorSheet(
     visible: Boolean,

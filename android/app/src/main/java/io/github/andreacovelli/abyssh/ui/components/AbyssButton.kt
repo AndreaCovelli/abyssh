@@ -28,12 +28,6 @@ import androidx.compose.ui.unit.dp
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
-enum class AbyssButtonVariant {
-    Filled,
-    Outlined,
-    Ghost,
-}
-
 /**
  * Reusable non-clickable button surface: background, border, shape, press alpha,
  * min-height, and content padding.  Used by [AbyssButton] for clickable buttons

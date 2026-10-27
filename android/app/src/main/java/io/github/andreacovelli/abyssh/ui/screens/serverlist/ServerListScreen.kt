@@ -65,6 +65,7 @@ import io.github.andreacovelli.abyssh.ui.components.TuiBadge
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
+@Suppress("LongMethod")
 @Composable
 fun ServerListScreen(
     hosts: List<HostProfile>,
@@ -399,6 +400,7 @@ private fun LocalShellCard(
     }
 }
 
+@Suppress("LongMethod")
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HostCard(

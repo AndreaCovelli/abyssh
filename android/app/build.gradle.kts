@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.room)
+    alias(libs.plugins.detekt)
 }
 
 kotlin {
@@ -116,6 +117,24 @@ android {
                 )
             }
         }
+    }
+}
+
+detekt {
+    buildUponDefaultConfig = true
+    allRules = false
+    config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
+}
+
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    jvmTarget = "21"
+    setSource(files("src/main/java", "src/test/java", "src/androidTest/java"))
+    include("**/*.kt")
+    reports {
+        html.required.set(true)
+        sarif.required.set(true)
+        txt.required.set(false)
+        md.required.set(false)
     }
 }
 

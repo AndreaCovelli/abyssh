@@ -9,7 +9,6 @@ import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerRegistry
 import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSession
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
-import io.github.andreacovelli.abyssh.service.ssh.TailscaleStatusChecker
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -32,6 +31,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
+@Suppress("TooManyFunctions")
 @OptIn(ExperimentalCoroutinesApi::class)
 class TerminalSessionRepository private constructor(application: Application) {
     private sealed interface PreflightAttempt<out T> {
@@ -52,7 +52,6 @@ class TerminalSessionRepository private constructor(application: Application) {
 
     private val hostKeyStore =
         HostKeyStore(appContext.getSharedPreferences(HostKeyStore.PREFS_NAME, Application.MODE_PRIVATE))
-    private val tailscaleStatusChecker = TailscaleStatusChecker(appContext)
     private val clipboard = appContext.getSystemService(ClipboardManager::class.java)
     private val settingsRepository = SettingsRepository.getInstance(appContext)
 
@@ -210,7 +209,7 @@ class TerminalSessionRepository private constructor(application: Application) {
                 is PreflightAttempt.Completed -> return attempt.value
                 is PreflightAttempt.HostKeyVerificationRequired -> {
                     if (!awaitPreflightHostKeyDecision(attempt.verification)) {
-                        throw IllegalStateException("Host key rejected")
+                        error("Host key rejected")
                     }
                     val prompt = attempt.verification.prompt
                     hostKeyStore.saveKey(
@@ -234,7 +233,6 @@ class TerminalSessionRepository private constructor(application: Application) {
                 scope,
                 newLocalShellService(),
                 hostKeyStore,
-                tailscaleStatusChecker,
                 onHostKeyVerificationRequired = { prompt, keyBytes ->
                     verification = PreflightHostKeyVerification(prompt, keyBytes)
                 },
@@ -278,7 +276,6 @@ class TerminalSessionRepository private constructor(application: Application) {
                 scope,
                 newLocalShellService(),
                 hostKeyStore,
-                tailscaleStatusChecker,
                 onShellExited = { scope.launch { closeTab(id) } },
             )
         val tab = TabSession(id, spec, engine)
@@ -433,7 +430,7 @@ class TerminalSessionRepository private constructor(application: Application) {
         if (tab.sessionState.value.status == SessionStatus.Connected) return
         withTimeoutOrNull(timeoutMs) {
             tab.sessionState.first { it.status == SessionStatus.Connected }
-        } ?: throw IllegalStateException("Timed out waiting for the session to reconnect")
+        } ?: error("Timed out waiting for the session to reconnect")
     }
 
     fun resize(

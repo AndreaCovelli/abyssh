@@ -53,6 +53,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+// Session, multiplexer, and file-browser errors come from native and transport code as
+// many exception types; the broad catches report them in UI state.
+@Suppress("LargeClass", "TooManyFunctions", "TooGenericExceptionCaught")
 @OptIn(ExperimentalCoroutinesApi::class)
 class TerminalViewModel(application: Application) : AndroidViewModel(application) {
     private val tailscaleStatusChecker = TailscaleStatusChecker(application)

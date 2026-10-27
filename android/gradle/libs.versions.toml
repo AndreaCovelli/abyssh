@@ -17,6 +17,7 @@ kotlinxCoroutines = "1.11.0"
 biometric = "1.1.0"
 fragment = "1.9.1"
 robolectric = "4.17"
+detekt = "1.23.8"
 spotless = "8.10.4"
 ktlint = "1.8.0"
 roborazzi = "1.77.0"
@@ -59,4 +60,5 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 room = { id = "androidx.room", version.ref = "room" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
