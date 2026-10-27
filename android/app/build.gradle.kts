@@ -63,6 +63,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Fork builds are signed with a local debug key, so give them their own
+            // package to install next to the official release instead of over it.
+            applicationIdSuffix = ".fork"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
