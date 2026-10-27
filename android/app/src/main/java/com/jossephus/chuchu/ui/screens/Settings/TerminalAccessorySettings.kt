@@ -97,7 +97,7 @@ internal fun TerminalSettings(
     onKeepScreenAwakeChanged: (Boolean) -> Unit = {},
     hideScreenContents: Boolean = false,
     onHideScreenContentsChanged: (Boolean) -> Unit = {},
-    disableAutocorrect: Boolean = false,
+    disableAutocorrect: Boolean = true,
     onDisableAutocorrectChanged: (Boolean) -> Unit = {},
     remoteClipboardWriteEnabled: Boolean = false,
     onRemoteClipboardWriteEnabledChanged: (Boolean) -> Unit = {},

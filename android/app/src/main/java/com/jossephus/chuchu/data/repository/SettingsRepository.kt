@@ -59,7 +59,7 @@ class SettingsRepository(context: Context) {
     private val _hideScreenContents = MutableStateFlow(prefs.getBoolean(KEY_HIDE_SCREEN_CONTENTS, false))
     val hideScreenContents: StateFlow<Boolean> = _hideScreenContents.asStateFlow()
 
-    private val _disableAutocorrect = MutableStateFlow(prefs.getBoolean(KEY_DISABLE_AUTOCORRECT, false))
+    private val _disableAutocorrect = MutableStateFlow(prefs.getBoolean(KEY_DISABLE_AUTOCORRECT, true))
     val disableAutocorrect: StateFlow<Boolean> = _disableAutocorrect.asStateFlow()
     private val _remoteClipboardWriteEnabled =
         MutableStateFlow(prefs.getBoolean(KEY_REMOTE_CLIPBOARD_WRITE_ENABLED, false))
