@@ -2,7 +2,7 @@ package io.github.andreacovelli.abyssh.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
-import io.github.andreacovelli.abyssh.ui.screens.Terminal.TerminalTabMode
+import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalTabMode
 import io.github.andreacovelli.abyssh.ui.terminal.BuiltinShortcutStore
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalAccessoryLayoutStore
 import io.github.andreacovelli.abyssh.ui.theme.AbyssFontOption

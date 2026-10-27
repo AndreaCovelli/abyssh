@@ -20,15 +20,15 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
-import io.github.andreacovelli.abyssh.ui.screens.AddServer.AddServerScreen
-import io.github.andreacovelli.abyssh.ui.screens.AddServer.AddServerViewModel
-import io.github.andreacovelli.abyssh.ui.screens.Keys.KeysViewModel
-import io.github.andreacovelli.abyssh.ui.screens.ServerList.ServerListScreen
-import io.github.andreacovelli.abyssh.ui.screens.ServerList.ServerListViewModel
-import io.github.andreacovelli.abyssh.ui.screens.Settings.SettingsBackupViewModel
-import io.github.andreacovelli.abyssh.ui.screens.Settings.SettingsScreen
-import io.github.andreacovelli.abyssh.ui.screens.Terminal.TerminalScreen
-import io.github.andreacovelli.abyssh.ui.screens.Terminal.TerminalViewModel
+import io.github.andreacovelli.abyssh.ui.screens.addserver.AddServerScreen
+import io.github.andreacovelli.abyssh.ui.screens.addserver.AddServerViewModel
+import io.github.andreacovelli.abyssh.ui.screens.keys.KeysViewModel
+import io.github.andreacovelli.abyssh.ui.screens.serverlist.ServerListScreen
+import io.github.andreacovelli.abyssh.ui.screens.serverlist.ServerListViewModel
+import io.github.andreacovelli.abyssh.ui.screens.settings.SettingsBackupViewModel
+import io.github.andreacovelli.abyssh.ui.screens.settings.SettingsScreen
+import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalScreen
+import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalViewModel
 import io.github.andreacovelli.abyssh.ui.security.VerificationResult
 import io.github.andreacovelli.abyssh.ui.security.requireUserVerification
 
