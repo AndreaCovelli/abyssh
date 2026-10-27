@@ -53,6 +53,7 @@ fun SettingsScreen(
     hideScreenContents: Boolean,
     disableAutocorrect: Boolean,
     remoteClipboardWriteEnabled: Boolean,
+    ctrlVPastes: Boolean,
     currentAccessoryLayoutIds: List<String>,
     accessoryBarSingleRow: Boolean,
     currentTerminalCustomKeyGroups: List<TerminalCustomKeyGroup>,
@@ -75,6 +76,7 @@ fun SettingsScreen(
     onHideScreenContentsChanged: (Boolean) -> Unit,
     onDisableAutocorrectChanged: (Boolean) -> Unit,
     onRemoteClipboardWriteEnabledChanged: (Boolean) -> Unit,
+    onCtrlVPastesChanged: (Boolean) -> Unit,
     onAccessoryLayoutChanged: (List<String>) -> Unit,
     onAccessoryBarSingleRowChanged: (Boolean) -> Unit,
     currentTerminalFontSize: Float = 14f,
@@ -206,6 +208,8 @@ fun SettingsScreen(
                             onDisableAutocorrectChanged = onDisableAutocorrectChanged,
                             remoteClipboardWriteEnabled = remoteClipboardWriteEnabled,
                             onRemoteClipboardWriteEnabledChanged = onRemoteClipboardWriteEnabledChanged,
+                            ctrlVPastes = ctrlVPastes,
+                            onCtrlVPastesChanged = onCtrlVPastesChanged,
                         )
                     SettingsCategory.Keys -> KeysContent(vm = keysViewModel)
                 }

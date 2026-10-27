@@ -114,6 +114,7 @@ import com.jossephus.chuchu.ui.terminal.TerminalSelectionHandle
 import com.jossephus.chuchu.ui.terminal.TerminalSelectionState
 import com.jossephus.chuchu.ui.terminal.TerminalSpecialKey
 import com.jossephus.chuchu.ui.terminal.decodeCustomActionValue
+import com.jossephus.chuchu.ui.terminal.isPasteShortcut
 import com.jossephus.chuchu.ui.terminal.modifierStateForCustomAction
 import com.jossephus.chuchu.ui.terminal.toGhosttyKey
 import com.jossephus.chuchu.ui.theme.ChuColors
@@ -424,6 +425,7 @@ fun TerminalScreen(
     val settingsFontSize by settingsRepo.terminalFontSize.collectAsStateWithLifecycle()
     val keepScreenAwake by settingsRepo.keepScreenAwake.collectAsStateWithLifecycle()
     val disableAutocorrect by settingsRepo.disableAutocorrect.collectAsStateWithLifecycle()
+    val ctrlVPastes by settingsRepo.ctrlVPastes.collectAsStateWithLifecycle()
     val keepAwakeView = LocalView.current
     DisposableEffect(keepScreenAwake, keepAwakeView) {
         val window = (keepAwakeView.context as? Activity)?.window
@@ -941,14 +943,16 @@ fun TerminalScreen(
                     menuSize = IntSize.Zero
                 }
 
-                fun pasteClipboard(): Boolean {
+                // Keyboard shortcuts paste the text as-is: the held Ctrl belongs
+                // to the shortcut, not to the first pasted character.
+                fun pasteClipboard(applyModifiers: Boolean = true): Boolean {
                     val clip = clipboard?.primaryClip
                     if (clip == null || clip.itemCount == 0) {
                         return false
                     }
                     val text = clip.getItemAt(0).coerceToText(context).toString()
                     if (text.isNotEmpty()) {
-                        vm.onPasteText(modifierState.applyToText(text))
+                        vm.onPasteText(if (applyModifiers) modifierState.applyToText(text) else text)
                         selection = null
                         selectionState = null
                         return true
@@ -1543,7 +1547,13 @@ fun TerminalScreen(
                                         TerminalInputView(viewContext)
                                             .apply {
                                                 onTerminalText = { text ->
-                                                    if (!chuchuKeys.handleText(text)) {
+                                                    if (chuchuKeys.handleText(text)) {
+                                                        // Consumed by the chuchu key prefix.
+                                                    } else if (
+                                                        isPasteShortcut(text, modifierState, ctrlVPastes)
+                                                    ) {
+                                                        pasteClipboard(applyModifiers = false)
+                                                    } else {
                                                         vm.dispatchTextWithModifierState(
                                                             text,
                                                             modifierState,
@@ -1633,9 +1643,18 @@ fun TerminalScreen(
                                                             shouldForwardToTerminal = false
                                                         }
                                                     }
-                                                    if (shouldForwardToTerminal) {
-                                                        val mergedMods =
-                                                            mods or modifierState.terminalMods()
+                                                    val mergedMods =
+                                                        mods or modifierState.terminalMods()
+                                                    if (
+                                                        shouldForwardToTerminal &&
+                                                            isPasteShortcut(key, mergedMods, ctrlVPastes)
+                                                    ) {
+                                                        // Swallow repeat and release too, so the
+                                                        // shell never sees half of the shortcut.
+                                                        if (action == GhosttyKeyAction.Press) {
+                                                            pasteClipboard(applyModifiers = false)
+                                                        }
+                                                    } else if (shouldForwardToTerminal) {
                                                         vm.onHardwareKey(
                                                             key,
                                                             codepoint,

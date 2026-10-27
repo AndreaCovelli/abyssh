@@ -101,6 +101,8 @@ internal fun TerminalSettings(
     onDisableAutocorrectChanged: (Boolean) -> Unit = {},
     remoteClipboardWriteEnabled: Boolean = false,
     onRemoteClipboardWriteEnabledChanged: (Boolean) -> Unit = {},
+    ctrlVPastes: Boolean = true,
+    onCtrlVPastesChanged: (Boolean) -> Unit = {},
 ) {
     val colors = ChuColors.current
     val typography = ChuTypography.current
@@ -518,6 +520,33 @@ internal fun TerminalSettings(
                 ChuSwitch(
                     checked = remoteClipboardWriteEnabled,
                     onCheckedChange = onRemoteClipboardWriteEnabledChanged,
+                )
+            }
+        }
+
+        ChuCard(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 48.dp)
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    ChuText("ctrl+v pastes", style = typography.label)
+                    ChuText(
+                        "ctrl+shift+v always pastes. turn this off to send ctrl+v to the shell (e.g. vim block select).",
+                        style = typography.bodySmall,
+                        color = colors.textMuted,
+                    )
+                }
+                ChuSwitch(
+                    checked = ctrlVPastes,
+                    onCheckedChange = onCtrlVPastesChanged,
                 )
             }
         }
