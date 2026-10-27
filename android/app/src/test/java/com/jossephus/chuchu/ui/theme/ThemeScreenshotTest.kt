@@ -90,6 +90,17 @@ class ThemeScreenshotTest {
                         ChuSwitch(checked = true, onCheckedChange = {})
                         ChuSwitch(checked = false, onCheckedChange = {})
                     }
+                    // Settings places switches inside cards, on the surface color.
+                    ChuCard {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            ChuSwitch(checked = true, onCheckedChange = {})
+                            ChuSwitch(checked = false, onCheckedChange = {})
+                            ChuSwitch(checked = false, onCheckedChange = {}, enabled = false)
+                        }
+                    }
                     }
                 }
             }

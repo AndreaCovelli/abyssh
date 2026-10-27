@@ -8,7 +8,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -26,16 +25,19 @@ fun ChuSwitch(
 ) {
     val colors = ChuColors.current
     val interactionSource = remember { MutableInteractionSource() }
-    val trackColor = if (checked) colors.accent else colors.surface
-    val thumbColor = if (checked) colors.onAccent else colors.textPrimary
-    val thumbOffset by animateDpAsState(if (checked) 17.dp else 2.dp, label = "chu-switch")
+    // The track stays unfilled: a filled accent track left a light block on the left
+    // of an "on" switch that read like an "off" thumb, and an off track drawn with
+    // `surface` vanished inside cards. Thumb side and color alone carry the state.
+    val borderColor = if (checked) colors.accent else colors.border
+    val thumbColor = if (checked) colors.accent else colors.textMuted
+    val thumbOffset by animateDpAsState(if (checked) 20.dp else 2.dp, label = "chu-switch")
 
     Box(
         modifier = modifier
-            .size(width = 36.dp, height = 18.dp)
-            .background(trackColor)
-            .border(1.dp, colors.border)
+            // Fade the whole control when disabled, not just the thumb.
             .alpha(if (enabled) 1f else 0.5f)
+            .size(width = 36.dp, height = 18.dp)
+            .border(1.dp, borderColor)
             .clickable(
                 enabled = enabled,
                 interactionSource = interactionSource,
@@ -45,8 +47,8 @@ fun ChuSwitch(
     ) {
         Box(
             modifier = Modifier
-                .offset(x = thumbOffset, y = 1.dp)
-                .size(16.dp)
+                .offset(x = thumbOffset, y = 2.dp)
+                .size(14.dp)
                 .background(thumbColor),
         )
     }
