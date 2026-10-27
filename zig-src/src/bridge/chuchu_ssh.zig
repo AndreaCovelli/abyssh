@@ -1554,7 +1554,7 @@ export fn Java_com_jossephus_chuchu_service_ssh_NativeSshBridge_nativeSftpReadFi
 
     if (out.items.len == limit) {
         var probe: [1]u8 = undefined;
-        var idle_since_ms = nowMs();
+        idle_since_ms = nowMs();
         while (true) {
             const rc = c.libssh2_sftp_read(file, &probe, probe.len);
             if (rc > 0) {
