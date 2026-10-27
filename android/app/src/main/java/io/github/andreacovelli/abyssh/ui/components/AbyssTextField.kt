@@ -1,32 +1,20 @@
 package io.github.andreacovelli.abyssh.ui.components
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
@@ -51,58 +39,44 @@ fun AbyssTextField(
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
-    val interactionSource = remember { MutableInteractionSource() }
-    val focused by interactionSource.collectIsFocusedAsState()
-    val shape = RectangleShape
     val focusRequester = remember { FocusRequester() }
 
-    // Only request focus if autoFocus is true
     if (autoFocus) {
         LaunchedEffect(Unit) {
             focusRequester.requestFocus()
         }
     }
 
-    Column(modifier = modifier) {
-        if (showLabel) {
-            AbyssText(
-                text = "> $label",
-                style = typography.labelSmall,
-                color = if (focused) colors.accent else colors.textSecondary,
-                modifier = Modifier.padding(bottom = 4.dp),
-            )
-        }
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(focusRequester)
-                .background(if (focused) colors.surface else Color.Transparent, shape)
-                .border(
-                    BorderStroke(1.dp, if (focused) colors.accent else colors.border),
-                    shape,
-                )
-                .padding(horizontal = 10.dp, vertical = 9.dp),
-            singleLine = singleLine,
-            maxLines = if (singleLine) 1 else maxLines,
-            textStyle = typography.body.copy(color = colors.textPrimary, textAlign = textAlign),
-            keyboardOptions = keyboardOptions,
-            keyboardActions = keyboardActions,
-            visualTransformation = visualTransformation,
-            interactionSource = interactionSource,
-            cursorBrush = SolidColor(colors.accent),
-            decorationBox = { innerTextField ->
-                Box {
-                    if (value.isEmpty() && placeholder.isNotBlank()) {
-                        BasicText(
-                            text = placeholder,
-                            style = typography.body.copy(color = colors.textMuted),
-                        )
-                    }
-                    innerTextField()
-                }
-            },
-        )
-    }
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester),
+        textStyle = typography.body.copy(textAlign = textAlign),
+        label = if (showLabel && label.isNotEmpty()) {
+            { Text(label) }
+        } else {
+            null
+        },
+        placeholder = if (placeholder.isNotBlank()) {
+            { Text(placeholder, style = typography.body, color = colors.textMuted) }
+        } else {
+            null
+        },
+        visualTransformation = visualTransformation,
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
+        singleLine = singleLine,
+        maxLines = if (singleLine) 1 else maxLines,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = colors.textPrimary,
+            unfocusedTextColor = colors.textPrimary,
+            focusedBorderColor = colors.accent,
+            unfocusedBorderColor = colors.border,
+            focusedLabelColor = colors.accent,
+            unfocusedLabelColor = colors.textSecondary,
+            cursorColor = colors.accent,
+        ),
+    )
 }

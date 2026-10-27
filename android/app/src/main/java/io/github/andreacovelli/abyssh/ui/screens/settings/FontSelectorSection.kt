@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import io.github.andreacovelli.abyssh.ui.components.AbyssExpandIcon
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.AnimatedVisibility
@@ -52,7 +53,6 @@ internal fun FontSelectorSection(
         AbyssButton(
             onClick = { expanded = !expanded },
             variant = AbyssButtonVariant.Outlined,
-            bracketed = true,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Row(
@@ -60,7 +60,7 @@ internal fun FontSelectorSection(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AbyssText(current.label, style = typography.label)
-                AbyssText(if (expanded) "▲" else "▼", style = typography.labelSmall, color = colors.textMuted)
+                AbyssExpandIcon(expanded)
             }
         }
 

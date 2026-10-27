@@ -1,5 +1,11 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.ui.res.painterResource
+import io.github.andreacovelli.abyssh.ui.components.AbyssIconButton
 import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
@@ -184,8 +190,9 @@ private fun NewTabHostPicker(
         Column(
             modifier =
                 Modifier.width(320.dp)
-                    .background(colors.background)
-                    .border(1.dp, colors.border)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(colors.surface)
+                    .border(1.dp, colors.border, RoundedCornerShape(16.dp))
                     .padding(4.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
@@ -193,7 +200,6 @@ private fun NewTabHostPicker(
                 onClick = onCurrentHost,
                 modifier = Modifier.fillMaxWidth(),
                 variant = AbyssButtonVariant.Ghost,
-                bracketed = true,
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
             ) {
                 AbyssText(
@@ -219,7 +225,6 @@ private fun NewTabHostPicker(
                             onClick = { onHostSelected(host.id) },
                             modifier = Modifier.fillMaxWidth(),
                             variant = AbyssButtonVariant.Ghost,
-                            bracketed = true,
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                         ) {
                             Column(modifier = Modifier.fillMaxWidth()) {
@@ -285,24 +290,21 @@ private fun TerminalCustomActionsFab(
                                 onClearFilter()
                             },
                             variant = AbyssButtonVariant.Outlined,
-                            bracketed = true,
+                            backgroundColor = colors.surface,
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         ) {
                             AbyssText(action.label, style = typography.label)
                         }
                     }
-                    AbyssButton(
+                    AbyssIconButton(
+                        icon = R.drawable.ic_arrow_back,
+                        contentDescription = stringResource(R.string.action_back),
                         onClick = {
                             expanded = false
                             onClearFilter()
                         },
-                        variant = AbyssButtonVariant.Ghost,
-                        bracketed = true,
-                        borderColor = colors.textMuted,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    ) {
-                        AbyssText("<", style = typography.label, color = colors.textMuted)
-                    }
+                        tonal = true,
+                    )
                 } else if (selectedGroup == null) {
                     groups.forEach { group ->
                         AbyssButton(
@@ -316,7 +318,7 @@ private fun TerminalCustomActionsFab(
                                 }
                             },
                             variant = AbyssButtonVariant.Outlined,
-                            bracketed = true,
+                            backgroundColor = colors.surface,
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         ) {
                             AbyssText(group.keyLabel, style = typography.label)
@@ -331,28 +333,23 @@ private fun TerminalCustomActionsFab(
                                 selectedGroupKey = null
                             },
                             variant = AbyssButtonVariant.Outlined,
-                            bracketed = true,
+                            backgroundColor = colors.surface,
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         ) {
                             AbyssText(action.label, style = typography.label)
                         }
                     }
-                    AbyssButton(
+                    AbyssIconButton(
+                        icon = R.drawable.ic_arrow_back,
+                        contentDescription = stringResource(R.string.action_back),
                         onClick = { selectedGroupKey = null },
-                        variant = AbyssButtonVariant.Ghost,
-                        bracketed = true,
-                        borderColor = colors.textMuted,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    ) {
-                        AbyssText("<", style = typography.label, color = colors.textMuted)
-                    }
+                        tonal = true,
+                    )
                 }
             }
         }
 
-        // TUI-style action toggle — square bracketed button instead of a
-        // circular Material FAB. Reads like a macro/quick-key trigger.
-        AbyssButton(
+        SmallFloatingActionButton(
             onClick = {
                 expanded = !expanded
                 if (!expanded) {
@@ -360,15 +357,14 @@ private fun TerminalCustomActionsFab(
                     onClearFilter()
                 }
             },
-            variant = if (expanded) AbyssButtonVariant.Ghost else AbyssButtonVariant.Filled,
-            bracketed = true,
-            borderColor = if (expanded) colors.textMuted else null,
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            containerColor = if (expanded) colors.surface else colors.accent,
+            contentColor = if (expanded) colors.textSecondary else colors.onAccent,
         ) {
-            AbyssText(
-                if (expanded) "x" else "+",
-                style = typography.label,
-                color = if (expanded) colors.textMuted else colors.onAccent,
+            Icon(
+                painter = painterResource(if (expanded) R.drawable.ic_close else R.drawable.ic_add),
+                contentDescription = stringResource(
+                    if (expanded) R.string.action_close else R.string.settings_custom_actions,
+                ),
             )
         }
     }
@@ -865,7 +861,6 @@ fun TerminalScreen(
                                     onClick = openAnotherSessionForCurrentHost,
                                     modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
                                     variant = AbyssButtonVariant.Outlined,
-                                    bracketed = true,
                                 ) {
                                     AbyssText(
                                         stringResource(R.string.terminal_new_connection),
@@ -1270,7 +1265,6 @@ fun TerminalScreen(
                                         onClick = openAnotherSessionForCurrentHost,
                                         modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
                                         variant = AbyssButtonVariant.Outlined,
-                                        bracketed = true,
                                     ) {
                                         AbyssText(
                                             stringResource(R.string.terminal_new_connection),
@@ -1581,7 +1575,6 @@ fun TerminalScreen(
                                             AbyssButton(
                                                 onClick = ::copySelection,
                                                 variant = AbyssButtonVariant.Ghost,
-                                                bracketed = true,
                                                 borderColor = colors.textMuted,
                                                 contentPadding =
                                                     PaddingValues(
@@ -1603,7 +1596,6 @@ fun TerminalScreen(
                                                     requestInputFocus()
                                                 },
                                                 variant = AbyssButtonVariant.Ghost,
-                                                bracketed = true,
                                                 borderColor = colors.textMuted,
                                                 contentPadding =
                                                     PaddingValues(
@@ -2138,7 +2130,6 @@ private fun TerminalRecoveryActions(
                 onClick = onConnectWithoutMultiplexer,
                 modifier = Modifier.fillMaxWidth(),
                 variant = AbyssButtonVariant.Outlined,
-                bracketed = true,
             ) {
                 AbyssText(stringResource(R.string.terminal_connect_without_multiplexer), style = typography.label)
             }
@@ -2147,7 +2138,6 @@ private fun TerminalRecoveryActions(
                 onClick = onBack,
                 modifier = Modifier.fillMaxWidth(),
                 variant = AbyssButtonVariant.Ghost,
-                bracketed = true,
                 borderColor = colors.textMuted,
             ) {
                 AbyssText(dismissMultiplexerLabel, style = typography.label, color = colors.textMuted)

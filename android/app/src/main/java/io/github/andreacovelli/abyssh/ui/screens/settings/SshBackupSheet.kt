@@ -369,7 +369,6 @@ internal fun SshBackupSheet(
                                 viewModel.clearMessages()
                             },
                             variant = AbyssButtonVariant.Outlined,
-                            bracketed = true,
                             modifier = Modifier.weight(1f),
                         ) {
                             AbyssText(stringResource(R.string.action_dismiss), style = typography.label)
@@ -493,7 +492,6 @@ private fun OverviewContent(
             onClick = onExport,
             enabled = !busy,
             variant = AbyssButtonVariant.Outlined,
-            bracketed = true,
             modifier = Modifier.weight(1f),
         ) {
             AbyssText(stringResource(R.string.backup_export), style = typography.label, color = colors.accent)
@@ -502,7 +500,6 @@ private fun OverviewContent(
             onClick = onImport,
             enabled = !busy,
             variant = AbyssButtonVariant.Outlined,
-            bracketed = true,
             modifier = Modifier.weight(1f),
         ) {
             AbyssText(stringResource(R.string.backup_import), style = typography.label, color = colors.accent)
@@ -570,7 +567,7 @@ private fun KeyDetailsContent(
     }
 
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        AbyssButton(onClick = onBack, variant = AbyssButtonVariant.Ghost, bracketed = true, modifier = Modifier.weight(1f)) {
+        AbyssButton(onClick = onBack, variant = AbyssButtonVariant.Ghost, modifier = Modifier.weight(1f)) {
             AbyssText(stringResource(R.string.action_back), style = typography.label, color = colors.textMuted)
         }
         AbyssButton(
@@ -580,7 +577,6 @@ private fun KeyDetailsContent(
                 }
             },
             variant = AbyssButtonVariant.Outlined,
-            bracketed = true,
             modifier = Modifier.weight(1f),
         ) {
             AbyssText(stringResource(R.string.key_details_copy_public), style = typography.label, color = colors.accent)
@@ -664,7 +660,6 @@ private fun ExportPassphraseContent(
         AbyssButton(
             onClick = onCancel,
             variant = AbyssButtonVariant.Ghost,
-            bracketed = true,
             borderColor = colors.textMuted,
             modifier = Modifier.weight(1f),
         ) {
@@ -673,12 +668,9 @@ private fun ExportPassphraseContent(
         AbyssButton(
             onClick = onExport,
             enabled = !busy && valid,
-            variant = AbyssButtonVariant.Outlined,
-            bracketed = true,
-            borderColor = colors.accent,
             modifier = Modifier.weight(1f),
         ) {
-            AbyssText(stringResource(R.string.backup_export), style = typography.label, color = colors.accent)
+            AbyssText(stringResource(R.string.backup_export), style = typography.label)
         }
     }
 }
@@ -726,7 +718,6 @@ private fun ImportPassphraseContent(
         AbyssButton(
             onClick = onCancel,
             variant = AbyssButtonVariant.Ghost,
-            bracketed = true,
             borderColor = colors.textMuted,
             modifier = Modifier.weight(1f),
         ) {
@@ -735,12 +726,9 @@ private fun ImportPassphraseContent(
         AbyssButton(
             onClick = onImport,
             enabled = !busy && valid,
-            variant = AbyssButtonVariant.Outlined,
-            bracketed = true,
-            borderColor = colors.accent,
             modifier = Modifier.weight(1f),
         ) {
-            AbyssText(stringResource(R.string.backup_import), style = typography.label, color = colors.accent)
+            AbyssText(stringResource(R.string.backup_import), style = typography.label)
         }
     }
 }
@@ -853,7 +841,6 @@ private fun ImportPreviewContent(
         AbyssButton(
             onClick = onCancel,
             variant = AbyssButtonVariant.Ghost,
-            bracketed = true,
             borderColor = colors.textMuted,
             modifier = Modifier.weight(1f),
         ) {
@@ -862,12 +849,9 @@ private fun ImportPreviewContent(
         AbyssButton(
             onClick = onConfirm,
             enabled = !busy && (plan.keyInsertCount > 0 || plan.hostActions.isNotEmpty()),
-            variant = AbyssButtonVariant.Outlined,
-            bracketed = true,
-            borderColor = colors.accent,
             modifier = Modifier.weight(1f),
         ) {
-            AbyssText(stringResource(R.string.backup_confirm_import), style = typography.label, color = colors.accent)
+            AbyssText(stringResource(R.string.backup_confirm_import), style = typography.label)
         }
     }
 }

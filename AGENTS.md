@@ -69,9 +69,14 @@ Kotlin declares `external fun native*` methods in five bridge classes: `GhosttyB
 - There is no DI framework. Repositories and stores are singletons reached through
   `getInstance(context)`, and each ViewModel provides a `factory(application)`. Follow
   that pattern rather than adding Hilt or Koin.
-- The UI uses Compose Foundation without Material. Build screens from the `Abyss*`
-  components in `ui/components/`, with colors from `AbyssColors.current` and type from
-  `AbyssTypography`. The active Ghostty theme drives the colors.
+- The UI uses Material 3 (`androidx.compose.material3`). `AbyssTheme` maps the active
+  Ghostty theme onto a Material color scheme and the chosen monospace font onto the
+  Material type scale. Build screens from the `Abyss*` components in `ui/components/`
+  (buttons, icon buttons, text fields, cards, dialogs, switches, segmented controls),
+  with colors from `AbyssColors.current` and type from `AbyssTypography`. Icons are
+  vector drawables in `res/drawable/` shown with `Icon` or `AbyssIconButton`; don't
+  draw icons with Canvas or Unicode glyphs. Dense rows such as the accessory bar use
+  `AbyssKey`, which has no minimum button width.
 - Each screen lives in a lowercase package under `ui/screens/` (`addserver`,
   `terminal`, `settings`, …).
 - User-visible text goes in `res/values/strings.xml`, with plurals for counts. Read it

@@ -8,6 +8,7 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -28,9 +29,12 @@ import org.junit.runner.RunWith
 class TerminalBarsTest {
     @get:Rule val compose = createComposeRule()
 
-    // The tag is on the field's frame; the editable node is inside it.
+    // The tag may sit on the editable node or on a frame around it.
     private fun searchField() =
-        compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("terminal_search_field")))
+        compose.onNode(
+            hasSetTextAction() and
+                (hasTestTag("terminal_search_field") or hasAnyAncestor(hasTestTag("terminal_search_field"))),
+        )
 
     @Test
     fun searchBarTypesAndWalksMatches() {
@@ -52,10 +56,10 @@ class TerminalBarsTest {
         compose.onNodeWithTag("terminal_search_counter").assertTextEquals("3 of 3")
         searchField().performImeAction()
         compose.onNodeWithTag("terminal_search_counter").assertTextEquals("2 of 3")
-        compose.onNodeWithText("↓").performClick()
-        compose.onNodeWithText("↓").performClick()
+        compose.onNodeWithContentDescription("next match").performClick()
+        compose.onNodeWithContentDescription("next match").performClick()
         compose.onNodeWithTag("terminal_search_counter").assertTextEquals("1 of 3")
-        compose.onNodeWithText("x").performClick()
+        compose.onNodeWithContentDescription("close search").performClick()
         assertEquals(true, closed)
     }
 

@@ -293,7 +293,6 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
             AbyssButton(
                 onClick = { showAdditionalSettings = !showAdditionalSettings },
                 variant = AbyssButtonVariant.Outlined,
-                bracketed = true,
             ) {
                 AbyssText(stringResource(R.string.server_additional_settings), style = typography.label)
             }
@@ -329,7 +328,6 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
             onClick = vm::testConnection,
             enabled = canTest,
             variant = AbyssButtonVariant.Outlined,
-            bracketed = true,
             modifier = Modifier.fillMaxWidth(),
         ) {
             val label =
@@ -347,12 +345,9 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
         AbyssButton(
             onClick = { vm.save(onBack) },
             enabled = form.canSave(),
-            variant = AbyssButtonVariant.Outlined,
-            bracketed = true,
-            borderColor = colors.accent,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            AbyssText(stringResource(R.string.action_save), style = typography.label, color = colors.accent)
+            AbyssText(stringResource(R.string.action_save), style = typography.label)
         }
     }
 }
@@ -399,7 +394,6 @@ private fun KeyAuthSection(
             AbyssButton(
                 onClick = onCopyPublicKey,
                 variant = AbyssButtonVariant.Outlined,
-                bracketed = true,
                 borderColor = colors.accent,
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                 modifier = Modifier.weight(1f),
@@ -409,7 +403,6 @@ private fun KeyAuthSection(
             AbyssButton(
                 onClick = onGenerate,
                 variant = AbyssButtonVariant.Outlined,
-                bracketed = true,
                 modifier = Modifier.weight(1f),
             ) {
                 AbyssText(stringResource(R.string.key_new), style = typography.label)
@@ -424,7 +417,6 @@ private fun KeyAuthSection(
         AbyssButton(
             onClick = onGenerate,
             variant = AbyssButtonVariant.Outlined,
-            bracketed = true,
             modifier = Modifier.fillMaxWidth(),
         ) {
             AbyssText(stringResource(R.string.key_generate), style = typography.label)
@@ -435,7 +427,6 @@ private fun KeyAuthSection(
         AbyssButton(
             onClick = { pickerExpanded = !pickerExpanded },
             variant = AbyssButtonVariant.Ghost,
-            bracketed = true,
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
         ) {
@@ -528,7 +519,6 @@ private fun PostConnectActionSection(command: String, onCommandChange: (String) 
             onClick = { onCommandChange("") },
             enabled = command.isNotBlank(),
             variant = AbyssButtonVariant.Ghost,
-            bracketed = true,
             borderColor = colors.textMuted,
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
         ) {

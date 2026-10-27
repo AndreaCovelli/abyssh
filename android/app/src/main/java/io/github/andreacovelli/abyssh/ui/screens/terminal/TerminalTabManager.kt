@@ -347,7 +347,6 @@ fun TerminalTabManager(
                                         },
                                         modifier = Modifier.defaultMinSize(minHeight = 48.dp, minWidth = 48.dp),
                                         variant = AbyssButtonVariant.Ghost,
-                                        bracketed = true,
                                         contentPadding = PaddingValues(
                                             horizontal = 8.dp,
                                             vertical = 4.dp,
@@ -364,7 +363,6 @@ fun TerminalTabManager(
                                         onClick = { onCloseTab(tab.id) },
                                         modifier = Modifier.defaultMinSize(minHeight = 48.dp, minWidth = 48.dp),
                                         variant = AbyssButtonVariant.Ghost,
-                                        bracketed = true,
                                         contentPadding = PaddingValues(
                                             horizontal = 8.dp,
                                             vertical = 4.dp,
@@ -406,7 +404,6 @@ fun TerminalTabManager(
                             },
                             modifier = Modifier.defaultMinSize(minHeight = 48.dp, minWidth = 48.dp),
                             variant = AbyssButtonVariant.Outlined,
-                            bracketed = true,
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                         ) {
                             AbyssText(stringResource(R.string.tab_manager_new), style = typography.labelSmall, color = colors.accent)
@@ -434,7 +431,6 @@ fun TerminalTabManager(
                                 },
                                 modifier = Modifier.defaultMinSize(minHeight = 48.dp, minWidth = 48.dp),
                                 variant = AbyssButtonVariant.Outlined,
-                                bracketed = true,
                             ) {
                                 AbyssText(
                                     stringResource(R.string.terminal_new_connection),

@@ -1,5 +1,10 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.AnimatedVisibility
@@ -308,9 +313,14 @@ internal fun TerminalCustomActionsEditorSheet(
                                 showAddRow = true
                             },
                             variant = AbyssButtonVariant.Outlined,
-                            bracketed = true,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
+                            Icon(
+                                painterResource(R.drawable.ic_add),
+                                contentDescription = null,
+                                modifier = Modifier.size(ButtonDefaults.IconSize),
+                            )
+                            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
                             AbyssText(stringResource(R.string.custom_actions_add), style = typography.label)
                         }
                     } else {
@@ -410,7 +420,6 @@ internal fun TerminalCustomActionsEditorSheet(
                                 AbyssButton(
                                     onClick = ::registerDraftItem,
                                     variant = AbyssButtonVariant.Outlined,
-                                    bracketed = true,
                                     modifier = Modifier.weight(1f),
                                 ) {
                                     AbyssText(stringResource(if (editingIndex != null) R.string.action_save else R.string.action_add), style = typography.label)
@@ -418,7 +427,6 @@ internal fun TerminalCustomActionsEditorSheet(
                                 AbyssButton(
                                     onClick = { cancelEdit() },
                                     variant = AbyssButtonVariant.Ghost,
-                                    bracketed = true,
                                     borderColor = colors.textMuted,
                                     modifier = Modifier.weight(1f),
                                 ) {

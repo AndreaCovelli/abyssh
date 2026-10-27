@@ -83,7 +83,6 @@ fun MultiplexerSessionPanel(
             AbyssButton(
                 onClick = onRefresh,
                 variant = AbyssButtonVariant.Ghost,
-                bracketed = true,
                 borderColor = colors.textMuted,
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
             ) {
@@ -95,7 +94,6 @@ fun MultiplexerSessionPanel(
                     onDismiss()
                 },
                 variant = AbyssButtonVariant.Ghost,
-                bracketed = true,
                 borderColor = colors.textMuted,
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
             ) {
@@ -143,7 +141,6 @@ private fun MultiplexerSessionRow(
             onClick = onAttach,
             modifier = Modifier.defaultMinSize(minHeight = 48.dp, minWidth = 48.dp),
             variant = AbyssButtonVariant.Ghost,
-            bracketed = true,
             borderColor = colors.textMuted,
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
         ) {

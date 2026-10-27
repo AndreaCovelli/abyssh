@@ -4,7 +4,6 @@ import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -23,8 +22,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
-import io.github.andreacovelli.abyssh.ui.components.AbyssButton
-import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
+import io.github.andreacovelli.abyssh.ui.components.AbyssCloseButton
+import io.github.andreacovelli.abyssh.ui.components.AbyssIconButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalSearchState
@@ -88,20 +87,16 @@ fun TerminalSearchBar(
             color = if (state.query.isNotEmpty() && state.matches.isEmpty()) colors.error else colors.textMuted,
             modifier = Modifier.testTag("terminal_search_counter"),
         )
-        SearchBarButton("↑", stringResource(R.string.search_previous), onOlder)
-        SearchBarButton("↓", stringResource(R.string.search_next), onNewer)
-        SearchBarButton("x", stringResource(R.string.search_close), onClose)
-    }
-}
-
-@Composable
-private fun SearchBarButton(label: String, description: String, onClick: () -> Unit) {
-    AbyssButton(
-        onClick = onClick,
-        variant = AbyssButtonVariant.Ghost,
-        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-        contentDescription = description,
-    ) {
-        AbyssText(label, style = AbyssTypography.current.body, color = AbyssColors.current.accent)
+        AbyssIconButton(
+            icon = R.drawable.ic_arrow_upward,
+            contentDescription = stringResource(R.string.search_previous),
+            onClick = onOlder,
+        )
+        AbyssIconButton(
+            icon = R.drawable.ic_arrow_downward,
+            contentDescription = stringResource(R.string.search_next),
+            onClick = onNewer,
+        )
+        AbyssCloseButton(onClick = onClose, contentDescription = stringResource(R.string.search_close))
     }
 }

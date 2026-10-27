@@ -1,5 +1,10 @@
 package io.github.andreacovelli.abyssh.ui.screens.serverlist
 
+import androidx.compose.material3.CardDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -61,7 +66,7 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssCard
 import io.github.andreacovelli.abyssh.ui.components.AbyssDialog
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
-import io.github.andreacovelli.abyssh.ui.components.TuiBadge
+import io.github.andreacovelli.abyssh.ui.components.AbyssBadge
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
@@ -159,7 +164,6 @@ fun ServerListScreen(
                         AbyssButton(
                             onClick = { isSearchVisible = true },
                             variant = AbyssButtonVariant.Outlined,
-                            bracketed = true,
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         ) {
                             AbyssText(stringResource(R.string.server_list_filter), style = typography.label, color = colors.textSecondary)
@@ -262,18 +266,17 @@ fun ServerListScreen(
             }
         }
 
-        AbyssButton(
+        ExtendedFloatingActionButton(
             onClick = onAddServer,
-            variant = AbyssButtonVariant.Filled,
-            bracketed = true,
+            icon = { Icon(painterResource(R.drawable.ic_add), contentDescription = null) },
+            text = { AbyssText(stringResource(R.string.server_list_add), style = typography.label) },
+            containerColor = colors.accent,
+            contentColor = colors.onAccent,
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(16.dp)
-                .height(44.dp),
-        ) {
-            AbyssText(stringResource(R.string.server_list_add), style = typography.label, color = colors.onAccent)
-        }
+                .padding(16.dp),
+        )
 
         if (pendingDisconnectLocalShell) {
             val localShellTabIds =
@@ -405,7 +408,7 @@ private fun LocalShellCard(
                     )
                     AbyssText(stringResource(R.string.server_list_local_shell), style = typography.title)
                 }
-                TuiBadge(text = stringResource(R.string.server_list_local_badge), color = colors.accentSecondary)
+                AbyssBadge(text = stringResource(R.string.server_list_local_badge), color = colors.accentSecondary)
             }
             Spacer(modifier = Modifier.height(2.dp))
             AbyssText(
@@ -420,7 +423,6 @@ private fun LocalShellCard(
                 AbyssButton(
                     onClick = onOpen,
                     variant = AbyssButtonVariant.Outlined,
-                    bracketed = true,
                     borderColor = colors.accentSecondary,
                     contentDescription = stringResource(R.string.server_list_open_local_shell),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
@@ -431,7 +433,6 @@ private fun LocalShellCard(
                     AbyssButton(
                         onClick = onDisconnect,
                         variant = AbyssButtonVariant.Outlined,
-                        bracketed = true,
                         borderColor = colors.warning,
                         contentDescription = stringResource(R.string.server_list_disconnect_local_shell),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
@@ -488,7 +489,6 @@ private fun HostCard(
                     AbyssButton(
                         onClick = onCancelSelection,
                         variant = AbyssButtonVariant.Ghost,
-                        bracketed = true,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     ) {
                         AbyssText(stringResource(R.string.action_cancel), style = typography.label, color = colors.textSecondary)
@@ -496,7 +496,6 @@ private fun HostCard(
                     AbyssButton(
                         onClick = onCopySelection,
                         variant = AbyssButtonVariant.Outlined,
-                        bracketed = true,
                         testTag = "host_copy_${host.id}",
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     ) {
@@ -505,7 +504,6 @@ private fun HostCard(
                     AbyssButton(
                         onClick = onDeleteSelection,
                         variant = AbyssButtonVariant.Outlined,
-                        bracketed = true,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     ) {
                         AbyssText(stringResource(R.string.action_delete), style = typography.label, color = colors.error)
@@ -523,6 +521,7 @@ private fun HostCard(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .clip(CardDefaults.outlinedShape)
                         .background(colors.warning.copy(alpha = 0.82f))
                         .padding(end = 14.dp),
                 ) {
@@ -608,7 +607,7 @@ private fun HostCard(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             if (host.transport == Transport.TailscaleSSH) {
-                                TuiBadge(
+                                AbyssBadge(
                                     text = "tailscale",
                                     color = colors.accent,
                                 )
@@ -619,7 +618,6 @@ private fun HostCard(
                             AbyssButton(
                                 onClick = onEdit,
                                 variant = AbyssButtonVariant.Ghost,
-                                bracketed = true,
                                 borderColor = colors.textMuted,
                                 testTag = "host_edit_${host.id}",
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
@@ -631,7 +629,6 @@ private fun HostCard(
                                     if (isConnected) onDisconnect() else onConnect()
                                 },
                                 variant = AbyssButtonVariant.Outlined,
-                                bracketed = true,
                                 borderColor = if (isConnected) colors.warning else colors.accentSecondary,
                                 testTag = "host_connect_${host.id}",
                                 contentDescription = stringResource(if (isConnected) R.string.server_list_disconnect_from else R.string.server_list_connect_to, host.name),

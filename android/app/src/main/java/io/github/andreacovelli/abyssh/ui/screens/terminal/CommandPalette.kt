@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.ui.components.AbyssCloseButton
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
 import android.view.inputmethod.InputMethodManager
@@ -176,15 +177,12 @@ fun CommandPalette(
                   )
                 }
                 if (tabs.size > 1) {
-                  AbyssButton(
+                  AbyssCloseButton(
                       onClick = { onCloseTab(tab.id) },
-                      variant = AbyssButtonVariant.Ghost,
-                      bracketed = true,
-                      borderColor = colors.textMuted,
-                      contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                  ) {
-                    AbyssText("x", style = typography.labelSmall, color = colors.textMuted)
-                  }
+                      contentDescription = stringResource(R.string.tab_manager_close_tab, displayLabel),
+                      color = colors.textMuted,
+                      iconSize = 18.dp,
+                  )
                 }
               }
             }
@@ -238,7 +236,6 @@ fun CommandPalette(
           AbyssButton(
               onClick = onSearch,
               variant = AbyssButtonVariant.Outlined,
-              bracketed = true,
               contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
               testTag = "palette_search",
           ) {
@@ -247,7 +244,6 @@ fun CommandPalette(
           AbyssButton(
               onClick = onAddTab,
               variant = AbyssButtonVariant.Outlined,
-              bracketed = true,
               contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
           ) {
             AbyssText(stringResource(R.string.tab_manager_new), style = typography.labelSmall, color = colors.accent)

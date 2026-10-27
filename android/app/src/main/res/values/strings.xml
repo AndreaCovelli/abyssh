@@ -253,7 +253,7 @@
     <string name="server_list_section_hosts">HOSTS</string>
     <string name="server_list_no_match">no hosts match</string>
     <string name="server_list_disconnect_before_delete">Disconnect before deleting this host</string>
-    <string name="server_list_add">+ add server</string>
+    <string name="server_list_add">add server</string>
     <string name="server_list_disconnect_title">Disconnect %1$s?</string>
     <string name="server_list_disconnect_confirm">Disconnect</string>
     <plurals name="server_list_disconnect_body">
@@ -272,7 +272,7 @@
         <item quantity="other">This closes %1$d local shell sessions.</item>
     </plurals>
     <string name="action_open">open</string>
-    <string name="server_list_swipe_disconnect">[disconnect]</string>
+    <string name="server_list_swipe_disconnect">disconnect</string>
     <string name="action_edit">edit</string>
     <string name="server_list_disconnect_from">Disconnect from %1$s</string>
     <string name="server_list_connect_to">Connect to %1$s</string>
@@ -284,7 +284,7 @@
     <string name="theme_show_preview">show preview</string>
     <string name="theme_search_label">Search themes</string>
     <string name="theme_search_placeholder">Type to filter</string>
-    <string name="custom_actions_add">+ add</string>
+    <string name="custom_actions_add">add</string>
     <string name="custom_actions_key_label">Key</string>
     <string name="custom_actions_shortcut_label">Shortcut</string>
     <string name="custom_actions_shortcut_placeholder">single key for abyssh command</string>
@@ -294,7 +294,7 @@
     <string name="custom_actions_preview_empty">Preview: (empty)</string>
     <string name="custom_actions_preview">Preview: %1$s</string>
     <string name="action_add">add</string>
-    <string name="custom_actions_swipe_delete">[ delete ]</string>
+    <string name="custom_actions_swipe_delete">delete</string>
     <string name="settings_category_general">general</string>
     <string name="settings_category_terminal">terminal</string>
     <string name="settings_category_keys">keys</string>
@@ -350,4 +350,11 @@
     <string name="notification_channel_sessions">SSH sessions</string>
     <string name="notification_channel_sessions_description">Keeps active terminal sessions alive</string>
     <string name="notification_connected_title">abyssh connected</string>
+    <string name="accessory_open_files">open files</string>
+    <string name="accessory_settings">accessory settings</string>
+    <string name="files_go_up">parent folder</string>
+    <string name="files_sort">sort</string>
+    <string name="files_upload">upload file</string>
+    <string name="settings_font_size_decrease">decrease font size</string>
+    <string name="settings_font_size_increase">increase font size</string>
 </resources>
