@@ -832,8 +832,8 @@ fun TerminalScreen(
                         newTabPicker = newTabPicker,
                     )
                     Box(
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.weight(1f).fillMaxWidth().padding(16.dp),
+                        contentAlignment = Alignment.TopStart,
                     ) {
                         val errorMessage = preflightError ?: sessionState.error
                         if (errorMessage != null) {
@@ -851,7 +851,10 @@ fun TerminalScreen(
                                 onReconnect = vm::reconnect,
                             )
                         } else if (tabs.isEmpty()) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Column(
+                                modifier = Modifier.align(Alignment.Center),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
                                 AbyssText(
                                     stringResource(R.string.terminal_no_sessions),
                                     style = typography.body,
@@ -875,11 +878,7 @@ fun TerminalScreen(
                     }
                 }
             } else {
-                Column(
-                    modifier = screenInsetsModifier.fillMaxSize().padding(16.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
+                Column(modifier = screenInsetsModifier.fillMaxSize().padding(16.dp)) {
                     val errorMessage = preflightError ?: sessionState.error
                     if (errorMessage != null) {
                         TerminalRecoveryActions(
@@ -919,8 +918,8 @@ fun TerminalScreen(
                         newTabPicker = newTabPicker,
                     )
                     Box(
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.weight(1f).fillMaxWidth().padding(16.dp),
+                        contentAlignment = Alignment.TopStart,
                     ) {
                         AbyssText(
                             stringResource(R.string.terminal_connecting_to, hostLabel),
@@ -929,10 +928,7 @@ fun TerminalScreen(
                     }
                 }
             } else {
-                Column(
-                    modifier = screenInsetsModifier.fillMaxSize().padding(16.dp),
-                    verticalArrangement = Arrangement.Center,
-                ) {
+                Column(modifier = screenInsetsModifier.fillMaxSize().padding(16.dp)) {
                     AbyssText(
                         stringResource(R.string.terminal_connecting_to, hostLabel),
                         style = typography.body,
@@ -2126,7 +2122,7 @@ private fun TerminalRecoveryActions(
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         AbyssText(message, color = colors.error, style = typography.body)
         Spacer(modifier = Modifier.height(16.dp))
         if (isMultiplexerPreflight) {

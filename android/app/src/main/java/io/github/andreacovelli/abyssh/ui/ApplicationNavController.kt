@@ -100,8 +100,12 @@ fun ApplicationNavController() {
                     val host = hosts.firstOrNull { it.id == id }
                     val hostRequiresAuth = host?.requireAuthOnConnect == true
                     val mustVerify = requireAuthOnConnect || hostRequiresAuth
-                    if (!mustVerify) {
+                    val connect = {
+                        vm.prepareConnect(id)
                         navController.navigate("terminal/$id")
+                    }
+                    if (!mustVerify) {
+                        connect()
                     } else {
                         requireUserVerification(
                             context = context,
@@ -109,7 +113,7 @@ fun ApplicationNavController() {
                             subtitle = resources.getString(R.string.terminal_verify_subtitle),
                         ) { result ->
                             if (result == VerificationResult.Success) {
-                                navController.navigate("terminal/$id")
+                                connect()
                             }
                         }
                     }

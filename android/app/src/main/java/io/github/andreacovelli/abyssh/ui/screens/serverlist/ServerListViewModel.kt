@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import io.github.andreacovelli.abyssh.data.db.AppDatabase
 import io.github.andreacovelli.abyssh.data.repository.HostRepository
 import io.github.andreacovelli.abyssh.model.HostProfile
+import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +21,7 @@ class ServerListViewModel(
 ) : AndroidViewModel(application) {
     private val db = AppDatabase.getInstance(application)
     private val hostRepository = HostRepository(db.hostProfileDao())
+    private val sessionRepository = TerminalSessionRepository.getInstance(application)
 
     private val searchQuery = MutableStateFlow("")
 
@@ -41,6 +43,11 @@ class ServerListViewModel(
 
     fun updateSearchQuery(value: String) {
         searchQuery.value = value
+    }
+
+    /** Retries the host's failed tabs before the terminal screen shows them again. */
+    fun prepareConnect(id: Long) {
+        sessionRepository.reconnectIdleTabsForHost(id)
     }
 
     fun deleteServer(id: Long) {
