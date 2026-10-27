@@ -95,6 +95,7 @@ fun FileBrowserScreen(
                 onClick = onBackToTerminal,
                 variant = AbyssButtonVariant.Ghost,
                 bracketed = false,
+                contentDescription = stringResource(R.string.files_back_to_terminal),
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
             ) {
                 TerminalIcon(color = colors.success, modifier = Modifier.size(20.dp))
@@ -113,6 +114,7 @@ fun FileBrowserScreen(
                 onClick = onRefresh,
                 variant = AbyssButtonVariant.Ghost,
                 bracketed = false,
+                contentDescription = stringResource(R.string.action_refresh),
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
             ) {
                 RefreshIcon(color = colors.textSecondary, modifier = Modifier.size(18.dp))
@@ -192,6 +194,7 @@ fun FileBrowserScreen(
                                             onClick = { onCopyPath(entry.path) },
                                             variant = AbyssButtonVariant.Ghost,
                                             bracketed = false,
+                                            contentDescription = stringResource(R.string.files_copy_path),
                                             contentPadding =
                                                 PaddingValues(horizontal = 4.dp, vertical = 4.dp),
                                         ) {

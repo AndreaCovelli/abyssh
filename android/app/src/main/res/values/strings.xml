@@ -308,6 +308,8 @@
     <string name="files_loading">Loading…</string>
     <string name="files_empty">Empty directory</string>
     <string name="files_no_matches">No matches</string>
+    <string name="files_back_to_terminal">back to terminal</string>
+    <string name="files_copy_path">copy path</string>
     <string name="action_download">download</string>
     <string name="multiplexer_sessions">multiplexer sessions</string>
     <string name="action_refresh">refresh</string>
