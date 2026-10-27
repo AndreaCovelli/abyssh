@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -71,7 +73,7 @@ internal fun ThemeSelectorSection(
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         AbyssText("── ", style = typography.labelSmall, color = colors.textMuted)
-        AbyssText("THEME", style = typography.labelSmall, color = colors.textMuted)
+        AbyssText(stringResource(R.string.settings_section_theme), style = typography.labelSmall, color = colors.textMuted)
         AbyssText(" ", style = typography.labelSmall, color = colors.textMuted)
         Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
     }
@@ -92,14 +94,14 @@ internal fun ThemeSelectorSection(
             themeByName = themeByName,
         )
         ThemeMode.System -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            AbyssText("dark", style = typography.labelSmall, color = colors.textMuted)
+            AbyssText(stringResource(R.string.theme_dark), style = typography.labelSmall, color = colors.textMuted)
             SingleThemePicker(
                 currentTheme = darkThemeName,
                 onThemeSelected = onDarkThemeSelected,
                 themeByName = themeByName,
             )
             Spacer(modifier = Modifier.height(8.dp))
-            AbyssText("light", style = typography.labelSmall, color = colors.textMuted)
+            AbyssText(stringResource(R.string.theme_light), style = typography.labelSmall, color = colors.textMuted)
             SingleThemePicker(
                 currentTheme = lightThemeName,
                 onThemeSelected = onLightThemeSelected,
@@ -189,7 +191,7 @@ private fun SingleThemePicker(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AbyssText("show preview", style = typography.label, color = colors.textSecondary)
+                AbyssText(stringResource(R.string.theme_show_preview), style = typography.label, color = colors.textSecondary)
                 AbyssSwitch(checked = showPreview, onCheckedChange = { showPreview = it })
             }
         }
@@ -256,8 +258,8 @@ private fun ThemePickerDropdown(
         AbyssTextField(
             value = query,
             onValueChange = onQueryChange,
-            label = "Search themes",
-            placeholder = "Type to filter",
+            label = stringResource(R.string.theme_search_label),
+            placeholder = stringResource(R.string.theme_search_placeholder),
             singleLine = true,
             autoFocus = false,
         )
@@ -339,7 +341,7 @@ private fun ThemePreview(theme: GhosttyTheme, name: String) {
                 Box(
                     modifier = Modifier.width(6.dp).height(6.dp).background(colors.accent),
                 )
-                AbyssText("preview", style = typography.labelSmall, color = colors.textSecondary)
+                AbyssText(stringResource(R.string.settings_accessory_preview), style = typography.labelSmall, color = colors.textSecondary)
             }
             AbyssText(name, style = typography.labelSmall, color = colors.textMuted)
         }

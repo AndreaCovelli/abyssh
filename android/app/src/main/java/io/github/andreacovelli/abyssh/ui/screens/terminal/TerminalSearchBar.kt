@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
@@ -68,8 +70,8 @@ fun TerminalSearchBar(
         AbyssTextField(
             value = state.query,
             onValueChange = onQueryChange,
-            label = "search",
-            placeholder = "search output",
+            label = stringResource(R.string.palette_search),
+            placeholder = stringResource(R.string.search_placeholder),
             singleLine = true,
             showLabel = false,
             modifier = Modifier.weight(1f).testTag("terminal_search_field"),
@@ -86,9 +88,9 @@ fun TerminalSearchBar(
             color = if (state.query.isNotEmpty() && state.matches.isEmpty()) colors.error else colors.textMuted,
             modifier = Modifier.testTag("terminal_search_counter"),
         )
-        SearchBarButton("↑", "previous match", onOlder)
-        SearchBarButton("↓", "next match", onNewer)
-        SearchBarButton("x", "close search", onClose)
+        SearchBarButton("↑", stringResource(R.string.search_previous), onOlder)
+        SearchBarButton("↓", stringResource(R.string.search_next), onNewer)
+        SearchBarButton("x", stringResource(R.string.search_close), onClose)
     }
 }
 

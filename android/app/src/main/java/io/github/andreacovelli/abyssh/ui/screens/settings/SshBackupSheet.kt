@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -41,6 +44,7 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -86,6 +90,7 @@ internal fun SshBackupSheet(
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
     val context = LocalContext.current
+    val resources = LocalResources.current
 
     // VM state
     val keys by viewModel.keys.collectAsStateWithLifecycle()
@@ -218,13 +223,13 @@ internal fun SshBackupSheet(
                     verticalAlignment = Alignment.Top,
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        AbyssText("ssh hosts & keys backup", style = typography.headline)
+                        AbyssText(stringResource(R.string.backup_title), style = typography.headline)
                         AbyssText(
                             text = when (effectiveStep) {
-                                is SheetStep.Overview -> "Backup your SSH keys and server profiles."
-                                is SheetStep.ExportPassphrase -> "Create an encrypted backup file."
-                                is SheetStep.ImportPassphrase -> "Restore from an encrypted backup file."
-                                is SheetStep.ImportPreview -> "Review what will be imported."
+                                is SheetStep.Overview -> stringResource(R.string.backup_overview_subtitle)
+                                is SheetStep.ExportPassphrase -> stringResource(R.string.backup_export_subtitle)
+                                is SheetStep.ImportPassphrase -> stringResource(R.string.backup_import_subtitle)
+                                is SheetStep.ImportPreview -> stringResource(R.string.backup_preview_subtitle)
                             },
                             style = typography.body,
                             color = colors.textSecondary,
@@ -269,8 +274,8 @@ internal fun SshBackupSheet(
                             onExport = {
                                 requireUserVerification(
                                     context = context,
-                                    title = "Export SSH backup",
-                                    subtitle = "Authenticate to create an encrypted backup",
+                                    title = resources.getString(R.string.backup_export_auth_title),
+                                    subtitle = resources.getString(R.string.backup_export_auth_subtitle),
                                 ) { result ->
                                     if (result == VerificationResult.Success || result == VerificationResult.Unavailable) {
                                         exportLauncher.launch(defaultBackupFileName())
@@ -293,8 +298,8 @@ internal fun SshBackupSheet(
                             onImport = {
                                 requireUserVerification(
                                     context = context,
-                                    title = "Import SSH backup",
-                                    subtitle = "Authenticate to restore an encrypted backup",
+                                    title = resources.getString(R.string.backup_import_auth_title),
+                                    subtitle = resources.getString(R.string.backup_import_auth_subtitle),
                                 ) { result ->
                                     if (result == VerificationResult.Success || result == VerificationResult.Unavailable) {
                                         importLauncher.launch(arrayOf(ABYSSH_BACKUP_MIME_TYPE, "*/*"))
@@ -324,7 +329,7 @@ internal fun SshBackupSheet(
                     if (isBusy) {
                         AbyssCard(modifier = Modifier.fillMaxWidth()) {
                             AbyssText(
-                                text = "Working…",
+                                text = stringResource(R.string.backup_working),
                                 style = typography.body,
                                 color = colors.textMuted,
                                 modifier = Modifier.padding(12.dp),
@@ -369,7 +374,7 @@ internal fun SshBackupSheet(
                             bracketed = true,
                             modifier = Modifier.weight(1f),
                         ) {
-                            AbyssText("dismiss", style = typography.label)
+                            AbyssText(stringResource(R.string.action_dismiss), style = typography.label)
                         }
                     }
                 }
@@ -413,7 +418,7 @@ internal fun SshBackupSheet(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        AbyssText("ssh key details", style = typography.headline)
+                        AbyssText(stringResource(R.string.key_details_title), style = typography.headline)
                         AbyssButton(
                             onClick = { selectedKeyDetails = null },
                             variant = AbyssButtonVariant.Ghost,
@@ -460,7 +465,7 @@ private fun OverviewContent(
             // Key list (safe metadata only)
             if (keys.isNotEmpty()) {
                 AbyssText(
-                    text = "configured keys:",
+                    text = stringResource(R.string.backup_configured_keys),
                     style = typography.labelSmall,
                     color = colors.textSecondary,
                 )
@@ -472,7 +477,7 @@ private fun OverviewContent(
                 }
             } else {
                 AbyssText(
-                    text = "No SSH keys configured yet. Add keys in a server profile.",
+                    text = stringResource(R.string.backup_no_keys),
                     style = typography.body,
                     color = colors.textSecondary,
                 )
@@ -480,7 +485,7 @@ private fun OverviewContent(
 
             // Warning about encrypted secrets
             AbyssText(
-                text = "Backups include all private keys, passwords, and passphrases inside an encrypted file.",
+                text = stringResource(R.string.backup_contents_note),
                 style = typography.bodySmall,
                 color = colors.textMuted,
             )
@@ -498,7 +503,7 @@ private fun OverviewContent(
             bracketed = true,
             modifier = Modifier.weight(1f),
         ) {
-            AbyssText("export", style = typography.label, color = colors.accent)
+            AbyssText(stringResource(R.string.backup_export), style = typography.label, color = colors.accent)
         }
         AbyssButton(
             onClick = onImport,
@@ -507,7 +512,7 @@ private fun OverviewContent(
             bracketed = true,
             modifier = Modifier.weight(1f),
         ) {
-            AbyssText("import", style = typography.label, color = colors.accent)
+            AbyssText(stringResource(R.string.backup_import), style = typography.label, color = colors.accent)
         }
     }
 }
@@ -545,7 +550,7 @@ private fun KeyInfoRow(key: SshKey, onClick: () -> Unit) {
                 }
             }
         }
-        AbyssText("view", style = typography.bodySmall, color = colors.accent)
+        AbyssText(stringResource(R.string.action_view), style = typography.bodySmall, color = colors.accent)
     }
 }
 
@@ -564,16 +569,16 @@ private fun KeyDetailsContent(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            AbyssText("name", style = typography.labelSmall, color = colors.textMuted)
+            AbyssText(stringResource(R.string.key_details_name), style = typography.labelSmall, color = colors.textMuted)
             AbyssText(key.name, style = typography.label)
-            AbyssText("public key", style = typography.labelSmall, color = colors.textMuted)
+            AbyssText(stringResource(R.string.key_details_public_key), style = typography.labelSmall, color = colors.textMuted)
             AbyssText(key.publicKeyOpenSsh, style = typography.body)
         }
     }
 
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         AbyssButton(onClick = onBack, variant = AbyssButtonVariant.Ghost, bracketed = true, modifier = Modifier.weight(1f)) {
-            AbyssText("back", style = typography.label, color = colors.textMuted)
+            AbyssText(stringResource(R.string.action_back), style = typography.label, color = colors.textMuted)
         }
         AbyssButton(
             onClick = {
@@ -585,7 +590,7 @@ private fun KeyDetailsContent(
             bracketed = true,
             modifier = Modifier.weight(1f),
         ) {
-            AbyssText("copy public", style = typography.label, color = colors.accent)
+            AbyssText(stringResource(R.string.key_details_copy_public), style = typography.label, color = colors.accent)
         }
     }
 }
@@ -623,8 +628,8 @@ private fun ExportPassphraseContent(
             AbyssTextField(
                 value = passphrase,
                 onValueChange = onPassphraseChange,
-                label = "encryption passphrase",
-                placeholder = "at least $BACKUP_MIN_PASSPHRASE_LENGTH characters",
+                label = stringResource(R.string.backup_encryption_passphrase),
+                placeholder = pluralStringResource(R.plurals.backup_passphrase_min_placeholder, BACKUP_MIN_PASSPHRASE_LENGTH, BACKUP_MIN_PASSPHRASE_LENGTH),
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 autoFocus = true,
@@ -632,27 +637,27 @@ private fun ExportPassphraseContent(
             AbyssTextField(
                 value = passphraseConfirm,
                 onValueChange = onPassphraseConfirmChange,
-                label = "confirm passphrase",
-                placeholder = "re-enter passphrase",
+                label = stringResource(R.string.backup_confirm_passphrase),
+                placeholder = stringResource(R.string.backup_reenter_passphrase),
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 autoFocus = false,
             )
             if (passphrase.length in 1 until BACKUP_MIN_PASSPHRASE_LENGTH) {
                 AbyssText(
-                    text = "Passphrase must be at least $BACKUP_MIN_PASSPHRASE_LENGTH characters.",
+                    text = pluralStringResource(R.plurals.backup_passphrase_too_short, BACKUP_MIN_PASSPHRASE_LENGTH, BACKUP_MIN_PASSPHRASE_LENGTH),
                     style = typography.bodySmall,
                     color = colors.textMuted,
                 )
             } else if (passphrase.length >= BACKUP_MIN_PASSPHRASE_LENGTH && !valid) {
                 AbyssText(
-                    text = "Passphrases do not match.",
+                    text = stringResource(R.string.backup_passphrase_mismatch),
                     style = typography.bodySmall,
                     color = colors.error,
                 )
             }
             AbyssText(
-                text = "You will be prompted to choose a save location and verify your identity.",
+                text = stringResource(R.string.backup_export_prompt_note),
                 style = typography.bodySmall,
                 color = colors.textMuted,
             )
@@ -670,7 +675,7 @@ private fun ExportPassphraseContent(
             borderColor = colors.textMuted,
             modifier = Modifier.weight(1f),
         ) {
-            AbyssText("cancel", style = typography.label, color = colors.textMuted)
+            AbyssText(stringResource(R.string.action_cancel), style = typography.label, color = colors.textMuted)
         }
         AbyssButton(
             onClick = onExport,
@@ -680,7 +685,7 @@ private fun ExportPassphraseContent(
             borderColor = colors.accent,
             modifier = Modifier.weight(1f),
         ) {
-            AbyssText("export", style = typography.label, color = colors.accent)
+            AbyssText(stringResource(R.string.backup_export), style = typography.label, color = colors.accent)
         }
     }
 }
@@ -707,14 +712,14 @@ private fun ImportPassphraseContent(
             AbyssTextField(
                 value = passphrase,
                 onValueChange = onPassphraseChange,
-                label = "backup passphrase",
-                placeholder = "passphrase used during export",
+                label = stringResource(R.string.backup_passphrase),
+                placeholder = stringResource(R.string.backup_passphrase_placeholder),
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 autoFocus = true,
             )
             AbyssText(
-                text = "You will be prompted to select a backup file and verify your identity.",
+                text = stringResource(R.string.backup_import_prompt_note),
                 style = typography.bodySmall,
                 color = colors.textMuted,
             )
@@ -732,7 +737,7 @@ private fun ImportPassphraseContent(
             borderColor = colors.textMuted,
             modifier = Modifier.weight(1f),
         ) {
-            AbyssText("cancel", style = typography.label, color = colors.textMuted)
+            AbyssText(stringResource(R.string.action_cancel), style = typography.label, color = colors.textMuted)
         }
         AbyssButton(
             onClick = onImport,
@@ -742,7 +747,7 @@ private fun ImportPassphraseContent(
             borderColor = colors.accent,
             modifier = Modifier.weight(1f),
         ) {
-            AbyssText("import", style = typography.label, color = colors.accent)
+            AbyssText(stringResource(R.string.backup_import), style = typography.label, color = colors.accent)
         }
     }
 }
@@ -764,7 +769,7 @@ private fun ImportPreviewContent(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            AbyssText("import summary", style = typography.label)
+            AbyssText(stringResource(R.string.backup_import_summary), style = typography.label)
 
             val summaryParts = mutableListOf<String>()
             val keyInsert = plan.keyInsertCount
@@ -773,14 +778,14 @@ private fun ImportPreviewContent(
             val hostImported = plan.hostActions.size
             val hostRenamed = plan.renamedHostCount
 
-            if (keyInsert > 0) summaryParts += "$keyInsert new key(s)"
-            if (keyReuse > 0) summaryParts += "$keyReuse existing key(s) reused"
-            if (keyRenamed > 0) summaryParts += "$keyRenamed key(s) renamed"
-            if (hostImported > 0) summaryParts += "$hostImported host(s)"
-            if (hostRenamed > 0) summaryParts += "$hostRenamed host(s) renamed"
+            if (keyInsert > 0) summaryParts += pluralStringResource(R.plurals.backup_summary_new_keys, keyInsert, keyInsert)
+            if (keyReuse > 0) summaryParts += pluralStringResource(R.plurals.backup_summary_reused_keys, keyReuse, keyReuse)
+            if (keyRenamed > 0) summaryParts += pluralStringResource(R.plurals.backup_summary_renamed_keys, keyRenamed, keyRenamed)
+            if (hostImported > 0) summaryParts += pluralStringResource(R.plurals.backup_summary_hosts, hostImported, hostImported)
+            if (hostRenamed > 0) summaryParts += pluralStringResource(R.plurals.backup_summary_renamed_hosts, hostRenamed, hostRenamed)
 
             AbyssText(
-                text = summaryParts.joinToString(", ").ifEmpty { "Nothing to import" },
+                text = summaryParts.joinToString(", ").ifEmpty { stringResource(R.string.backup_nothing_to_import) },
                 style = typography.body,
                 color = colors.textSecondary,
             )
@@ -789,7 +794,7 @@ private fun ImportPreviewContent(
             val reusedKeys = plan.keyActions.filterIsInstance<KeyImportAction.Reuse>()
             if (reusedKeys.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
-                AbyssText("reused keys:", style = typography.labelSmall, color = colors.textMuted)
+                AbyssText(stringResource(R.string.backup_reused_keys), style = typography.labelSmall, color = colors.textMuted)
                 reusedKeys.forEach { action ->
                     AbyssText(
                         text = "  • ${action.name}",
@@ -803,9 +808,9 @@ private fun ImportPreviewContent(
             val insertedKeys = plan.keyActions.filterIsInstance<KeyImportAction.Insert>()
             if (insertedKeys.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
-                AbyssText("new keys:", style = typography.labelSmall, color = colors.textMuted)
+                AbyssText(stringResource(R.string.backup_new_keys), style = typography.labelSmall, color = colors.textMuted)
                 insertedKeys.forEach { action ->
-                    val note = if (action.renamed) " (renamed)" else ""
+                    val note = if (action.renamed) stringResource(R.string.backup_renamed_suffix) else ""
                     AbyssText(
                         text = "  • ${action.key.name}$note",
                         style = typography.bodySmall,
@@ -819,7 +824,7 @@ private fun ImportPreviewContent(
             val normalHosts = plan.hostActions.filter { !it.renamed }
             if (normalHosts.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
-                AbyssText("hosts to add:", style = typography.labelSmall, color = colors.textMuted)
+                AbyssText(stringResource(R.string.backup_hosts_to_add), style = typography.labelSmall, color = colors.textMuted)
                 normalHosts.forEach { action ->
                     AbyssText(
                         text = "  • ${action.host.name} → ${action.host.host}",
@@ -830,10 +835,10 @@ private fun ImportPreviewContent(
             }
             if (renamedHosts.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
-                AbyssText("renamed hosts:", style = typography.labelSmall, color = colors.textMuted)
+                AbyssText(stringResource(R.string.backup_renamed_hosts), style = typography.labelSmall, color = colors.textMuted)
                 renamedHosts.forEach { action ->
                     AbyssText(
-                        text = "  • ${action.host.name} (conflict resolved)",
+                        text = stringResource(R.string.backup_conflict_resolved_item, action.host.name),
                         style = typography.bodySmall,
                         color = colors.textMuted,
                     )
@@ -841,7 +846,7 @@ private fun ImportPreviewContent(
             }
 
             AbyssText(
-                text = "Existing data will not be overwritten. Conflicting names will be auto-renamed.",
+                text = stringResource(R.string.backup_import_note),
                 style = typography.bodySmall,
                 color = colors.textMuted,
             )
@@ -859,7 +864,7 @@ private fun ImportPreviewContent(
             borderColor = colors.textMuted,
             modifier = Modifier.weight(1f),
         ) {
-            AbyssText("cancel", style = typography.label, color = colors.textMuted)
+            AbyssText(stringResource(R.string.action_cancel), style = typography.label, color = colors.textMuted)
         }
         AbyssButton(
             onClick = onConfirm,
@@ -869,7 +874,7 @@ private fun ImportPreviewContent(
             borderColor = colors.accent,
             modifier = Modifier.weight(1f),
         ) {
-            AbyssText("confirm import", style = typography.label, color = colors.accent)
+            AbyssText(stringResource(R.string.backup_confirm_import), style = typography.label, color = colors.accent)
         }
     }
 }

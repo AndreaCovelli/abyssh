@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -116,7 +119,7 @@ internal fun TerminalSettings(
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         AbyssText("── ", style = typography.labelSmall, color = colors.textMuted)
-        AbyssText("TERMINAL", style = typography.labelSmall, color = colors.textMuted)
+        AbyssText(stringResource(R.string.settings_section_terminal), style = typography.labelSmall, color = colors.textMuted)
         AbyssText(" ", style = typography.labelSmall, color = colors.textMuted)
         Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
     }
@@ -139,7 +142,7 @@ internal fun TerminalSettings(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    AbyssText("font size", style = typography.label)
+                    AbyssText(stringResource(R.string.settings_font_size), style = typography.label)
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -212,7 +215,7 @@ internal fun TerminalSettings(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    AbyssText("tab interface", style = typography.label)
+                    AbyssText(stringResource(R.string.settings_tab_interface), style = typography.label)
                     Box(contentAlignment = Alignment.TopEnd) {
                         AbyssButton(
                             onClick = { tabModeExpanded = !tabModeExpanded },
@@ -308,9 +311,9 @@ internal fun TerminalSettings(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        AbyssText("accessory keys", style = typography.label)
+                        AbyssText(stringResource(R.string.settings_accessory_keys), style = typography.label)
                         AbyssText(
-                            if (selectedEntries.isEmpty()) "no keys enabled" else "${selectedEntries.size} keys enabled",
+                            if (selectedEntries.isEmpty()) stringResource(R.string.settings_no_keys_enabled) else pluralStringResource(R.plurals.settings_keys_enabled, selectedEntries.size, selectedEntries.size),
                             style = typography.body,
                             color = colors.textMuted,
                         )
@@ -322,7 +325,7 @@ internal fun TerminalSettings(
                         bracketed = true,
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                     ) {
-                        AbyssText("customize", style = typography.label)
+                        AbyssText(stringResource(R.string.action_customize), style = typography.label)
                     }
                 }
 
@@ -335,9 +338,9 @@ internal fun TerminalSettings(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        AbyssText("single-row accessory bar", style = typography.label)
+                        AbyssText(stringResource(R.string.settings_single_row_bar), style = typography.label)
                         AbyssText(
-                            "off = two rows (default), on = one horizontal row",
+                            stringResource(R.string.settings_single_row_bar_hint),
                             style = typography.bodySmall,
                             color = colors.textMuted,
                         )
@@ -350,7 +353,7 @@ internal fun TerminalSettings(
 
                 if (selectedEntries.isEmpty()) {
                     AbyssText(
-                        "choose the accessory keys you want in the terminal bar.",
+                        stringResource(R.string.settings_accessory_keys_hint),
                         style = typography.body,
                         color = colors.textSecondary,
                     )
@@ -383,10 +386,10 @@ internal fun TerminalSettings(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        AbyssText("custom actions", style = typography.label)
+                        AbyssText(stringResource(R.string.settings_custom_actions), style = typography.label)
                         val actionCount = currentTerminalCustomKeyGroups.sumOf { it.actions.size }
                         AbyssText(
-                            if (actionCount == 0) "no custom actions" else "$actionCount actions",
+                            if (actionCount == 0) stringResource(R.string.settings_no_custom_actions) else pluralStringResource(R.plurals.settings_custom_action_count, actionCount, actionCount),
                             style = typography.body,
                             color = colors.textMuted,
                         )
@@ -398,12 +401,12 @@ internal fun TerminalSettings(
                         bracketed = true,
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                     ) {
-                        AbyssText("customize", style = typography.label)
+                        AbyssText(stringResource(R.string.action_customize), style = typography.label)
                     }
                 }
 
                 AbyssText(
-                    "create quick keys.",
+                    stringResource(R.string.settings_custom_actions_hint),
                     style = typography.body,
                     color = colors.textSecondary,
                 )
@@ -417,9 +420,9 @@ internal fun TerminalSettings(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        AbyssText("show actions button", style = typography.label)
+                        AbyssText(stringResource(R.string.settings_show_actions_button), style = typography.label)
                         AbyssText(
-                            "toggle visibility of the floating button in terminal",
+                            stringResource(R.string.settings_show_actions_button_hint),
                             style = typography.bodySmall,
                             color = colors.textMuted,
                         )
@@ -443,10 +446,10 @@ internal fun TerminalSettings(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        AbyssText("abyssh commands", style = typography.label)
+                        AbyssText(stringResource(R.string.settings_app_commands), style = typography.label)
                         val boundCount = builtinShortcuts.count { it.value.isNotEmpty() }
                         AbyssText(
-                            if (boundCount == 0) "no shortcuts" else "$boundCount shortcuts",
+                            if (boundCount == 0) stringResource(R.string.settings_no_shortcuts) else pluralStringResource(R.plurals.settings_shortcut_count, boundCount, boundCount),
                             style = typography.body,
                             color = colors.textMuted,
                         )
@@ -458,12 +461,12 @@ internal fun TerminalSettings(
                         bracketed = true,
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                     ) {
-                        AbyssText("customize", style = typography.label)
+                        AbyssText(stringResource(R.string.action_customize), style = typography.label)
                     }
                 }
 
                 AbyssText(
-                    "assign shortcut keys for builtin commands.",
+                    stringResource(R.string.settings_app_commands_hint),
                     style = typography.body,
                     color = colors.textSecondary,
                 )
@@ -483,9 +486,9 @@ internal fun TerminalSettings(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    AbyssText("enable local shell", style = typography.label)
+                    AbyssText(stringResource(R.string.settings_local_shell), style = typography.label)
                     AbyssText(
-                        "show the Android local shell shortcut on the server list",
+                        stringResource(R.string.settings_local_shell_hint),
                         style = typography.bodySmall,
                         color = colors.textMuted,
                     )
@@ -510,9 +513,9 @@ internal fun TerminalSettings(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    AbyssText("allow remote clipboard writes", style = typography.label)
+                    AbyssText(stringResource(R.string.settings_remote_clipboard), style = typography.label)
                     AbyssText(
-                        "lets the remote host set this device's clipboard (OSC 52). only the visible tab can write.",
+                        stringResource(R.string.settings_remote_clipboard_hint),
                         style = typography.bodySmall,
                         color = colors.textMuted,
                     )
@@ -537,9 +540,9 @@ internal fun TerminalSettings(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    AbyssText("ctrl+v pastes", style = typography.label)
+                    AbyssText(stringResource(R.string.settings_ctrl_v_pastes), style = typography.label)
                     AbyssText(
-                        "ctrl+shift+v always pastes. turn this off to send ctrl+v to the shell (e.g. vim block select).",
+                        stringResource(R.string.settings_ctrl_v_pastes_hint),
                         style = typography.bodySmall,
                         color = colors.textMuted,
                     )
@@ -564,9 +567,9 @@ internal fun TerminalSettings(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    AbyssText("keep screen awake", style = typography.label)
+                    AbyssText(stringResource(R.string.settings_keep_screen_awake), style = typography.label)
                     AbyssText(
-                        "prevent the display from sleeping while a terminal is open",
+                        stringResource(R.string.settings_keep_screen_awake_hint),
                         style = typography.bodySmall,
                         color = colors.textMuted,
                     )
@@ -591,9 +594,9 @@ internal fun TerminalSettings(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    AbyssText("hide screen contents", style = typography.label)
+                    AbyssText(stringResource(R.string.settings_hide_screen_contents), style = typography.label)
                     AbyssText(
-                        "blocks screenshots and hides the terminal in the app switcher",
+                        stringResource(R.string.settings_hide_screen_contents_hint),
                         style = typography.bodySmall,
                         color = colors.textMuted,
                     )
@@ -634,9 +637,9 @@ private fun DisableAutocorrectSetting(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                AbyssText("disable autocorrect", style = typography.label)
+                AbyssText(stringResource(R.string.settings_disable_autocorrect), style = typography.label)
                 AbyssText(
-                    "for keyboards that ignore the standard hint; may disable glide typing",
+                    stringResource(R.string.settings_disable_autocorrect_hint),
                     style = typography.bodySmall,
                     color = colors.textMuted,
                 )
@@ -719,9 +722,9 @@ internal fun AbysshCommandsEditorSheet(
                     verticalAlignment = Alignment.Top,
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        AbyssText("abyssh commands", style = typography.headline)
+                        AbyssText(stringResource(R.string.settings_app_commands), style = typography.headline)
                         AbyssText(
-                            "empty key hides the command. overrides custom action shortcut keys.",
+                            stringResource(R.string.settings_app_commands_sheet_hint),
                             style = typography.body,
                             color = colors.textSecondary,
                         )
@@ -763,7 +766,7 @@ internal fun AbysshCommandsEditorSheet(
                                 onValueChange = { setKey(command, it) },
                                 label = command.label,
                                 showLabel = false,
-                                placeholder = "key",
+                                placeholder = stringResource(R.string.settings_shortcut_key_placeholder),
                                 singleLine = true,
                                 autoFocus = false,
                                 modifier = Modifier.width(64.dp),
@@ -782,7 +785,7 @@ internal fun AbysshCommandsEditorSheet(
                         bracketed = true,
                         modifier = Modifier.weight(1f),
                     ) {
-                        AbyssText("reset", style = typography.label)
+                        AbyssText(stringResource(R.string.action_reset), style = typography.label)
                     }
 
                     AbyssButton(
@@ -790,7 +793,7 @@ internal fun AbysshCommandsEditorSheet(
                         bracketed = true,
                         modifier = Modifier.weight(1f),
                     ) {
-                        AbyssText("save", style = typography.label, color = colors.onAccent)
+                        AbyssText(stringResource(R.string.action_save), style = typography.label, color = colors.onAccent)
                     }
                 }
             }
@@ -798,9 +801,10 @@ internal fun AbysshCommandsEditorSheet(
     }
 }
 
+@Composable
 private fun tabModeLabel(mode: TerminalTabMode): String = when (mode) {
-    TerminalTabMode.Classic -> "palette"
-    TerminalTabMode.Strip -> "tab strip"
+    TerminalTabMode.Classic -> stringResource(R.string.settings_tab_mode_palette)
+    TerminalTabMode.Strip -> stringResource(R.string.settings_tab_mode_strip)
 }
 
 
@@ -892,9 +896,9 @@ internal fun AccessoryLayoutEditorSheet(
                     verticalAlignment = Alignment.Top,
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        AbyssText("accessory keys", style = typography.headline)
+                        AbyssText(stringResource(R.string.settings_accessory_keys), style = typography.headline)
                         AbyssText(
-                            "choose which keys appear in the bar.",
+                            stringResource(R.string.settings_accessory_sheet_hint),
                             style = typography.body,
                             color = colors.textSecondary,
                         )
@@ -921,7 +925,7 @@ internal fun AccessoryLayoutEditorSheet(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            AbyssText("preview", style = typography.label)
+                            AbyssText(stringResource(R.string.settings_accessory_preview), style = typography.label)
                             AbyssText(
                                 if (selectedEntries.isEmpty()) "0" else selectedEntries.size.toString(),
                                 style = typography.labelSmall,
@@ -931,7 +935,7 @@ internal fun AccessoryLayoutEditorSheet(
 
                         if (selectedEntries.isEmpty()) {
                             AbyssText(
-                                "no accessory keys selected.",
+                                stringResource(R.string.settings_no_accessory_keys),
                                 style = typography.body,
                                 color = colors.textMuted,
                             )
@@ -995,7 +999,7 @@ internal fun AccessoryLayoutEditorSheet(
                         }
 
                         AbyssText(
-                            "long-press a key in preview, then drag to place it where you want.",
+                            stringResource(R.string.settings_accessory_drag_hint),
                             style = typography.body,
                             color = colors.textMuted,
                         )
@@ -1030,7 +1034,7 @@ internal fun AccessoryLayoutEditorSheet(
                         bracketed = true,
                         modifier = Modifier.weight(1f),
                     ) {
-                        AbyssText("reset", style = typography.label)
+                        AbyssText(stringResource(R.string.action_reset), style = typography.label)
                     }
 
                     AbyssButton(
@@ -1038,7 +1042,7 @@ internal fun AccessoryLayoutEditorSheet(
                         bracketed = true,
                         modifier = Modifier.weight(1f),
                     ) {
-                        AbyssText("save", style = typography.label, color = colors.onAccent)
+                        AbyssText(stringResource(R.string.action_save), style = typography.label, color = colors.onAccent)
                     }
                 }
             }
@@ -1093,9 +1097,9 @@ private fun AccessoryChooserRow(
     val childCount = group?.group?.children?.size ?: 0
     val description =
         if (group != null) {
-            if (childCount > 0) "group · $childCount keys" else "group"
+            if (childCount > 0) pluralStringResource(R.plurals.settings_accessory_group_count, childCount, childCount) else stringResource(R.string.settings_accessory_group)
         } else {
-            "key"
+            stringResource(R.string.settings_accessory_key)
         }
 
     Row(

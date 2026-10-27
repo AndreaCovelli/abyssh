@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -138,12 +141,13 @@ fun TerminalTabManager(
         }
     }
 
+    val closeDescription = stringResource(R.string.tab_manager_close)
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.background)
-                .semantics { contentDescription = "close tab manager" }
+                .semantics { contentDescription = closeDescription }
                 .clickable(onClick = onDismiss)
                 .focusRequester(focusRequester)
                 .focusable()
@@ -193,13 +197,13 @@ fun TerminalTabManager(
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                 ) {
                     AbyssText(
-                        "tabs",
+                        stringResource(R.string.tab_manager_title),
                         style = typography.body,
                         color = colors.textSecondary,
                         modifier = Modifier.align(Alignment.Center),
                     )
                     AbyssText(
-                        "${entries.size} session${if (entries.size != 1) "s" else ""}",
+                        pluralStringResource(R.plurals.tab_manager_session_count, entries.size, entries.size),
                         style = typography.labelSmall,
                         color = colors.textMuted,
                         modifier = Modifier.align(Alignment.CenterEnd),
@@ -226,7 +230,11 @@ fun TerminalTabManager(
                             val status = rowState.status
                             val title = rowState.title?.takeIf { it.isNotBlank() }
                             val workingDirectory = rowState.pwd?.takeIf { it.isNotBlank() }
-                            val statusText = statusLabel(status)
+                            val rowDescription = stringResource(
+                                if (isActive) R.string.tab_manager_row_active else R.string.tab_manager_row_inactive,
+                                statusLabel(status),
+                                label,
+                            )
 
                             Row(
                                 modifier = Modifier
@@ -241,7 +249,7 @@ fun TerminalTabManager(
                                         else colors.border.copy(alpha = 0.35f),
                                     )
                                     .semantics {
-                                        contentDescription = "$statusText — $label, ${if (isActive) "active" else "inactive"}"
+                                        contentDescription = rowDescription
                                     }
                                     .clickable { onSelectTab(tab.id) }
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -332,10 +340,10 @@ fun TerminalTabManager(
                                             horizontal = 8.dp,
                                             vertical = 4.dp,
                                         ),
-                                        contentDescription = "duplicate ${label}",
+                                        contentDescription = stringResource(R.string.tab_manager_duplicate, label),
                                     ) {
                                         AbyssText(
-                                            "dup",
+                                            stringResource(R.string.tab_manager_dup),
                                             style = typography.labelSmall,
                                             color = colors.textSecondary,
                                         )
@@ -349,10 +357,10 @@ fun TerminalTabManager(
                                             horizontal = 8.dp,
                                             vertical = 4.dp,
                                         ),
-                                        contentDescription = "close ${label}",
+                                        contentDescription = stringResource(R.string.tab_manager_close_tab, label),
                                     ) {
                                         AbyssText(
-                                            "close",
+                                            stringResource(R.string.action_close),
                                             style = typography.labelSmall,
                                             color = colors.textMuted,
                                         )
@@ -376,8 +384,8 @@ fun TerminalTabManager(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        PaletteHint("\u21B5", "open")
-                        PaletteHint("esc", "dismiss")
+                        PaletteHint("\u21B5", stringResource(R.string.action_open))
+                        PaletteHint("esc", stringResource(R.string.action_dismiss))
                         Spacer(modifier = Modifier.weight(1f))
                         AbyssButton(
                             onClick = {
@@ -389,7 +397,7 @@ fun TerminalTabManager(
                             bracketed = true,
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                         ) {
-                            AbyssText("+ new", style = typography.labelSmall, color = colors.accent)
+                            AbyssText(stringResource(R.string.tab_manager_new), style = typography.labelSmall, color = colors.accent)
                         }
                     }
                 } else {
@@ -402,7 +410,7 @@ fun TerminalTabManager(
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             AbyssText(
-                                "no terminal sessions",
+                                stringResource(R.string.terminal_no_sessions),
                                 style = typography.body,
                                 color = colors.textMuted,
                             )
@@ -417,7 +425,7 @@ fun TerminalTabManager(
                                 bracketed = true,
                             ) {
                                 AbyssText(
-                                    "+ new connection",
+                                    stringResource(R.string.terminal_new_connection),
                                     style = typography.label,
                                     color = colors.accent,
                                 )

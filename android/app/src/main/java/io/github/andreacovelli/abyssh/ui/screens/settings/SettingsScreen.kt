@@ -1,6 +1,9 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,10 +39,10 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 import io.github.andreacovelli.abyssh.ui.theme.ThemeMode
 
-enum class SettingsCategory(val label: String) {
-    General("general"),
-    Terminal("terminal"),
-    Keys("keys"),
+enum class SettingsCategory(@StringRes val label: Int) {
+    General(R.string.settings_category_general),
+    Terminal(R.string.settings_category_terminal),
+    Keys(R.string.settings_category_keys),
 }
 
 @Composable
@@ -125,7 +128,7 @@ fun SettingsScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         AbyssText("$ ", style = typography.headline, color = colors.textMuted)
-                        AbyssText("settings", style = typography.headline)
+                        AbyssText(stringResource(R.string.server_list_settings), style = typography.headline)
                     }
                     AbyssButton(
                         onClick = onBack,
@@ -155,7 +158,7 @@ fun SettingsScreen(
                             modifier = Modifier.weight(1f),
                         ) {
                             AbyssText(
-                                category.label,
+                                stringResource(category.label),
                                 style = typography.label,
                                 color = if (isSelected) colors.accent else colors.textSecondary,
                             )
@@ -284,7 +287,7 @@ private fun GeneralSettings(
     Spacer(modifier = Modifier.height(16.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         AbyssText("── ", style = typography.labelSmall, color = colors.textMuted)
-        AbyssText("SECURITY", style = typography.labelSmall, color = colors.textMuted)
+        AbyssText(stringResource(R.string.settings_section_security), style = typography.labelSmall, color = colors.textMuted)
         AbyssText(" ", style = typography.labelSmall, color = colors.textMuted)
         Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
     }
@@ -294,7 +297,7 @@ private fun GeneralSettings(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AbyssText("lock app on open", style = typography.label)
+        AbyssText(stringResource(R.string.settings_lock_app), style = typography.label)
         AbyssSwitch(checked = appLockEnabled, onCheckedChange = onAppLockEnabledChanged)
     }
     Spacer(modifier = Modifier.height(20.dp))
@@ -303,12 +306,12 @@ private fun GeneralSettings(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AbyssText("verify before server connect", style = typography.label)
+        AbyssText(stringResource(R.string.settings_verify_before_connect), style = typography.label)
         AbyssSwitch(checked = requireAuthOnConnect, onCheckedChange = onRequireAuthOnConnectChanged)
     }
     Spacer(modifier = Modifier.height(4.dp))
     AbyssText(
-        "use biometrics or device PIN/pattern.",
+        stringResource(R.string.settings_verify_hint),
         style = typography.bodySmall,
         color = colors.textMuted,
     )
@@ -318,16 +321,16 @@ private fun GeneralSettings(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AbyssText("ssh hosts & keys backup", style = typography.label)
+        AbyssText(stringResource(R.string.backup_title), style = typography.label)
         AbyssButton(
             onClick = onOpenBackup,
             variant = AbyssButtonVariant.Outlined,
             bracketed = true,
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
         ) {
-            AbyssText("manage", style = typography.label)
+            AbyssText(stringResource(R.string.action_manage), style = typography.label)
         }
     }
     Spacer(modifier = Modifier.height(4.dp))
-    AbyssText("encrypted export/import.", style = typography.bodySmall, color = colors.textMuted)
+    AbyssText(stringResource(R.string.settings_backup_hint), style = typography.bodySmall, color = colors.textMuted)
 }

@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -214,7 +216,7 @@ internal fun TerminalCustomActionsEditorSheet(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    AbyssText("custom actions", style = typography.headline)
+                    AbyssText(stringResource(R.string.settings_custom_actions), style = typography.headline)
                     AbyssButton(
                         onClick = onDismiss,
                         variant = AbyssButtonVariant.Ghost,
@@ -318,7 +320,7 @@ internal fun TerminalCustomActionsEditorSheet(
                             bracketed = true,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            AbyssText("+ add", style = typography.label)
+                            AbyssText(stringResource(R.string.custom_actions_add), style = typography.label)
                         }
                     } else {
                         AbyssCard(modifier = Modifier.fillMaxWidth()) {
@@ -329,7 +331,7 @@ internal fun TerminalCustomActionsEditorSheet(
                             AbyssTextField(
                                 value = keyInput,
                                 onValueChange = { keyInput = it },
-                                label = "Key",
+                                label = stringResource(R.string.custom_actions_key_label),
                                 placeholder = "a",
                                 singleLine = true,
                                 autoFocus = false,
@@ -339,8 +341,8 @@ internal fun TerminalCustomActionsEditorSheet(
                                 onValueChange = { updated ->
                                     shortcutInput = updated.takeLast(1)
                                 },
-                                label = "Shortcut",
-                                placeholder = "single key for abyssh command",
+                                label = stringResource(R.string.custom_actions_shortcut_label),
+                                placeholder = stringResource(R.string.custom_actions_shortcut_placeholder),
                                 singleLine = true,
                                 autoFocus = false,
                             )
@@ -350,13 +352,13 @@ internal fun TerminalCustomActionsEditorSheet(
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 val enabledLabel = if (enabledModifiers.isEmpty()) {
-                                    "No modifiers"
+                                    stringResource(R.string.custom_actions_no_modifiers)
                                 } else {
                                     CustomActionModifier.entries
                                         .filter { it in enabledModifiers }
                                         .joinToString(separator = "+") { it.label }
                                 }
-                                AbyssText("Modifiers: $enabledLabel", style = typography.label)
+                                AbyssText(stringResource(R.string.custom_actions_modifiers, enabledLabel), style = typography.label)
                             }
 
                             AnimatedVisibility(visible = showModifierDropdown) {
@@ -399,7 +401,7 @@ internal fun TerminalCustomActionsEditorSheet(
                                         valueInput = updated
                                     }
                                 },
-                                label = "Value",
+                                label = stringResource(R.string.custom_actions_value_label),
                                 placeholder = ":q",
                                 singleLine = false,
                                 autoFocus = false,
@@ -407,7 +409,7 @@ internal fun TerminalCustomActionsEditorSheet(
                             )
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                                 AbyssText(
-                                    text = if (valuePreview.isBlank()) "Preview: (empty)" else "Preview: $valuePreview",
+                                    text = if (valuePreview.isBlank()) stringResource(R.string.custom_actions_preview_empty) else stringResource(R.string.custom_actions_preview, valuePreview),
                                     style = typography.labelSmall,
                                     color = colors.textMuted,
                                 )
@@ -420,7 +422,7 @@ internal fun TerminalCustomActionsEditorSheet(
                                     bracketed = true,
                                     modifier = Modifier.weight(1f),
                                 ) {
-                                    AbyssText(if (editingIndex != null) "save" else "add", style = typography.label)
+                                    AbyssText(stringResource(if (editingIndex != null) R.string.action_save else R.string.action_add), style = typography.label)
                                 }
                                 AbyssButton(
                                     onClick = { cancelEdit() },
@@ -429,7 +431,7 @@ internal fun TerminalCustomActionsEditorSheet(
                                     borderColor = colors.textMuted,
                                     modifier = Modifier.weight(1f),
                                 ) {
-                                    AbyssText("cancel", style = typography.label, color = colors.textMuted)
+                                    AbyssText(stringResource(R.string.action_cancel), style = typography.label, color = colors.textMuted)
                                 }
                             }
                         }
@@ -477,7 +479,7 @@ private fun CustomActionSwipeRow(
                 .padding(end = 12.dp),
             contentAlignment = Alignment.CenterEnd,
         ) {
-            AbyssText("[ delete ]", style = typography.label, color = colors.background)
+            AbyssText(stringResource(R.string.custom_actions_swipe_delete), style = typography.label, color = colors.background)
         }
 
         Row(

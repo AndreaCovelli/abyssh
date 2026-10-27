@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.screens.addserver
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -29,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -57,6 +61,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
 
     val scrollState = rememberScrollState()
     val context = LocalContext.current
+    val resources = LocalResources.current
     var showAdditionalSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(vm) {
@@ -68,23 +73,19 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
     pendingReconnect?.let { pending ->
         val count = pending.tabs.size
         AbyssDialog(
-            title = "Reconnect ${if (count == 1) "open session" else "$count open sessions"}?",
-            confirmLabel = "Reconnect",
-            dismissLabel = "Keep",
+            title = pluralStringResource(R.plurals.reconnect_sessions_title, count, count),
+            confirmLabel = stringResource(R.string.reconnect_confirm),
+            dismissLabel = stringResource(R.string.reconnect_keep),
             onConfirm = { vm.finishPendingReconnect(reconnect = true) },
             onDismiss = { vm.finishPendingReconnect(reconnect = false) },
         ) {
             AbyssText(
-                if (count == 1) {
-                    "A session to this server is still using the old settings. Reconnect it now with the new ones?"
-                } else {
-                    "$count sessions to this server are still using the old settings. Reconnect them now with the new ones?"
-                },
+                pluralStringResource(R.plurals.reconnect_sessions_body, count, count),
                 style = typography.body,
                 color = colors.textMuted,
             )
             AbyssText(
-                "Programs running in them stop, unless they run inside tmux. If you keep them, they switch over on their next reconnect.",
+                stringResource(R.string.reconnect_sessions_note),
                 style = typography.bodySmall,
                 color = colors.textMuted,
             )
@@ -104,20 +105,20 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
             AbyssText("$ ", style = typography.headline, color = colors.textMuted)
             AbyssText(
                 when {
-                    form.id != null -> "edit server"
-                    vm.isCopy -> "copy server"
-                    else -> "add server"
+                    form.id != null -> stringResource(R.string.server_edit_title)
+                    vm.isCopy -> stringResource(R.string.server_copy_title)
+                    else -> stringResource(R.string.server_add_title)
                 },
                 style = typography.headline,
             )
         }
 
-        SectionHeader("CONNECTION")
+        SectionHeader(stringResource(R.string.server_section_connection))
         AbyssTextField(
             value = form.name,
             onValueChange = vm::updateName,
-            label = "Name",
-            placeholder = "My server",
+            label = stringResource(R.string.server_name_label),
+            placeholder = stringResource(R.string.server_name_placeholder),
             singleLine = true,
             autoFocus = false,
             modifier = Modifier.fillMaxWidth(),
@@ -125,7 +126,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
         AbyssTextField(
             value = form.host,
             onValueChange = vm::updateHost,
-            label = "Host",
+            label = stringResource(R.string.server_host_label),
             placeholder = "192.168.1.10",
             singleLine = true,
             keyboardOptions =
@@ -144,7 +145,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
             AbyssTextField(
                 value = form.port,
                 onValueChange = vm::updatePort,
-                label = "Port",
+                label = stringResource(R.string.server_port_label),
                 singleLine = true,
                 keyboardOptions =
                     KeyboardOptions(
@@ -158,7 +159,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
             AbyssTextField(
                 value = form.username,
                 onValueChange = vm::updateUsername,
-                label = "Username",
+                label = stringResource(R.string.server_username_label),
                 placeholder = "root",
                 singleLine = true,
                 keyboardOptions =
@@ -174,7 +175,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
 
         SectionDivider()
 
-        SectionHeader("TRANSPORT")
+        SectionHeader(stringResource(R.string.server_section_transport))
         AbyssSegmentedControl(
             options = listOf(Transport.SSH, Transport.TailscaleSSH, Transport.Mosh),
             labels =
@@ -188,7 +189,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
         )
         if (form.transport == Transport.TailscaleSSH) {
             AbyssText(
-                "Connects through the Tailscale network. Use the host's Tailscale IP (100.x.x.x) or MagicDNS name.",
+                stringResource(R.string.server_tailscale_hint),
                 style = typography.bodySmall,
                 color = colors.textMuted,
             )
@@ -196,7 +197,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
 
         SectionDivider()
 
-        SectionHeader("AUTHENTICATION")
+        SectionHeader(stringResource(R.string.server_section_authentication))
         val authOptions =
             when (form.transport) {
                 Transport.TailscaleSSH ->
@@ -212,9 +213,9 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
             options = authOptions,
             labels =
                 mapOf(
-                    AuthMethod.Password to "password",
-                    AuthMethod.Key to "ssh key",
-                    AuthMethod.None to "none",
+                    AuthMethod.Password to stringResource(R.string.auth_password),
+                    AuthMethod.Key to stringResource(R.string.auth_ssh_key),
+                    AuthMethod.None to stringResource(R.string.auth_none),
                 ),
             selected = segmentSelected,
             onSelect = vm::updateAuthMethod,
@@ -225,7 +226,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
                 AbyssTextField(
                     value = form.password,
                     onValueChange = vm::updatePassword,
-                    label = "Password",
+                    label = stringResource(R.string.server_password_label),
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     autoFocus = false,
@@ -241,7 +242,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
                     onSelectKey = { vm.selectStoredKey(it) },
                     onCopyPublicKey = {
                         if (form.publicKeyOpenSsh.isBlank()) {
-                            Toast.makeText(context, "No public key available", Toast.LENGTH_SHORT)
+                            Toast.makeText(context, resources.getString(R.string.public_key_unavailable), Toast.LENGTH_SHORT)
                                 .show()
                         } else {
                             val clipboard =
@@ -250,7 +251,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
                             clipboard.setPrimaryClip(
                                 ClipData.newPlainText("SSH Public Key", form.publicKeyOpenSsh)
                             )
-                            Toast.makeText(context, "Public key copied", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, resources.getString(R.string.public_key_copied), Toast.LENGTH_SHORT).show()
                         }
                     },
                 )
@@ -270,13 +271,13 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
                             }
                         },
                     )
-                    AbyssText("set passphrase", style = typography.label)
+                    AbyssText(stringResource(R.string.key_set_passphrase), style = typography.label)
                 }
                 if (form.authMethod == AuthMethod.KeyWithPassphrase) {
                     AbyssTextField(
                         value = form.keyPassphrase,
                         onValueChange = vm::updateKeyPassphrase,
-                        label = "Passphrase",
+                        label = stringResource(R.string.key_passphrase_label),
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         autoFocus = false,
@@ -286,7 +287,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
             }
             AuthMethod.None -> {
                 AbyssText(
-                    "no SSH auth uses Tailscale SSH policy (`tailscale up --ssh`) on the server. connect through Tailscale SSH instead of regular sshd credentials.",
+                    stringResource(R.string.auth_none_hint),
                     style = typography.bodySmall,
                     color = colors.textMuted,
                 )
@@ -301,7 +302,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
                 variant = AbyssButtonVariant.Outlined,
                 bracketed = true,
             ) {
-                AbyssText("additional settings", style = typography.label)
+                AbyssText(stringResource(R.string.server_additional_settings), style = typography.label)
             }
         }
         if (showAdditionalSettings) {
@@ -310,7 +311,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
             ) {
-                AbyssText("require biometric auth", style = typography.label)
+                AbyssText(stringResource(R.string.server_require_biometric), style = typography.label)
                 AbyssSwitch(
                     checked = form.requireAuthOnConnect,
                     onCheckedChange = vm::updateRequireAuthOnConnect,
@@ -336,10 +337,10 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
         ) {
             val label =
                 when (testState.status) {
-                    ConnectionTestStatus.Idle -> "test connection"
-                    ConnectionTestStatus.Running -> "testing…"
-                    ConnectionTestStatus.Success -> "connected"
-                    ConnectionTestStatus.Error -> "test failed"
+                    ConnectionTestStatus.Idle -> stringResource(R.string.connection_test)
+                    ConnectionTestStatus.Running -> stringResource(R.string.connection_testing)
+                    ConnectionTestStatus.Success -> stringResource(R.string.connection_connected)
+                    ConnectionTestStatus.Error -> stringResource(R.string.connection_test_failed)
                 }
             AbyssText(label, style = typography.label)
         }
@@ -354,7 +355,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
             borderColor = colors.accent,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            AbyssText("save", style = typography.label, color = colors.accent)
+            AbyssText(stringResource(R.string.action_save), style = typography.label, color = colors.accent)
         }
     }
 }
@@ -406,7 +407,7 @@ private fun KeyAuthSection(
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                 modifier = Modifier.weight(1f),
             ) {
-                AbyssText("copy public key", style = typography.labelSmall, color = colors.accent)
+                AbyssText(stringResource(R.string.public_key_copy), style = typography.labelSmall, color = colors.accent)
             }
             AbyssButton(
                 onClick = onGenerate,
@@ -414,12 +415,12 @@ private fun KeyAuthSection(
                 bracketed = true,
                 modifier = Modifier.weight(1f),
             ) {
-                AbyssText("new key", style = typography.label)
+                AbyssText(stringResource(R.string.key_new), style = typography.label)
             }
         }
     } else {
         AbyssText(
-            "generate an Ed25519 key, then copy the public key to ~/.ssh/authorized_keys on the remote host.",
+            stringResource(R.string.key_generate_hint),
             style = typography.bodySmall,
             color = colors.textMuted,
         )
@@ -429,7 +430,7 @@ private fun KeyAuthSection(
             bracketed = true,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            AbyssText("generate key", style = typography.label)
+            AbyssText(stringResource(R.string.key_generate), style = typography.label)
         }
     }
 
@@ -442,7 +443,7 @@ private fun KeyAuthSection(
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
         ) {
             AbyssText(
-                text = if (selectedKey != null) "change key" else "use existing key",
+                text = stringResource(if (selectedKey != null) R.string.key_change else R.string.key_use_existing),
                 style = typography.labelSmall,
                 color = colors.accent,
             )
@@ -492,14 +493,14 @@ private enum class MultiplexerOption(val type: MultiplexerType?) {
 private fun MultiplexerSection(selected: MultiplexerType?, onSelect: (MultiplexerType?) -> Unit) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
-    SectionHeader("SESSION PERSISTENCE")
+    SectionHeader(stringResource(R.string.server_section_persistence))
     val options = MultiplexerOption.entries.toList()
     val selectedOption = options.firstOrNull { it.type == selected } ?: MultiplexerOption.Off
     AbyssSegmentedControl(
         options = options,
         labels =
             mapOf(
-                MultiplexerOption.Off to "off",
+                MultiplexerOption.Off to stringResource(R.string.multiplexer_off),
                 MultiplexerOption.Tmux to "tmux",
                 MultiplexerOption.Zellij to "zellij",
                 MultiplexerOption.Zmx to "zmx",
@@ -514,12 +515,12 @@ private fun MultiplexerSection(selected: MultiplexerType?, onSelect: (Multiplexe
 private fun PostConnectActionSection(command: String, onCommandChange: (String) -> Unit) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
-    AbyssText("auto-run on connect", style = typography.label)
+    AbyssText(stringResource(R.string.server_auto_run), style = typography.label)
     AbyssTextField(
         value = command,
         onValueChange = onCommandChange,
         label = "",
-        placeholder = "e.g. tmux attach -t main",
+        placeholder = stringResource(R.string.server_auto_run_placeholder),
         showLabel = false,
         singleLine = true,
         autoFocus = false,
@@ -534,7 +535,7 @@ private fun PostConnectActionSection(command: String, onCommandChange: (String) 
             borderColor = colors.textMuted,
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
         ) {
-            AbyssText("clear", style = typography.labelSmall, color = colors.textMuted)
+            AbyssText(stringResource(R.string.action_clear), style = typography.labelSmall, color = colors.textMuted)
         }
     }
 }

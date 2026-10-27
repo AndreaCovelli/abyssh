@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -40,7 +42,7 @@ internal fun FontSelectorSection(
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         AbyssText("── ", style = typography.labelSmall, color = colors.textMuted)
-        AbyssText("FONT", style = typography.labelSmall, color = colors.textMuted)
+        AbyssText(stringResource(R.string.settings_section_font), style = typography.labelSmall, color = colors.textMuted)
         AbyssText(" ", style = typography.labelSmall, color = colors.textMuted)
         Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
     }

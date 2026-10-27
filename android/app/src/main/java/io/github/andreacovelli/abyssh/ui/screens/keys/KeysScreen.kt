@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.screens.keys
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -23,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -40,6 +44,7 @@ fun KeysContent(vm: KeysViewModel, modifier: Modifier = Modifier) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
     val context = LocalContext.current
+    val resources = LocalResources.current
     val state by vm.state.collectAsStateWithLifecycle()
 
     var renameTarget by remember { mutableStateOf<KeyListItem?>(null) }
@@ -51,14 +56,14 @@ fun KeysContent(vm: KeysViewModel, modifier: Modifier = Modifier) {
         vm.events.collect { event ->
             when (event) {
                 is KeysEvent.Generated ->
-                    Toast.makeText(context, "generated ${event.name}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, resources.getString(R.string.keys_generated, event.name), Toast.LENGTH_SHORT).show()
                 is KeysEvent.Imported -> {
                     showImportDialog = false
                     val msg =
                         if (event.publicKeyDerived) {
-                            "imported ${event.name}"
+                            resources.getString(R.string.keys_imported, event.name)
                         } else {
-                            "imported ${event.name} (public key unavailable for this format)"
+                            resources.getString(R.string.keys_imported_without_public, event.name)
                         }
                     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                 }
@@ -68,13 +73,13 @@ fun KeysContent(vm: KeysViewModel, modifier: Modifier = Modifier) {
                     Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
                 KeysEvent.Renamed -> {
                     renameTarget = null
-                    Toast.makeText(context, "key renamed", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, resources.getString(R.string.keys_renamed), Toast.LENGTH_SHORT).show()
                 }
                 is KeysEvent.RenameFailed ->
                     Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
                 KeysEvent.Deleted -> {
                     deleteTarget = null
-                    Toast.makeText(context, "key deleted", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, resources.getString(R.string.keys_deleted), Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -91,7 +96,7 @@ fun KeysContent(vm: KeysViewModel, modifier: Modifier = Modifier) {
                 bracketed = true,
                 modifier = Modifier.weight(1f),
             ) {
-                AbyssText("+ generate key", style = typography.label, color = colors.accent)
+                AbyssText(stringResource(R.string.keys_generate_button), style = typography.label, color = colors.accent)
             }
             AbyssButton(
                 onClick = { showImportDialog = true },
@@ -99,13 +104,13 @@ fun KeysContent(vm: KeysViewModel, modifier: Modifier = Modifier) {
                 bracketed = true,
                 modifier = Modifier.weight(1f),
             ) {
-                AbyssText("import key", style = typography.label, color = colors.accent)
+                AbyssText(stringResource(R.string.keys_import_title), style = typography.label, color = colors.accent)
             }
         }
 
         if (state.keys.isEmpty()) {
             AbyssText(
-                text = "No SSH keys yet. Generate one here, or from a server's key auth section.",
+                text = stringResource(R.string.keys_empty),
                 style = typography.bodySmall,
                 color = colors.textMuted,
             )
@@ -159,6 +164,7 @@ private fun KeyCard(item: KeyListItem, onRename: () -> Unit, onDelete: () -> Uni
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
     val context = LocalContext.current
+    val resources = LocalResources.current
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val key = item.key
 
@@ -193,18 +199,18 @@ private fun KeyCard(item: KeyListItem, onRename: () -> Unit, onDelete: () -> Uni
                     bracketed = true,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 ) {
-                    AbyssText("rename", style = typography.label, color = colors.textSecondary)
+                    AbyssText(stringResource(R.string.action_rename), style = typography.label, color = colors.textSecondary)
                 }
                 AbyssButton(
                     onClick = {
                         clipboard.setPrimaryClip(ClipData.newPlainText("SSH Public Key", key.publicKeyOpenSsh))
-                        Toast.makeText(context, "public key copied", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, resources.getString(R.string.public_key_copied), Toast.LENGTH_SHORT).show()
                     },
                     variant = AbyssButtonVariant.Ghost,
                     bracketed = true,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 ) {
-                    AbyssText("copy", style = typography.label, color = colors.textSecondary)
+                    AbyssText(stringResource(R.string.action_copy), style = typography.label, color = colors.textSecondary)
                 }
                 AbyssButton(
                     onClick = onDelete,
@@ -213,7 +219,7 @@ private fun KeyCard(item: KeyListItem, onRename: () -> Unit, onDelete: () -> Uni
                     borderColor = colors.error,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 ) {
-                    AbyssText("delete", style = typography.label, color = colors.error)
+                    AbyssText(stringResource(R.string.action_delete), style = typography.label, color = colors.error)
                 }
             }
         }
@@ -224,12 +230,12 @@ private fun KeyCard(item: KeyListItem, onRename: () -> Unit, onDelete: () -> Uni
 private fun GenerateKeyDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf("android-ed25519") }
     AbyssDialog(
-        title = "generate key",
-        confirmLabel = "generate",
+        title = stringResource(R.string.key_generate),
+        confirmLabel = stringResource(R.string.action_generate),
         onConfirm = { onConfirm(name) },
         onDismiss = onDismiss,
     ) {
-        AbyssTextField(value = name, onValueChange = { name = it }, label = "name", singleLine = true)
+        AbyssTextField(value = name, onValueChange = { name = it }, label = stringResource(R.string.key_details_name), singleLine = true)
     }
 }
 
@@ -238,6 +244,7 @@ private fun ImportKeyDialog(onConfirm: (String, String) -> Unit, onDismiss: () -
     val typography = AbyssTypography.current
     val colors = AbyssColors.current
     val context = LocalContext.current
+    val resources = LocalResources.current
     var name by remember { mutableStateOf("imported-key") }
     var privateKey by remember { mutableStateOf("") }
 
@@ -253,15 +260,15 @@ private fun ImportKeyDialog(onConfirm: (String, String) -> Unit, onDismiss: () -
                     }
                     .getOrNull()
             if (content.isNullOrBlank()) {
-                Toast.makeText(context, "Couldn't read that file", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, resources.getString(R.string.keys_file_read_failed), Toast.LENGTH_SHORT).show()
             } else {
                 privateKey = content
             }
         }
 
     AbyssDialog(
-        title = "import key",
-        confirmLabel = "import",
+        title = stringResource(R.string.keys_import_title),
+        confirmLabel = stringResource(R.string.backup_import),
         onConfirm = { onConfirm(name, privateKey) },
         onDismiss = onDismiss,
     ) {
@@ -269,7 +276,7 @@ private fun ImportKeyDialog(onConfirm: (String, String) -> Unit, onDismiss: () -
             AbyssTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = "name",
+                label = stringResource(R.string.key_details_name),
                 singleLine = true,
                 autoFocus = false,
             )
@@ -279,21 +286,21 @@ private fun ImportKeyDialog(onConfirm: (String, String) -> Unit, onDismiss: () -
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AbyssText("private key", style = typography.labelSmall, color = colors.textMuted)
+                AbyssText(stringResource(R.string.keys_private_key), style = typography.labelSmall, color = colors.textMuted)
                 AbyssButton(
                     onClick = { fileLauncher.launch(arrayOf("*/*")) },
                     variant = AbyssButtonVariant.Ghost,
                     bracketed = true,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 ) {
-                    AbyssText("choose file", style = typography.labelSmall, color = colors.accent)
+                    AbyssText(stringResource(R.string.keys_choose_file), style = typography.labelSmall, color = colors.accent)
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
             AbyssTextField(
                 value = privateKey,
                 onValueChange = { privateKey = it },
-                label = "private key",
+                label = stringResource(R.string.keys_private_key),
                 placeholder = "-----BEGIN OPENSSH PRIVATE KEY-----",
                 singleLine = false,
                 maxLines = 8,
@@ -303,7 +310,7 @@ private fun ImportKeyDialog(onConfirm: (String, String) -> Unit, onDismiss: () -
             Spacer(modifier = Modifier.height(6.dp))
             AbyssText(
                 text =
-                    "paste or choose an OpenSSH private key. add a passphrase on the server if it's encrypted.",
+                    stringResource(R.string.keys_import_hint),
                 style = typography.bodySmall,
                 color = colors.textMuted,
             )
@@ -319,12 +326,12 @@ private fun RenameKeyDialog(
 ) {
     var name by remember { mutableStateOf(currentName) }
     AbyssDialog(
-        title = "rename key",
-        confirmLabel = "rename",
+        title = stringResource(R.string.keys_rename_title),
+        confirmLabel = stringResource(R.string.action_rename),
         onConfirm = { onConfirm(name) },
         onDismiss = onDismiss,
     ) {
-        AbyssTextField(value = name, onValueChange = { name = it }, label = "name", singleLine = true)
+        AbyssTextField(value = name, onValueChange = { name = it }, label = stringResource(R.string.key_details_name), singleLine = true)
     }
 }
 
@@ -333,22 +340,20 @@ private fun DeleteKeyDialog(item: KeyListItem, onConfirm: () -> Unit, onDismiss:
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
     AbyssDialog(
-        title = "delete key",
-        confirmLabel = "delete",
+        title = stringResource(R.string.keys_delete_title),
+        confirmLabel = stringResource(R.string.action_delete),
         onConfirm = onConfirm,
         onDismiss = onDismiss,
     ) {
         Column {
             AbyssText(
-                text = "Delete \"${item.key.name}\"? This can't be undone.",
+                text = stringResource(R.string.keys_delete_confirm, item.key.name),
                 style = typography.body,
             )
             if (item.usedByServers > 0) {
                 Spacer(modifier = Modifier.height(8.dp))
                 AbyssText(
-                    text =
-                        "${item.usedByServers} server${if (item.usedByServers == 1) "" else "s"} " +
-                            "using this key will need auth updated before connecting again.",
+                    text = pluralStringResource(R.plurals.keys_delete_used_by, item.usedByServers, item.usedByServers),
                     style = typography.bodySmall,
                     color = colors.warning,
                 )

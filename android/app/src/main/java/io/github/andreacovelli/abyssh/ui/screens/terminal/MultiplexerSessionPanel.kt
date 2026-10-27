@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -44,7 +46,7 @@ fun MultiplexerSessionPanel(
     Column(modifier = modifier.fillMaxWidth()) {
         Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                AbyssText("multiplexer sessions", style = typography.body, color = colors.textSecondary)
+                AbyssText(stringResource(R.string.multiplexer_sessions), style = typography.body, color = colors.textSecondary)
                 Spacer(modifier = Modifier.weight(1f))
                 if (loading) {
                     AbyssText("…", style = typography.labelSmall, color = colors.textMuted)
@@ -85,7 +87,7 @@ fun MultiplexerSessionPanel(
                 borderColor = colors.textMuted,
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
             ) {
-                AbyssText("refresh", style = typography.labelSmall, color = colors.textMuted)
+                AbyssText(stringResource(R.string.action_refresh), style = typography.labelSmall, color = colors.textMuted)
             }
             AbyssButton(
                 onClick = {
@@ -97,7 +99,7 @@ fun MultiplexerSessionPanel(
                 borderColor = colors.textMuted,
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
             ) {
-                AbyssText("new", style = typography.labelSmall, color = colors.textMuted)
+                AbyssText(stringResource(R.string.action_new), style = typography.labelSmall, color = colors.textMuted)
             }
         }
     }
@@ -135,7 +137,7 @@ private fun MultiplexerSessionRow(
             modifier = Modifier.weight(1f),
         )
         if (session.attached) {
-            AbyssText("attached", style = typography.labelSmall, color = colors.textMuted)
+            AbyssText(stringResource(R.string.multiplexer_attached), style = typography.labelSmall, color = colors.textMuted)
         }
         AbyssButton(
             onClick = onAttach,
@@ -145,7 +147,7 @@ private fun MultiplexerSessionRow(
             borderColor = colors.textMuted,
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
         ) {
-            AbyssText("attach", style = typography.labelSmall, color = colors.accent)
+            AbyssText(stringResource(R.string.multiplexer_attach), style = typography.labelSmall, color = colors.accent)
         }
     }
 }

@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.screens.serverlist
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
@@ -41,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -77,6 +81,7 @@ fun ServerListScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val application = context.applicationContext as Application
     val sessionRepo = remember(application) { TerminalSessionRepository.getInstance(application) }
     val connectedHostIds by sessionRepo.connectedHostIds.collectAsStateWithLifecycle()
@@ -144,7 +149,7 @@ fun ServerListScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AbyssText("$ ", style = typography.headline, color = colors.textMuted)
-                    AbyssText("Abyssh", style = typography.headline)
+                    AbyssText(stringResource(R.string.app_name), style = typography.headline)
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -155,7 +160,7 @@ fun ServerListScreen(
                             bracketed = true,
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         ) {
-                            AbyssText("filter", style = typography.label, color = colors.textSecondary)
+                            AbyssText(stringResource(R.string.server_list_filter), style = typography.label, color = colors.textSecondary)
                         }
                     }
                     AbyssButton(
@@ -163,7 +168,7 @@ fun ServerListScreen(
                         variant = AbyssButtonVariant.Outlined,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     ) {
-                        AbyssText("settings", style = typography.label, color = colors.textSecondary)
+                        AbyssText(stringResource(R.string.server_list_settings), style = typography.label, color = colors.textSecondary)
                     }
                 }
             }
@@ -176,14 +181,14 @@ fun ServerListScreen(
                         if (value.isBlank()) isSearchVisible = false
                     },
                     label = "",
-                    placeholder = "filter hosts",
+                    placeholder = stringResource(R.string.server_list_filter_placeholder),
                     singleLine = true,
                     showLabel = false,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
 
-            SectionHeader("HOSTS")
+            SectionHeader(stringResource(R.string.server_list_section_hosts))
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (localShellEnabled) {
@@ -200,7 +205,7 @@ fun ServerListScreen(
                             EmptyState()
                         } else {
                             AbyssText(
-                                "no hosts match",
+                                stringResource(R.string.server_list_no_match),
                                 style = typography.body,
                                 color = colors.textMuted,
                             )
@@ -220,7 +225,7 @@ fun ServerListScreen(
                                 if (is_selected_connected) {
                                     Toast.makeText(
                                         context,
-                                        "Disconnect before deleting this host",
+                                        resources.getString(R.string.server_list_disconnect_before_delete),
                                         Toast.LENGTH_SHORT,
                                     ).show()
                                 } else {
@@ -264,16 +269,16 @@ fun ServerListScreen(
                 .padding(16.dp)
                 .height(44.dp),
         ) {
-            AbyssText("+ add server", style = typography.label, color = colors.onAccent)
+            AbyssText(stringResource(R.string.server_list_add), style = typography.label, color = colors.onAccent)
         }
 
         val pendingDisconnectHost = hosts.firstOrNull { it.id == pendingDisconnectHostId }
         if (pendingDisconnectHost != null) {
             val sessionCount = openTabs.count { it.spec.hostId == pendingDisconnectHost.id }
             AbyssDialog(
-                title = "Disconnect ${pendingDisconnectHost.name}?",
-                confirmLabel = "Disconnect",
-                dismissLabel = "Cancel",
+                title = stringResource(R.string.server_list_disconnect_title, pendingDisconnectHost.name),
+                confirmLabel = stringResource(R.string.server_list_disconnect_confirm),
+                dismissLabel = stringResource(R.string.action_cancel),
                 onConfirm = {
                     selectedHostId = null
                     openTabs
@@ -286,9 +291,8 @@ fun ServerListScreen(
                 },
                 onDismiss = { pendingDisconnectHostId = null },
             ) {
-                val sessionLabel = if (sessionCount == 1) "session" else "sessions"
                 AbyssText(
-                    "This closes $sessionCount $sessionLabel on this host.",
+                    pluralStringResource(R.plurals.server_list_disconnect_body, sessionCount, sessionCount),
                     style = typography.body,
                     color = colors.warning,
                 )
@@ -326,10 +330,10 @@ private fun EmptyState() {
     val typography = AbyssTypography.current
     AbyssCard(background = colors.surfaceVariant) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-            AbyssText("# no hosts configured", style = typography.body, color = colors.textMuted)
+            AbyssText(stringResource(R.string.server_list_empty_title), style = typography.body, color = colors.textMuted)
             Spacer(modifier = Modifier.height(8.dp))
             AbyssText(
-                "add your first host to connect quickly.",
+                stringResource(R.string.server_list_empty_hint),
                 style = typography.bodySmall,
                 color = colors.textSecondary,
             )
@@ -366,13 +370,13 @@ private fun LocalShellCard(
                         style = typography.title,
                         color = if (isOpen) colors.success else colors.textMuted,
                     )
-                    AbyssText("local shell", style = typography.title)
+                    AbyssText(stringResource(R.string.server_list_local_shell), style = typography.title)
                 }
-                TuiBadge(text = "android", color = colors.accentSecondary)
+                TuiBadge(text = stringResource(R.string.server_list_local_badge), color = colors.accentSecondary)
             }
             Spacer(modifier = Modifier.height(2.dp))
             AbyssText(
-                "> this device · app sandbox",
+                stringResource(R.string.server_list_local_subtitle),
                 style = typography.body,
                 color = colors.textSecondary,
                 maxLines = 1,
@@ -385,10 +389,10 @@ private fun LocalShellCard(
                     variant = AbyssButtonVariant.Outlined,
                     bracketed = true,
                     borderColor = colors.accentSecondary,
-                    contentDescription = "Open local shell",
+                    contentDescription = stringResource(R.string.server_list_open_local_shell),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 ) {
-                    AbyssText("open", style = typography.label, color = colors.accentSecondary)
+                    AbyssText(stringResource(R.string.action_open), style = typography.label, color = colors.accentSecondary)
                 }
             }
         }
@@ -441,7 +445,7 @@ private fun HostCard(
                         bracketed = true,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     ) {
-                        AbyssText("cancel", style = typography.label, color = colors.textSecondary)
+                        AbyssText(stringResource(R.string.action_cancel), style = typography.label, color = colors.textSecondary)
                     }
                     AbyssButton(
                         onClick = onCopySelection,
@@ -450,7 +454,7 @@ private fun HostCard(
                         testTag = "host_copy_${host.id}",
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     ) {
-                        AbyssText("copy", style = typography.label, color = colors.accentSecondary)
+                        AbyssText(stringResource(R.string.action_copy), style = typography.label, color = colors.accentSecondary)
                     }
                     AbyssButton(
                         onClick = onDeleteSelection,
@@ -458,7 +462,7 @@ private fun HostCard(
                         bracketed = true,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     ) {
-                        AbyssText("delete", style = typography.label, color = colors.error)
+                        AbyssText(stringResource(R.string.action_delete), style = typography.label, color = colors.error)
                     }
                 }
             }
@@ -477,7 +481,7 @@ private fun HostCard(
                         .padding(end = 14.dp),
                 ) {
                     AbyssText(
-                        "[disconnect]",
+                        stringResource(R.string.server_list_swipe_disconnect),
                         style = typography.label,
                         color = colors.background,
                         modifier = Modifier.align(Alignment.CenterEnd),
@@ -574,7 +578,7 @@ private fun HostCard(
                                 testTag = "host_edit_${host.id}",
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                             ) {
-                                AbyssText("edit", style = typography.label, color = colors.textMuted)
+                                AbyssText(stringResource(R.string.action_edit), style = typography.label, color = colors.textMuted)
                             }
                             AbyssButton(
                                 onClick = {
@@ -584,11 +588,11 @@ private fun HostCard(
                                 bracketed = true,
                                 borderColor = if (isConnected) colors.warning else colors.accentSecondary,
                                 testTag = "host_connect_${host.id}",
-                                contentDescription = if (isConnected) "Disconnect from ${host.name}" else "Connect to ${host.name}",
+                                contentDescription = stringResource(if (isConnected) R.string.server_list_disconnect_from else R.string.server_list_connect_to, host.name),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                             ) {
                                 AbyssText(
-                                    if (isConnected) "disconnect" else "connect",
+                                    stringResource(if (isConnected) R.string.action_disconnect else R.string.action_connect_lower),
                                     style = typography.label,
                                     color = if (isConnected) colors.warning else colors.accentSecondary,
                                 )

@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.files
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -97,7 +99,7 @@ fun FileBrowserScreen(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 label = "",
-                placeholder = "filter...",
+                placeholder = stringResource(R.string.files_filter_placeholder),
                 singleLine = true,
                 showLabel = false,
                 autoFocus = false,
@@ -117,13 +119,13 @@ fun FileBrowserScreen(
 
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             when {
-                state.isLoading -> AbyssText("Loading...", style = typography.body)
+                state.isLoading -> AbyssText(stringResource(R.string.files_loading), style = typography.body)
                 state.error != null ->
                     AbyssText(state.error, style = typography.body, color = colors.error)
                 state.entries.isEmpty() ->
-                    AbyssText("Empty directory", style = typography.body, color = colors.textMuted)
+                    AbyssText(stringResource(R.string.files_empty), style = typography.body, color = colors.textMuted)
                 filteredEntries.isEmpty() ->
-                    AbyssText("No matches", style = typography.body, color = colors.textMuted)
+                    AbyssText(stringResource(R.string.files_no_matches), style = typography.body, color = colors.textMuted)
                 else ->
                     key(state.currentPath) {
                         val lazyState = rememberLazyListState()
@@ -222,7 +224,7 @@ fun FileBrowserScreen(
                                                             ),
                                                     ) {
                                                         AbyssText(
-                                                            "open",
+                                                            stringResource(R.string.action_open),
                                                             style = typography.label,
                                                             color = colors.textMuted,
                                                         )
@@ -241,7 +243,7 @@ fun FileBrowserScreen(
                                                             ),
                                                     ) {
                                                         AbyssText(
-                                                            "download",
+                                                            stringResource(R.string.action_download),
                                                             style = typography.label,
                                                             color = colors.textMuted,
                                                         )
@@ -261,7 +263,7 @@ fun FileBrowserScreen(
                                                         ),
                                                 ) {
                                                     AbyssText(
-                                                        "delete",
+                                                        stringResource(R.string.action_delete),
                                                         style = typography.label,
                                                         color = colors.error,
                                                     )

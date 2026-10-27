@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -49,8 +51,8 @@ fun TerminalLinkBar(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        LinkBarButton("open", onOpen, "link_open")
-        LinkBarButton("copy", onCopy, "link_copy")
+        LinkBarButton(stringResource(R.string.action_open), onOpen, "link_open")
+        LinkBarButton(stringResource(R.string.action_copy), onCopy, "link_copy")
         LinkBarButton("x", onDismiss, "link_dismiss")
     }
 }

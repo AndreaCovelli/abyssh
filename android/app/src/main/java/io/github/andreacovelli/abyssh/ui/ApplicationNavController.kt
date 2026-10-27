@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui
 
+import io.github.andreacovelli.abyssh.R
 import android.app.Application
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -9,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -36,6 +38,7 @@ import io.github.andreacovelli.abyssh.ui.security.requireUserVerification
 fun ApplicationNavController() {
     val navController = rememberNavController()
     val context = LocalContext.current
+    val resources = LocalResources.current
     val application = context.applicationContext as Application
     val lifecycleOwner = LocalLifecycleOwner.current
     var appUnlocked by rememberSaveable { mutableStateOf(false) }
@@ -81,8 +84,8 @@ fun ApplicationNavController() {
                         } else {
                             requireUserVerification(
                                 context = context,
-                                title = "Verify to open local shell",
-                                subtitle = "Authenticate to open this device shell",
+                                title = resources.getString(R.string.nav_verify_local_shell_title),
+                                subtitle = resources.getString(R.string.nav_verify_local_shell_subtitle),
                             ) { result ->
                                 if (result == VerificationResult.Success) {
                                     navController.navigate("terminal/local")
@@ -101,8 +104,8 @@ fun ApplicationNavController() {
                     } else {
                         requireUserVerification(
                             context = context,
-                            title = "Verify to connect",
-                            subtitle = "Authenticate to open this server session",
+                            title = resources.getString(R.string.terminal_verify_title),
+                            subtitle = resources.getString(R.string.terminal_verify_subtitle),
                         ) { result ->
                             if (result == VerificationResult.Success) {
                                 navController.navigate("terminal/$id")
@@ -267,8 +270,8 @@ fun ApplicationNavController() {
             unlockPromptRequested = true
             requireUserVerification(
                 context = context,
-                title = "Unlock abyssh",
-                subtitle = "Authenticate to continue",
+                title = resources.getString(R.string.nav_unlock_title),
+                subtitle = resources.getString(R.string.nav_unlock_subtitle),
             ) { result ->
                 appUnlocked = result == VerificationResult.Success
                 if (result != VerificationResult.Success) {

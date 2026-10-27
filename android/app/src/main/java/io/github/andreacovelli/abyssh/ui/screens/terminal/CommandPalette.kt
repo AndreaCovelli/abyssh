@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.stringResource
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -119,7 +121,7 @@ fun CommandPalette(
       ) {
         Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
           AbyssText(
-              "tabs",
+              stringResource(R.string.tab_manager_title),
               style = typography.body,
               color = colors.textSecondary,
               modifier = Modifier.align(Alignment.Center),
@@ -227,8 +229,8 @@ fun CommandPalette(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-          PaletteHint("↵", "open")
-          PaletteHint("esc", "dismiss")
+          PaletteHint("↵", stringResource(R.string.action_open))
+          PaletteHint("esc", stringResource(R.string.action_dismiss))
           Spacer(modifier = Modifier.weight(1f))
           AbyssButton(
               onClick = onSearch,
@@ -237,7 +239,7 @@ fun CommandPalette(
               contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
               testTag = "palette_search",
           ) {
-            AbyssText("search", style = typography.labelSmall, color = colors.accent)
+            AbyssText(stringResource(R.string.palette_search), style = typography.labelSmall, color = colors.accent)
           }
           AbyssButton(
               onClick = onAddTab,
@@ -245,7 +247,7 @@ fun CommandPalette(
               bracketed = true,
               contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
           ) {
-            AbyssText("+ new", style = typography.labelSmall, color = colors.accent)
+            AbyssText(stringResource(R.string.tab_manager_new), style = typography.labelSmall, color = colors.accent)
           }
         }
         if (multiplexerEnabled) {

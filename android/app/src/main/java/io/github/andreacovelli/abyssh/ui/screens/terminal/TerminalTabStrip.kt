@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -46,13 +48,16 @@ private const val TAB_TITLE_COLLISION_PREFIX_LENGTH = 14
 /**
  * Human-readable status text for accessibility.
  */
-internal fun statusLabel(status: SessionStatus): String = when (status) {
-    SessionStatus.Connected -> "connected"
-    SessionStatus.Connecting -> "connecting"
-    SessionStatus.Reconnecting -> "reconnecting"
-    SessionStatus.Disconnected -> "disconnected"
-    SessionStatus.Error -> "error"
-}
+@Composable
+internal fun statusLabel(status: SessionStatus): String = stringResource(
+    when (status) {
+        SessionStatus.Connected -> R.string.session_status_connected
+        SessionStatus.Connecting -> R.string.session_status_connecting
+        SessionStatus.Reconnecting -> R.string.session_status_reconnecting
+        SessionStatus.Disconnected -> R.string.session_status_disconnected
+        SessionStatus.Error -> R.string.session_status_error
+    },
+)
 
 /**
  * Always-visible global top tab strip for strip mode.
@@ -170,7 +175,7 @@ fun TerminalTabStrip(
                     modifier = Modifier.defaultMinSize(minHeight = 32.dp, minWidth = 32.dp),
                     variant = AbyssButtonVariant.Ghost,
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                    contentDescription = "all tabs",
+                    contentDescription = stringResource(R.string.tab_strip_all_tabs),
                 ) {
                     AbyssText(
                         if (tabs.size > 99) "≡" else "${tabs.size}",
@@ -186,7 +191,7 @@ fun TerminalTabStrip(
                     modifier = Modifier.defaultMinSize(minHeight = 32.dp, minWidth = 32.dp),
                     variant = AbyssButtonVariant.Ghost,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    contentDescription = "new connection",
+                    contentDescription = stringResource(R.string.tab_strip_new_connection),
                 ) {
                     AbyssText("+", style = typography.label, color = colors.accent)
                 }

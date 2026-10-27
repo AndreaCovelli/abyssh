@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.stringResource
+import androidx.compose.runtime.Composable
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
 import kotlin.math.abs
@@ -7,9 +10,10 @@ import kotlin.math.abs
 internal fun terminalTabDisplayLabel(tab: TabSession): String =
     if (tab.spec.transport == Transport.LocalShell) tab.spec.tabLabel else terminalTabAlias(tab)
 
+@Composable
 internal fun terminalTabEndpointLabel(tab: TabSession): String =
     if (tab.spec.transport == Transport.LocalShell) {
-        "this device · app sandbox"
+        stringResource(R.string.tab_local_endpoint)
     } else {
         "${tab.spec.username}@${tab.spec.host}:${tab.spec.port}"
     }

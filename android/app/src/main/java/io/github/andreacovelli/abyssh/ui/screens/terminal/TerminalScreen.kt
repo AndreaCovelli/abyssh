@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.res.stringResource
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
@@ -62,6 +64,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
@@ -196,7 +199,7 @@ private fun NewTabHostPicker(
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
             ) {
                 AbyssText(
-                    "new session on $currentHostName",
+                    stringResource(R.string.terminal_new_session_on, currentHostName),
                     style = typography.label,
                     color = colors.textPrimary,
                 )
@@ -405,6 +408,7 @@ fun TerminalScreen(
     val searchState by vm.search.collectAsStateWithLifecycle()
     val tappedLink by vm.tappedLink.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val resources = LocalResources.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
@@ -595,8 +599,8 @@ fun TerminalScreen(
         if (requiresVerification) {
             requireUserVerification(
                 context = context,
-                title = "Verify to connect",
-                subtitle = "Authenticate to open this server session",
+                title = resources.getString(R.string.terminal_verify_title),
+                subtitle = resources.getString(R.string.terminal_verify_subtitle),
             ) { result ->
                 if (
                     result == VerificationResult.Success &&
@@ -631,7 +635,7 @@ fun TerminalScreen(
     }
     val pickerCurrentHostId = activeTab?.spec?.hostId ?: hostId
     val pickerCurrentHostName =
-        currentHostName ?: hosts.firstOrNull { it.id == pickerCurrentHostId }?.name ?: "current host"
+        currentHostName ?: hosts.firstOrNull { it.id == pickerCurrentHostId }?.name ?: stringResource(R.string.terminal_current_host)
     val pickerOtherHosts =
         remember(hosts, pickerCurrentHostId) { hosts.filter { it.id != pickerCurrentHostId } }
     val openNewSessionForHost: (Long) -> Unit = { pickerHostId ->
@@ -718,8 +722,8 @@ fun TerminalScreen(
 
     if (showPassphrasePrompt) {
         AbyssDialog(
-            title = "Key passphrase",
-            confirmLabel = "Connect",
+            title = stringResource(R.string.terminal_key_passphrase_title),
+            confirmLabel = stringResource(R.string.action_connect),
             onConfirm = {
                 val spec = pendingTabSpec
                 showPassphrasePrompt = false
@@ -748,7 +752,7 @@ fun TerminalScreen(
             AbyssTextField(
                 value = passphraseInput,
                 onValueChange = { passphraseInput = it },
-                label = "Passphrase",
+                label = stringResource(R.string.key_passphrase_label),
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
@@ -757,7 +761,7 @@ fun TerminalScreen(
     }
 
     fun showLocalShellFilesUnsupported() {
-        val message = "Files are not supported for local shell"
+        val message = resources.getString(R.string.terminal_files_unsupported_local)
         localShellFilesMessage = message
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
@@ -775,7 +779,7 @@ fun TerminalScreen(
         val previous = lastSessionStatus
         lastSessionStatus = sessionState.status
         if (sessionState.status == SessionStatus.Error && previous != SessionStatus.Error) {
-            val message = sessionState.error ?: "Connection failed"
+            val message = sessionState.error ?: resources.getString(R.string.terminal_connection_failed)
             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
         }
     }
@@ -784,9 +788,9 @@ fun TerminalScreen(
         val prompt = hostKeyPrompt
         AbyssDialog(
             onDismiss = { vm.onHostKeyDecision(false) },
-            title = "Verify host key",
-            confirmLabel = "Accept",
-            dismissLabel = "Reject",
+            title = stringResource(R.string.terminal_host_key_title),
+            confirmLabel = stringResource(R.string.action_accept),
+            dismissLabel = stringResource(R.string.action_reject),
             onConfirm = { vm.onHostKeyDecision(true) },
             properties = DialogProperties(
                 dismissOnBackPress = false,
@@ -795,13 +799,13 @@ fun TerminalScreen(
         ) {
             val previous = prompt?.previousFingerprint
             val message = buildString {
-                append("Host: ${prompt?.host}:${prompt?.port}\n")
-                append("Algorithm: ${prompt?.algorithm}\n")
+                appendLine(stringResource(R.string.terminal_host_key_host, prompt?.host.orEmpty(), prompt?.port ?: 0))
+                appendLine(stringResource(R.string.terminal_host_key_algorithm, prompt?.algorithm.orEmpty()))
                 if (previous != null) {
-                    append("WARNING: host key changed!\n")
-                    append("Old: $previous\n")
+                    appendLine(stringResource(R.string.terminal_host_key_changed))
+                    appendLine(stringResource(R.string.terminal_host_key_old, previous))
                 }
-                append("New: ${prompt?.fingerprint}")
+                append(stringResource(R.string.terminal_host_key_new, prompt?.fingerprint.orEmpty()))
             }
             AbyssText(message, style = typography.body)
         }
@@ -837,7 +841,7 @@ fun TerminalScreen(
                             TerminalRecoveryActions(
                                 message = errorMessage,
                                 isMultiplexerPreflight = preflightError != null,
-                                dismissMultiplexerLabel = if (multiplexerState.reconnectRecovery) "dismiss" else "back",
+                                dismissMultiplexerLabel = stringResource(if (multiplexerState.reconnectRecovery) R.string.action_dismiss else R.string.action_back),
                                 onRetryMultiplexer = vm::retryPendingMultiplexerOpen,
                                 onConnectWithoutMultiplexer = {
                                     if (vm.connectPendingWithoutMultiplexer()) {
@@ -850,7 +854,7 @@ fun TerminalScreen(
                         } else if (tabs.isEmpty()) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 AbyssText(
-                                    "no terminal sessions",
+                                    stringResource(R.string.terminal_no_sessions),
                                     style = typography.body,
                                     color = colors.textMuted,
                                 )
@@ -862,7 +866,7 @@ fun TerminalScreen(
                                     bracketed = true,
                                 ) {
                                     AbyssText(
-                                        "+ new connection",
+                                        stringResource(R.string.terminal_new_connection),
                                         style = typography.label,
                                         color = colors.accent,
                                     )
@@ -882,7 +886,7 @@ fun TerminalScreen(
                         TerminalRecoveryActions(
                             message = errorMessage,
                             isMultiplexerPreflight = preflightError != null,
-                            dismissMultiplexerLabel = if (multiplexerState.reconnectRecovery) "dismiss" else "back",
+                            dismissMultiplexerLabel = stringResource(if (multiplexerState.reconnectRecovery) R.string.action_dismiss else R.string.action_back),
                             onRetryMultiplexer = vm::retryPendingMultiplexerOpen,
                             onConnectWithoutMultiplexer = {
                                 if (vm.connectPendingWithoutMultiplexer()) {
@@ -899,7 +903,7 @@ fun TerminalScreen(
 
         SessionStatus.Connecting -> {
             val hostLabel = if (multiplexerState.preflightLoading) {
-                "${multiplexerState.preflightHostLabel ?: "server"}..."
+                "${multiplexerState.preflightHostLabel ?: stringResource(R.string.terminal_host_fallback)}..."
             } else if (tabMode == TerminalTabMode.Strip) {
                 activeTab?.spec?.tabLabel?.let { "$it..." } ?: "..."
             } else {
@@ -920,7 +924,7 @@ fun TerminalScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         AbyssText(
-                            "Connecting to $hostLabel",
+                            stringResource(R.string.terminal_connecting_to, hostLabel),
                             style = typography.body,
                         )
                     }
@@ -931,7 +935,7 @@ fun TerminalScreen(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     AbyssText(
-                        "Connecting to $hostLabel",
+                        stringResource(R.string.terminal_connecting_to, hostLabel),
                         style = typography.body,
                     )
                 }
@@ -1065,7 +1069,7 @@ fun TerminalScreen(
                     fun copySelection() {
                         val text = selectionState?.text ?: return
                         clipboard?.setPrimaryClip(ClipData.newPlainText("terminal selection", text))
-                        Toast.makeText(context, "Copied selection", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, resources.getString(R.string.terminal_copied_selection), Toast.LENGTH_SHORT).show()
                         selection = null
                         selectionState = null
                     }
@@ -1155,10 +1159,11 @@ fun TerminalScreen(
                                 withContext(Dispatchers.Main) {
                                     val msg =
                                         when {
-                                            failed == 0 -> "Uploaded $success file(s)"
+                                            failed == 0 ->
+                                                resources.getQuantityString(R.plurals.terminal_uploaded, success, success)
                                             lastError != null ->
-                                                "Uploaded $success, $failed failed: $lastError"
-                                            else -> "Uploaded $success, $failed failed"
+                                                resources.getString(R.string.terminal_uploaded_with_error, success, failed, lastError)
+                                            else -> resources.getString(R.string.terminal_uploaded_partial, success, failed)
                                         }
                                     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                                 }
@@ -1191,7 +1196,7 @@ fun TerminalScreen(
                                         withContext(Dispatchers.Main) {
                                             Toast.makeText(
                                                     context,
-                                                    "Downloaded ${pendingDownloadName}",
+                                                    resources.getString(R.string.terminal_downloaded, pendingDownloadName),
                                                     Toast.LENGTH_SHORT,
                                                 )
                                                 .show()
@@ -1201,7 +1206,7 @@ fun TerminalScreen(
                                         withContext(Dispatchers.Main) {
                                             Toast.makeText(
                                                     context,
-                                                    "Download failed: ${it.message}",
+                                                    resources.getString(R.string.terminal_download_failed, it.message.orEmpty()),
                                                     Toast.LENGTH_LONG,
                                                 )
                                                 .show()
@@ -1247,7 +1252,7 @@ fun TerminalScreen(
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     AbyssText(
-                                        "no terminal sessions",
+                                        stringResource(R.string.terminal_no_sessions),
                                         style = typography.body,
                                         color = colors.textMuted,
                                     )
@@ -1259,7 +1264,7 @@ fun TerminalScreen(
                                         bracketed = true,
                                     ) {
                                         AbyssText(
-                                            "+ new connection",
+                                            stringResource(R.string.terminal_new_connection),
                                             style = typography.label,
                                             color = colors.accent,
                                         )
@@ -1278,7 +1283,7 @@ fun TerminalScreen(
                                 },
                                 onCopyPath = { path ->
                                     clipboard?.setPrimaryClip(ClipData.newPlainText("path", path))
-                                    Toast.makeText(context, "Copied path", Toast.LENGTH_SHORT)
+                                    Toast.makeText(context, resources.getString(R.string.terminal_copied_path), Toast.LENGTH_SHORT)
                                         .show()
                                 },
                                 onImportFile = { importFileLauncher.launch("*/*") },
@@ -1313,7 +1318,7 @@ fun TerminalScreen(
                                                     context.startActivity(
                                                         Intent.createChooser(
                                                             viewIntent,
-                                                            "Open with",
+                                                            resources.getString(R.string.terminal_open_with),
                                                         )
                                                     )
                                                 }
@@ -1322,7 +1327,7 @@ fun TerminalScreen(
                                                 withContext(Dispatchers.Main) {
                                                     Toast.makeText(
                                                             context,
-                                                            "Open failed: ${it.message}",
+                                                            resources.getString(R.string.terminal_open_failed, it.message.orEmpty()),
                                                             Toast.LENGTH_LONG,
                                                         )
                                                         .show()
@@ -1346,7 +1351,7 @@ fun TerminalScreen(
                                                 withContext(Dispatchers.Main) {
                                                     Toast.makeText(
                                                             context,
-                                                            "Download failed: ${it.message}",
+                                                            resources.getString(R.string.terminal_download_failed, it.message.orEmpty()),
                                                             Toast.LENGTH_LONG,
                                                         )
                                                         .show()
@@ -1358,9 +1363,9 @@ fun TerminalScreen(
                             )
                             pendingDeleteEntry?.let { entry ->
                                 AbyssDialog(
-                                    title = "Delete ${entry.name}?",
-                                    confirmLabel = "Delete",
-                                    dismissLabel = "Cancel",
+                                    title = stringResource(R.string.files_delete_title, entry.name),
+                                    confirmLabel = stringResource(R.string.action_delete),
+                                    dismissLabel = stringResource(R.string.action_cancel),
                                     onConfirm = {
                                         val tabId = activeTabId ?: run {
                                             pendingDeleteEntry = null
@@ -1373,7 +1378,7 @@ fun TerminalScreen(
                                                     withContext(Dispatchers.Main) {
                                                         Toast.makeText(
                                                                 context,
-                                                                "Deleted ${entry.name}",
+                                                                resources.getString(R.string.files_deleted, entry.name),
                                                                 Toast.LENGTH_SHORT,
                                                             )
                                                             .show()
@@ -1383,7 +1388,7 @@ fun TerminalScreen(
                                                     withContext(Dispatchers.Main) {
                                                         Toast.makeText(
                                                                 context,
-                                                                "Delete failed: ${it.message}",
+                                                                resources.getString(R.string.files_delete_failed, it.message.orEmpty()),
                                                                 Toast.LENGTH_LONG,
                                                             )
                                                             .show()
@@ -1394,7 +1399,7 @@ fun TerminalScreen(
                                     onDismiss = { pendingDeleteEntry = null },
                                 ) {
                                     AbyssText(
-                                        "This action cannot be undone.",
+                                        stringResource(R.string.files_delete_note),
                                         style = typography.body,
                                     )
                                 }
@@ -1461,13 +1466,13 @@ fun TerminalScreen(
                                                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                                                 )
                                             } catch (_: ActivityNotFoundException) {
-                                                Toast.makeText(context, "No app can open this link", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, resources.getString(R.string.terminal_link_no_app), Toast.LENGTH_SHORT).show()
                                             }
                                         },
                                         onCopy = {
                                             vm.dismissLink()
                                             clipboard?.setPrimaryClip(ClipData.newPlainText("link", url))
-                                            Toast.makeText(context, "Copied link", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, resources.getString(R.string.terminal_copied_link), Toast.LENGTH_SHORT).show()
                                         },
                                         onDismiss = vm::dismissLink,
                                         modifier = Modifier.align(Alignment.BottomCenter),
@@ -1482,14 +1487,16 @@ fun TerminalScreen(
                                     if (isReconnecting) {
                                         AbyssText(
                                             text =
-                                                "Reconnecting${sessionState.reconnectAttempt.takeIf { it > 0 }?.let { " ($it)" } ?: ""}",
+                                                sessionState.reconnectAttempt.takeIf { it > 0 }
+                                                    ?.let { stringResource(R.string.terminal_reconnecting_attempt, it) }
+                                                    ?: stringResource(R.string.terminal_reconnecting),
                                             style = typography.labelSmall,
                                             color = colors.error,
                                         )
                                     }
                                     if (multiplexerState.duplicateLoading) {
                                         AbyssText(
-                                            text = "Preparing new multiplexer session...",
+                                            text = stringResource(R.string.terminal_preparing_multiplexer),
                                             style = typography.labelSmall,
                                             color = colors.textMuted,
                                         )
@@ -1577,7 +1584,7 @@ fun TerminalScreen(
                                                     ),
                                             ) {
                                                 AbyssText(
-                                                    "copy",
+                                                    stringResource(R.string.action_copy),
                                                     style = typography.label,
                                                     color = colors.textMuted,
                                                 )
@@ -1596,7 +1603,7 @@ fun TerminalScreen(
                                                     ),
                                             ) {
                                                 AbyssText(
-                                                    "paste",
+                                                    stringResource(R.string.action_paste),
                                                     style = typography.label,
                                                     color = colors.textMuted,
                                                 )
@@ -2001,12 +2008,13 @@ fun TerminalScreen(
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                             contentAlignment = Alignment.Center,
                         ) {
-                            val hostForMessage = activeTab?.spec?.tabLabel?.let { " $it" } ?: ""
                             val message =
                                 if (isReconnecting) {
-                                    "Reconnecting to${hostForMessage}..."
+                                    activeTab?.spec?.tabLabel
+                                        ?.let { stringResource(R.string.terminal_reconnecting_to, it) }
+                                        ?: stringResource(R.string.terminal_reconnecting_ellipsis)
                                 } else {
-                                    "Preparing terminal..."
+                                    stringResource(R.string.terminal_preparing)
                                 }
                             AbyssText(message, style = typography.body)
                         }
@@ -2016,12 +2024,13 @@ fun TerminalScreen(
                         modifier = screenInsetsModifier.fillMaxSize().padding(16.dp),
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        val hostForMessage = activeTabForHost?.spec?.host?.let { " $it" } ?: ""
                         val message =
                             if (isReconnecting) {
-                                "Reconnecting to${hostForMessage}..."
+                                activeTabForHost?.spec?.host
+                                    ?.let { stringResource(R.string.terminal_reconnecting_to, it) }
+                                    ?: stringResource(R.string.terminal_reconnecting_ellipsis)
                             } else {
-                                "Preparing terminal..."
+                                stringResource(R.string.terminal_preparing)
                             }
                         AbyssText(message, style = typography.body)
                     }
@@ -2070,7 +2079,7 @@ fun TerminalScreen(
 private fun TerminalRecoveryActions(
     message: String,
     isMultiplexerPreflight: Boolean,
-    dismissMultiplexerLabel: String = "back",
+    dismissMultiplexerLabel: String = stringResource(R.string.action_back),
     onRetryMultiplexer: () -> Unit,
     onConnectWithoutMultiplexer: () -> Unit,
     onBack: () -> Unit,
@@ -2087,7 +2096,7 @@ private fun TerminalRecoveryActions(
                 modifier = Modifier.fillMaxWidth(),
                 variant = AbyssButtonVariant.Filled,
             ) {
-                AbyssText("retry multiplexer", style = typography.label, color = colors.onAccent)
+                AbyssText(stringResource(R.string.terminal_retry_multiplexer), style = typography.label, color = colors.onAccent)
             }
             Spacer(modifier = Modifier.height(8.dp))
             AbyssButton(
@@ -2096,7 +2105,7 @@ private fun TerminalRecoveryActions(
                 variant = AbyssButtonVariant.Outlined,
                 bracketed = true,
             ) {
-                AbyssText("connect without multiplexer", style = typography.label)
+                AbyssText(stringResource(R.string.terminal_connect_without_multiplexer), style = typography.label)
             }
             Spacer(modifier = Modifier.height(8.dp))
             AbyssButton(
@@ -2114,7 +2123,7 @@ private fun TerminalRecoveryActions(
                 modifier = Modifier.fillMaxWidth(),
                 variant = AbyssButtonVariant.Filled,
             ) {
-                AbyssText("Retry", style = typography.label, color = colors.onAccent)
+                AbyssText(stringResource(R.string.action_retry), style = typography.label, color = colors.onAccent)
             }
         }
     }
@@ -2159,7 +2168,7 @@ private fun UploadProgressDialog(progress: UploadProgress) {
 
             if (progress.totalFiles > 1) {
                 AbyssText(
-                    text = "file ${progress.fileIndex + 1} of ${progress.totalFiles}",
+                    text = stringResource(R.string.terminal_upload_file_index, progress.fileIndex + 1, progress.totalFiles),
                     style = typography.labelSmall,
                     color = colors.textMuted,
                 )
