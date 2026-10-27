@@ -197,9 +197,9 @@ class NativeSshService(
         }
     }
 
-    fun openShell(cols: Int, rows: Int, widthPx: Int, heightPx: Int) {
+    fun openShell(cols: Int, rows: Int, widthPx: Int, heightPx: Int, term: String = RemoteTerm.GHOSTTY) {
         check(handle != 0L) { "Not connected" }
-        if (!bridge.nativeOpenShell(handle, cols, rows, widthPx, heightPx, "xterm-ghostty")) {
+        if (!bridge.nativeOpenShell(handle, cols, rows, widthPx, heightPx, term)) {
             error(
                 bridge.nativeGetLastError(handle) ?: "Native SSH shell open failed"
             )
@@ -211,9 +211,16 @@ class NativeSshService(
         return bridge.nativeOpenExec(handle, command)
     }
 
-    fun openExecPty(command: String, cols: Int, rows: Int, widthPx: Int, heightPx: Int) {
+    fun openExecPty(
+        command: String,
+        cols: Int,
+        rows: Int,
+        widthPx: Int,
+        heightPx: Int,
+        term: String = RemoteTerm.GHOSTTY,
+    ) {
         check(handle != 0L) { "Not connected" }
-        if (!bridge.nativeOpenExecPty(handle, command, cols, rows, widthPx, heightPx, "xterm-ghostty")) {
+        if (!bridge.nativeOpenExecPty(handle, command, cols, rows, widthPx, heightPx, term)) {
             error(
                 bridge.nativeGetLastError(handle) ?: "Native SSH exec PTY open failed"
             )
