@@ -23,6 +23,7 @@ object MoshEndpointResolver {
             }
 
         // The port is a separate config field, so IPv6 must remain an unbracketed literal.
-        return address.hostAddress.substringBefore('%')
+        val hostAddress = checkNotNull(address.hostAddress) { "Mosh host '$host' has no IP address" }
+        return hostAddress.substringBefore('%')
     }
 }

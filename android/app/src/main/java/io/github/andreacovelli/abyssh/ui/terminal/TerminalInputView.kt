@@ -207,6 +207,9 @@ class TerminalInputView(context: Context) : EditText(context) {
         return super.onKeyUp(keyCode, event)
     }
 
+    // SHOW_IMPLICIT is deprecated in API 37 but is still what the platform docs use to
+    // request the keyboard for a focused editor; keep it until there is a tested replacement.
+    @Suppress("DEPRECATION")
     fun showKeyboard(imm: InputMethodManager?) {
         if (imm == null) return
         inputMethodManager = imm

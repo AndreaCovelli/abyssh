@@ -17,7 +17,7 @@ room {
 android {
     namespace = "io.github.andreacovelli.abyssh"
     compileSdk {
-        version = release(36)
+        version = release(37)
     }
 
     defaultConfig {
