@@ -1,52 +1,8 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# App-specific R8 rules. The default proguard-android-optimize.txt already keeps
+# JNI native methods (every *Bridge external fun) and enum values()/valueOf(), and
+# Room, Compose, coroutines, and kotlinx.serialization ship their own consumer rules.
+# Add a rule here only for code reached by reflection or by name from native code.
 
-# Preserve line numbers for crash reports
+# Keep line numbers for readable crash stack traces, without the original file names.
 -keepattributes SourceFile,LineNumberTable
-
-# Hide original source file name in stack traces
 -renamesourcefileattribute SourceFile
-
-# === JNI: keep native bridge classes ===
--keepclassmembers class io.github.andreacovelli.abyssh.service.terminal.GhosttyBridge {
-    *** native*;
-}
--keepclassmembers class io.github.andreacovelli.abyssh.service.ssh.NativeSshBridge {
-    *** native*;
-}
-
-# === Room: keep entities, DAOs, and database ===
--keep class * extends androidx.room.RoomDatabase
--keep @androidx.room.Entity class *
--keep @androidx.room.Dao class *
--keepclassmembers class * {
-    @androidx.room.Query <methods>;
-    @androidx.room.Insert <methods>;
-    @androidx.room.Update <methods>;
-    @androidx.room.Delete <methods>;
-}
-
-# === Compose: keep composable functions ===
--dontwarn androidx.compose.**
--keep class androidx.compose.** { *; }
-
-# === Kotlin coroutines ===
--dontwarn kotlinx.coroutines.**
-
-# === Android components ===
--keep class * extends android.app.Activity
--keep class * extends android.app.Service
--keep class * extends androidx.appcompat.app.AppCompatActivity
-
-# === Serialization ===
--keepattributes *Annotation*, Signature, ExceptionHandler
-
-# === Enum serialization ===
--keepclassmembers enum * {
-    public static **[] values();
-    public static ** valueOf(java.lang.String);
-}
