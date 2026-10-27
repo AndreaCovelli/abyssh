@@ -80,6 +80,10 @@ fun TerminalCanvas(
         { _, _, _, _, _, _ -> },
     onTap: () -> Unit = {},
     onPrimaryClick: (x: Float, y: Float) -> Unit = { _, _ -> },
+    // A tap where a link may be: when the app doesn't take mouse input, or with Shift.
+    // textUrl is the URL written at the cell; noLink runs the usual tap when there's none.
+    onLinkTap: (col: Int, row: Int, textUrl: String?, noLink: () -> Unit) -> Unit =
+        { _, _, _, noLink -> noLink() },
     // Two-finger tap. Sent as a right click to apps that take mouse input.
     onSecondaryClick: (x: Float, y: Float) -> Unit = { _, _ -> },
     // Right or middle button of a physical mouse: press, motion and release.
@@ -237,6 +241,7 @@ fun TerminalCanvas(
     val currentOnSelectionChange = rememberUpdatedState(onSelectionChange)
     val currentOnTap = rememberUpdatedState(onTap)
     val currentOnPrimaryClick = rememberUpdatedState(onPrimaryClick)
+    val currentOnLinkTap = rememberUpdatedState(onLinkTap)
     val currentOnSecondaryClick = rememberUpdatedState(onSecondaryClick)
     val currentOnMouseButton = rememberUpdatedState(onMouseButton)
     val currentOnAppSelectionDrag = rememberUpdatedState(onAppSelectionDrag)
@@ -407,12 +412,31 @@ fun TerminalCanvas(
                                         )
                                     }
                                 }
+                            } else if (currentSelectionState.value != null) {
+                                currentOnSelectionChange.value(null)
                             } else {
-                                if (currentSelectionState.value != null) {
-                                    currentOnSelectionChange.value(null)
-                                } else {
+                                val click = {
                                     currentOnPrimaryClick.value(tapPos.x, tapPos.y)
                                     currentOnTap.value()
+                                }
+                                val cellIdx = s.cellAt(
+                                    tapPos.x,
+                                    tapPos.y,
+                                    currentCellWidth.value,
+                                    currentCellHeight.value,
+                                )
+                                if (cellIdx != null && (!s.appTracksMouse || shiftOnDown)) {
+                                    if (s.appTracksMouse) currentOnShiftSelectionStart.value()
+                                    currentOnLinkTap.value(
+                                        cellIdx % s.cols,
+                                        cellIdx / s.cols,
+                                        s.urlAt(cellIdx),
+                                    ) {
+                                        // Shift+tap is for links only; the app doesn't see it.
+                                        if (s.appTracksMouse) currentOnTap.value() else click()
+                                    }
+                                } else {
+                                    click()
                                 }
                             }
                         }

@@ -96,11 +96,6 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     val search: StateFlow<TerminalSearchState?> = _search.asStateFlow()
     private var searchJob: Job? = null
 
-    init {
-        // Matches belong to one terminal, so switching tabs closes the search.
-        viewModelScope.launch { activeTabId.collect { closeSearch() } }
-    }
-
     fun openSearch() {
         if (_search.value == null) _search.value = TerminalSearchState()
     }
@@ -140,6 +135,40 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         searchJob = viewModelScope.launch {
             val found = parseSearchMatches(sessionRepository.search(state.query))
             _search.update { it?.withMatches(found) }
+        }
+    }
+
+    private val _tappedLink = MutableStateFlow<String?>(null)
+    /** The link the user tapped, shown with open and copy until dismissed. */
+    val tappedLink: StateFlow<String?> = _tappedLink.asStateFlow()
+
+    /**
+     * A tap where links may open. [textUrl] is the URL written at that cell, if any;
+     * otherwise the cell may still carry an OSC 8 hyperlink. [noLink] runs when it has none.
+     */
+    fun onLinkTap(col: Int, row: Int, textUrl: String?, noLink: () -> Unit) {
+        if (textUrl != null) {
+            _tappedLink.value = textUrl
+            return
+        }
+        viewModelScope.launch {
+            val hyperlink = sessionRepository.hyperlinkAt(col, row)
+            _tappedLink.value = hyperlink
+            if (hyperlink == null) noLink()
+        }
+    }
+
+    fun dismissLink() {
+        _tappedLink.value = null
+    }
+
+    init {
+        // Search matches and links belong to one terminal, so switching tabs drops them.
+        viewModelScope.launch {
+            activeTabId.collect {
+                closeSearch()
+                dismissLink()
+            }
         }
     }
 

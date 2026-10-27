@@ -457,6 +457,8 @@ class TerminalSessionRepository private constructor(application: Application) {
 
     suspend fun search(query: String): IntArray = activeEngine()?.search(query) ?: IntArray(0)
 
+    suspend fun hyperlinkAt(col: Int, row: Int): String? = activeEngine()?.hyperlinkAt(col, row)
+
     fun scrollToScreenRow(screenRow: Int) {
         activeEngine()?.scrollToScreenRow(screenRow)
     }

@@ -1,6 +1,7 @@
 package com.jossephus.chuchu.ui.screens.Terminal
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -402,6 +403,7 @@ fun TerminalScreen(
     val fileBrowserState by vm.fileBrowserState.collectAsStateWithLifecycle()
     val hostKeyPrompt by vm.hostKeyPrompt.collectAsStateWithLifecycle()
     val searchState by vm.search.collectAsStateWithLifecycle()
+    val tappedLink by vm.tappedLink.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val haptics = LocalHapticFeedback.current
@@ -1432,6 +1434,7 @@ fun TerminalScreen(
                                     onResize = vm::onCanvasSizeChanged,
                                     onTap = requestInputFocus,
                                     onPrimaryClick = vm::onPrimaryMouseClick,
+                                    onLinkTap = vm::onLinkTap,
                                     onSecondaryClick = vm::onSecondaryMouseClick,
                                     onMouseButton = vm::onMouseButton,
                                     onAppSelectionDrag = vm::onAppSelectionDrag,
@@ -1446,6 +1449,30 @@ fun TerminalScreen(
                                     searchMatches = searchState?.matches.orEmpty(),
                                     currentSearchMatch = searchState?.currentMatch,
                                 )
+
+                                tappedLink?.let { url ->
+                                    TerminalLinkBar(
+                                        url = url,
+                                        onOpen = {
+                                            vm.dismissLink()
+                                            try {
+                                                context.startActivity(
+                                                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                                )
+                                            } catch (_: ActivityNotFoundException) {
+                                                Toast.makeText(context, "No app can open this link", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        onCopy = {
+                                            vm.dismissLink()
+                                            clipboard?.setPrimaryClip(ClipData.newPlainText("link", url))
+                                            Toast.makeText(context, "Copied link", Toast.LENGTH_SHORT).show()
+                                        },
+                                        onDismiss = vm::dismissLink,
+                                        modifier = Modifier.align(Alignment.BottomCenter),
+                                    )
+                                }
 
                                 Row(
                                     modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),

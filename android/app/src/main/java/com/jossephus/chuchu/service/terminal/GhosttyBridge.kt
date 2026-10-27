@@ -76,4 +76,5 @@ class GhosttyBridge {
     // end row, end col (inclusive) per match, rows counted from the oldest scrollback row.
     external fun nativeSearch(handle: Long, query: String): IntArray
     external fun nativeScrollToScreenRow(handle: Long, screenRow: Int)
+    external fun nativeHyperlinkAt(handle: Long, cellX: Int, cellY: Int): String?
 }

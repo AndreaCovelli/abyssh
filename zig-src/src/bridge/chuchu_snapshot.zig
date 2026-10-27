@@ -35,7 +35,9 @@ const verbose_snapshot_perf_logs = false;
 //      pane-scoped selection.)
 //  14  cursor_style (the visual shape the app requested via DECSCUSR:
 //      0 = block, 1 = bar, 2 = underline, 3 = block_hollow)
-const SNAPSHOT_HEADER_I32_COUNT = 15;
+//  15  app_tracks_mouse (1 when the app has enabled any mouse mode, so taps
+//      go to it as clicks instead of opening links)
+const SNAPSHOT_HEADER_I32_COUNT = 16;
 const SNAPSHOT_CELL_SIZE_BYTES = 11;
 // Flag bit set on a cell whose codepoint has additional grapheme codepoints
 // in the extras section.
@@ -916,6 +918,8 @@ export fn chuchu_build_text_snapshot(handle: c.jlong, out_size: [*c]usize) callc
         .block_hollow => 3,
     };
     writeIntLe(i32, buffer[0..base_total_size], 56, cursor_style);
+    const app_tracks_mouse: i32 = if (terminal.terminal.flags.mouse_event != .none) 1 else 0;
+    writeIntLe(i32, buffer[0..base_total_size], 60, app_tracks_mouse);
 
     terminal.snapshot_extras_scratch.clearRetainingCapacity();
     var extras_records: usize = 0;
@@ -1792,4 +1796,24 @@ fn jniIntArray(env: *c.JNIEnv, values: []const c.jint) c.jintArray {
     const array = env.*.*.NewIntArray.?(env, @intCast(values.len)) orelse return null;
     if (values.len > 0) env.*.*.SetIntArrayRegion.?(env, array, 0, @intCast(values.len), values.ptr);
     return array;
+}
+
+/// The OSC 8 hyperlink URI of a viewport cell, or null when it has none.
+export fn Java_com_jossephus_chuchu_service_terminal_GhosttyBridge_nativeHyperlinkAt(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+    cell_x: c.jint,
+    cell_y: c.jint,
+) callconv(.c) c.jstring {
+    _ = thiz;
+    const terminal = chuchuFromHandle(handle) orelse return null;
+    const pin = viewportCellToPin(terminal, @intCast(@max(0, cell_x)), @intCast(@max(0, cell_y))) orelse return null;
+    const page = &pin.node.data;
+    const cell = pin.rowAndCell().cell;
+    const link_id = page.lookupHyperlink(cell) orelse return null;
+    const uri = page.hyperlink_set.get(page.memory, link_id).uri.slice(page.memory);
+    const uri_z = allocator.dupeZ(u8, uri) catch return null;
+    defer allocator.free(uri_z);
+    return jniNewStringUTF(env, uri_z.ptr);
 }

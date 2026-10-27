@@ -475,6 +475,11 @@ class TerminalSessionEngine(
             if (handle == 0L || query.isEmpty()) IntArray(0) else bridge.nativeSearch(handle, query)
         }
 
+    suspend fun hyperlinkAt(col: Int, row: Int): String? =
+        withContext(dispatcher) {
+            if (handle == 0L) null else bridge.nativeHyperlinkAt(handle, col, row)
+        }
+
     fun scrollToScreenRow(screenRow: Int) {
         scope.launch(dispatcher) {
             if (handle == 0L) return@launch
