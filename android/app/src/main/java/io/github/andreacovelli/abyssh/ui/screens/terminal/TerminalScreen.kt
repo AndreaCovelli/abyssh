@@ -1,10 +1,10 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
 import android.app.Activity
 import android.content.ActivityNotFoundException
-import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
@@ -115,6 +115,7 @@ import io.github.andreacovelli.abyssh.ui.terminal.TerminalSelectionHandle
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalSelectionState
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalSpecialKey
 import io.github.andreacovelli.abyssh.ui.terminal.decodeCustomActionValue
+import io.github.andreacovelli.abyssh.ui.terminal.isCopyShortcut
 import io.github.andreacovelli.abyssh.ui.terminal.isPasteShortcut
 import io.github.andreacovelli.abyssh.ui.terminal.isSearchShortcut
 import io.github.andreacovelli.abyssh.ui.terminal.modifierStateForCustomAction
@@ -1057,12 +1058,24 @@ fun TerminalScreen(
                         }
                     }
 
-                    fun copySelection() {
-                        val text = selectionState?.text ?: return
-                        clipboard?.setPrimaryClip(ClipData.newPlainText("terminal selection", text))
-                        Toast.makeText(context, resources.getString(R.string.terminal_copied_selection), Toast.LENGTH_SHORT).show()
+                    fun clearSelection() {
                         selection = null
                         selectionState = null
+                    }
+
+                    fun hasSelectedText(): Boolean = !selectionState?.text.isNullOrEmpty()
+
+                    // Set while a Ctrl+C that copied is held, so its repeat and release
+                    // stay out of the terminal after the selection is gone.
+                    val copyShortcutHeld = remember { booleanArrayOf(false) }
+
+                    // Tapping the menu can move focus off the hidden input view, which
+                    // leaves keys like Backspace with nowhere to go; take it back.
+                    fun copySelection() {
+                        val text = selectionState?.text ?: return
+                        copyToClipboard(context, "terminal selection", text, R.string.terminal_copied_selection)
+                        clearSelection()
+                        requestInputFocus()
                     }
 
                     val importFileLauncher =
@@ -1281,9 +1294,7 @@ fun TerminalScreen(
                                     vm.selectConnectionTab(ConnectionTab.Terminal)
                                 },
                                 onCopyPath = { path ->
-                                    clipboard?.setPrimaryClip(ClipData.newPlainText("path", path))
-                                    Toast.makeText(context, resources.getString(R.string.terminal_copied_path), Toast.LENGTH_SHORT)
-                                        .show()
+                                    copyToClipboard(context, "path", path, R.string.terminal_copied_path)
                                 },
                                 onImportFile = { importFileLauncher.launch("*/*") },
                                 onOpenFile = { entry ->
@@ -1470,8 +1481,7 @@ fun TerminalScreen(
                                         },
                                         onCopy = {
                                             vm.dismissLink()
-                                            clipboard?.setPrimaryClip(ClipData.newPlainText("link", url))
-                                            Toast.makeText(context, resources.getString(R.string.terminal_copied_link), Toast.LENGTH_SHORT).show()
+                                            copyToClipboard(context, "link", url, R.string.terminal_copied_link)
                                         },
                                         onDismiss = vm::dismissLink,
                                         modifier = Modifier.align(Alignment.BottomCenter),
@@ -1591,7 +1601,10 @@ fun TerminalScreen(
                                         }
                                         if (hasClipboardText) {
                                             AbyssButton(
-                                                onClick = { pasteClipboard() },
+                                                onClick = {
+                                                    pasteClipboard()
+                                                    requestInputFocus()
+                                                },
                                                 variant = AbyssButtonVariant.Ghost,
                                                 bracketed = true,
                                                 borderColor = colors.textMuted,
@@ -1621,10 +1634,15 @@ fun TerminalScreen(
                                                     if (abysshKeys.handleText(text)) {
                                                         // Consumed by the abyssh key prefix.
                                                     } else if (
+                                                        isCopyShortcut(text, modifierState, hasSelectedText())
+                                                    ) {
+                                                        copySelection()
+                                                    } else if (
                                                         isPasteShortcut(text, modifierState, ctrlVPastes)
                                                     ) {
                                                         pasteClipboard(applyModifiers = false)
                                                     } else {
+                                                        clearSelection()
                                                         vm.dispatchTextWithModifierState(
                                                             text,
                                                             modifierState,
@@ -1725,6 +1743,19 @@ fun TerminalScreen(
                                                         }
                                                     } else if (
                                                         shouldForwardToTerminal &&
+                                                            isCopyShortcut(
+                                                                key,
+                                                                mergedMods,
+                                                                hasSelectedText() ||
+                                                                    (action != GhosttyKeyAction.Press && copyShortcutHeld[0]),
+                                                            )
+                                                    ) {
+                                                        copyShortcutHeld[0] = action != GhosttyKeyAction.Release
+                                                        if (action == GhosttyKeyAction.Press) {
+                                                            copySelection()
+                                                        }
+                                                    } else if (
+                                                        shouldForwardToTerminal &&
                                                             isPasteShortcut(key, mergedMods, ctrlVPastes)
                                                     ) {
                                                         // Swallow repeat and release too, so the
@@ -1733,6 +1764,10 @@ fun TerminalScreen(
                                                             pasteClipboard(applyModifiers = false)
                                                         }
                                                     } else if (shouldForwardToTerminal) {
+                                                        // Typing dismisses the selection, as in desktop terminals.
+                                                        if (action == GhosttyKeyAction.Press) {
+                                                            clearSelection()
+                                                        }
                                                         vm.onHardwareKey(
                                                             key,
                                                             codepoint,

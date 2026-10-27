@@ -1,11 +1,9 @@
 package io.github.andreacovelli.abyssh.ui.screens.keys
 
+import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -164,8 +162,6 @@ private fun KeyCard(item: KeyListItem, onRename: () -> Unit, onDelete: () -> Uni
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
     val context = LocalContext.current
-    val resources = LocalResources.current
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val key = item.key
 
     AbyssCard(modifier = Modifier.fillMaxWidth()) {
@@ -203,8 +199,7 @@ private fun KeyCard(item: KeyListItem, onRename: () -> Unit, onDelete: () -> Uni
                 }
                 AbyssButton(
                     onClick = {
-                        clipboard.setPrimaryClip(ClipData.newPlainText("SSH Public Key", key.publicKeyOpenSsh))
-                        Toast.makeText(context, resources.getString(R.string.public_key_copied), Toast.LENGTH_SHORT).show()
+                        copyToClipboard(context, "SSH Public Key", key.publicKeyOpenSsh, R.string.public_key_copied)
                     },
                     variant = AbyssButtonVariant.Ghost,
                     bracketed = true,
