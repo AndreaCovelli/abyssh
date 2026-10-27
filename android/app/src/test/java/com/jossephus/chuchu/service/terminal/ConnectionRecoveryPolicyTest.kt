@@ -32,4 +32,24 @@ class ConnectionRecoveryPolicyTest {
             readLoopExitAction(Transport.LocalShell),
         )
     }
+
+    @Test
+    fun remoteShellExitDisconnectsInsteadOfReconnecting() {
+        assertEquals(
+            ReadLoopExitAction.Disconnect,
+            readLoopExitAction(Transport.SSH, shellExited = true),
+        )
+        assertEquals(
+            ReadLoopExitAction.Disconnect,
+            readLoopExitAction(Transport.TailscaleSSH, shellExited = true),
+        )
+    }
+
+    @Test
+    fun moshKeepsManualReconnectEvenAfterShellExit() {
+        assertEquals(
+            ReadLoopExitAction.RequireManualReconnect,
+            readLoopExitAction(Transport.Mosh, shellExited = true),
+        )
+    }
 }

@@ -73,6 +73,8 @@ class TerminalSessionEngine(
     private val localShellService: NativeLocalShellService,
     private val hostKeyStore: HostKeyStore,
     private val tailscaleStatusChecker: TailscaleStatusChecker,
+    // Called when the shell ends on its own (exit, Ctrl+D), so the owner can close the tab.
+    private val onShellExited: () -> Unit = {},
 ) {
     private data class ConnectionParams(
         val host: String,
@@ -660,12 +662,16 @@ class TerminalSessionEngine(
             scope.launch(dispatcher) {
                 val transport = lastConnectionParams?.transport
                 var failed = false
+                var shellExited = false
                 var moshFailureCode: Int? = null
                 try {
                     when (transport) {
                         Transport.Mosh -> moshFailureCode = startMoshReadLoop()
-                        Transport.LocalShell -> startLocalShellReadLoop()
-                        else -> startSshReadLoop()
+                        Transport.LocalShell -> {
+                            startLocalShellReadLoop()
+                            shellExited = currentCoroutineContext().isActive
+                        }
+                        else -> shellExited = startSshReadLoop()
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -680,11 +686,12 @@ class TerminalSessionEngine(
                             )
                     }
                 }
-                when (readLoopExitAction(transport)) {
+                when (readLoopExitAction(transport, shellExited && !failed)) {
                     ReadLoopExitAction.Disconnect -> {
-                        localShellService.close()
+                        if (transport == Transport.LocalShell) localShellService.close() else nativeSsh.close()
                         if (!disconnectRequested && !failed) {
                             _state.value = _state.value.copy(status = SessionStatus.Disconnected)
+                            if (shellExited) onShellExited()
                         }
                     }
                     ReadLoopExitAction.RequireManualReconnect -> {
@@ -703,7 +710,8 @@ class TerminalSessionEngine(
             }
     }
 
-    private suspend fun startSshReadLoop() {
+    /** Returns true when the remote shell ended on its own (exit, Ctrl+D). */
+    private suspend fun startSshReadLoop(): Boolean {
         val buf = ByteArray(65536)
         var lastActivityMs = System.currentTimeMillis()
         while (currentCoroutineContext().isActive) {
@@ -712,6 +720,9 @@ class TerminalSessionEngine(
                 break
             }
             if (chunk.isEmpty()) {
+                // The native read reports a closed channel the same way as "no data
+                // yet", so check EOF here; otherwise a finished shell is polled forever.
+                if (nativeSsh.isChannelEof()) return true
                 // Adaptive poll: stay snappy while data is flowing, back off when
                 // idle so a quiet session doesn't spin at 500 wakeups/sec.
                 delay(idleReadDelayMs(System.currentTimeMillis() - lastActivityMs))
@@ -720,6 +731,7 @@ class TerminalSessionEngine(
             lastActivityMs = System.currentTimeMillis()
             feedRemoteChunk(chunk)
         }
+        return false
     }
 
     private suspend fun startLocalShellReadLoop() {

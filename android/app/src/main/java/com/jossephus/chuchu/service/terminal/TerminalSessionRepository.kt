@@ -224,6 +224,7 @@ class TerminalSessionRepository private constructor(application: Application) {
                 newLocalShellService(),
                 hostKeyStore,
                 tailscaleStatusChecker,
+                onShellExited = { scope.launch { closeTab(id) } },
             )
         val tab = TabSession(id, spec, engine)
         _tabs.value = _tabs.value + tab

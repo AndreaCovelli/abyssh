@@ -8,9 +8,14 @@ internal enum class ReadLoopExitAction {
     AutomaticReconnect,
 }
 
-internal fun readLoopExitAction(transport: Transport?): ReadLoopExitAction =
-    when (transport) {
-        Transport.LocalShell -> ReadLoopExitAction.Disconnect
-        Transport.Mosh -> ReadLoopExitAction.RequireManualReconnect
+/**
+ * [shellExited] means the shell ended on its own (exit, Ctrl+D) rather than the
+ * connection dropping, so reconnecting would just start an unwanted new shell.
+ */
+internal fun readLoopExitAction(transport: Transport?, shellExited: Boolean = false): ReadLoopExitAction =
+    when {
+        transport == Transport.LocalShell -> ReadLoopExitAction.Disconnect
+        transport == Transport.Mosh -> ReadLoopExitAction.RequireManualReconnect
+        shellExited -> ReadLoopExitAction.Disconnect
         else -> ReadLoopExitAction.AutomaticReconnect
     }
