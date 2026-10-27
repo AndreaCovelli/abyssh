@@ -1494,6 +1494,8 @@ export fn abyssh_resize(handle: c.jlong, cols: c.jint, rows: c.jint, cell_width:
     update_render_state(terminal);
 }
 
+const max_wheel_events_per_scroll: usize = 16;
+
 export fn abyssh_scroll(handle: c.jlong, delta: c.jint, x: c.jfloat, y: c.jfloat) callconv(.c) void {
     const terminal = abysshFromHandle(handle) orelse return;
 
@@ -1511,7 +1513,9 @@ export fn abyssh_scroll(handle: c.jlong, delta: c.jint, x: c.jfloat, y: c.jfloat
         // Negative delta = scroll up (older content) → button 4.
         // Positive delta = scroll down (newer content) → button 5.
         const button: u8 = if (delta < 0) 4 else 5;
-        const scroll_count: usize = @max(1, @abs(delta));
+        // A fast swipe can cover many rows in one frame; cap the burst so
+        // programs that parse input in chunks are not flooded.
+        const scroll_count: usize = @min(@max(1, @abs(delta)), max_wheel_events_per_scroll);
 
         // Use the gesture position so mouse-aware programs like tmux route the
         // wheel event to the pane under the user's finger.
@@ -1520,35 +1524,34 @@ export fn abyssh_scroll(handle: c.jlong, delta: c.jint, x: c.jfloat, y: c.jfloat
         const scroll_x: f32 = @min(@max(@as(f32, x), 0), max_x);
         const scroll_y: f32 = @min(@max(@as(f32, y), 0), max_y);
 
-        var buf: [512]u8 = undefined;
-        var writer: std.Io.Writer = .fixed(&buf);
+        var buf: [max_wheel_events_per_scroll * 32]u8 = undefined;
+        var len: usize = 0;
         var last_cell: ?ghostty.point.Coordinate = null;
         const opts = ghosttyMouseEncodeOptions(terminal, false, true, &last_cell);
 
-        // Send scroll_count press/release pairs to match scroll magnitude.
+        // Wheel buttons have no release: xterm and Ghostty send presses only.
+        // Each event is encoded on its own and appended only when complete, so
+        // a full buffer can never leave half a sequence in the output.
         var i: usize = 0;
         while (i < scroll_count) : (i += 1) {
+            var event_buf: [32]u8 = undefined;
+            var event_writer: std.Io.Writer = .fixed(&event_buf);
             const press_event: ghostty.input.MouseEncodeEvent = .{
                 .action = .press,
                 .button = @enumFromInt(button),
                 .mods = .{},
                 .pos = .{ .x = scroll_x, .y = scroll_y },
             };
-            ghostty.input.encodeMouse(&writer, press_event, opts) catch {};
-
-            const release_event: ghostty.input.MouseEncodeEvent = .{
-                .action = .release,
-                .button = @enumFromInt(button),
-                .mods = .{},
-                .pos = .{ .x = scroll_x, .y = scroll_y },
-            };
-            ghostty.input.encodeMouse(&writer, release_event, opts) catch {};
+            ghostty.input.encodeMouse(&event_writer, press_event, opts) catch continue;
+            const encoded = event_writer.buffered();
+            if (encoded.len == 0 or len + encoded.len > buf.len) break;
+            @memcpy(buf[len..][0..encoded.len], encoded);
+            len += encoded.len;
         }
 
-        // Send encoded events to PTY
-        const encoded = writer.buffered();
-        if (encoded.len > 0) {
-            appendPtyWrite(terminal, encoded);
+        // Send encoded events to PTY in one write.
+        if (len > 0) {
+            appendPtyWrite(terminal, buf[0..len]);
         }
     } else {
         // Normal scrollback scrolling
