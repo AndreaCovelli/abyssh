@@ -36,6 +36,7 @@ fun ChuTextField(
     label: String,
     placeholder: String = "",
     singleLine: Boolean = false,
+    maxLines: Int = Int.MAX_VALUE,
     showLabel: Boolean = true,
     modifier: Modifier = Modifier,
     visualTransformation: VisualTransformation = VisualTransformation.None,
@@ -82,6 +83,7 @@ fun ChuTextField(
                 )
                 .padding(horizontal = 10.dp, vertical = 9.dp),
             singleLine = singleLine,
+            maxLines = if (singleLine) 1 else maxLines,
             textStyle = typography.body.copy(color = colors.textPrimary, textAlign = textAlign),
             keyboardOptions = keyboardOptions,
             visualTransformation = visualTransformation,

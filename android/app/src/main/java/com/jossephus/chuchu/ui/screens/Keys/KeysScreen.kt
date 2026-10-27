@@ -296,6 +296,7 @@ private fun ImportKeyDialog(onConfirm: (String, String) -> Unit, onDismiss: () -
                 label = "private key",
                 placeholder = "-----BEGIN OPENSSH PRIVATE KEY-----",
                 singleLine = false,
+                maxLines = 8,
                 showLabel = false,
                 autoFocus = false,
             )
