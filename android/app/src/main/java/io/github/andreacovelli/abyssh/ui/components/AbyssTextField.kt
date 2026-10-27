@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +47,7 @@ fun AbyssTextField(
     ),
     autoFocus: Boolean = true,
     textAlign: TextAlign = TextAlign.Start,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
@@ -86,6 +88,7 @@ fun AbyssTextField(
             maxLines = if (singleLine) 1 else maxLines,
             textStyle = typography.body.copy(color = colors.textPrimary, textAlign = textAlign),
             keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
             visualTransformation = visualTransformation,
             interactionSource = interactionSource,
             cursorBrush = SolidColor(colors.accent),

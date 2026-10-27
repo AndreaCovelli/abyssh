@@ -30,6 +30,8 @@ Mosh, and renders the session with the same terminal engine as
   the Kitty graphics protocol
 - 463 color themes from Ghostty, with separate light and dark choices
 - Fira Code, Geist Mono, Hack, and JetBrains Mono, with Nerd Font symbols
+- Search through the scrollback, and tap links in the output to open or copy them
+- Mouse and touchpad support: scroll with the wheel, select by dragging
 - A configurable row of extra keys above the keyboard, and custom actions
 - Several sessions at once in tabs
 
@@ -41,6 +43,8 @@ Mosh, and renders the session with the same terminal engine as
 
 **Privacy**
 
+- Saved passwords and private keys are encrypted with a key that the Android Keystore
+  protects
 - An optional app lock that uses your fingerprint or the phone's screen lock
 - An option that hides the app's contents from screenshots and the recent apps list
 

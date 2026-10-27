@@ -72,4 +72,9 @@ class GhosttyBridge {
     external fun nativeSelectWordAt(handle: Long, cellX: Int, cellY: Int): String?
     external fun nativeSelectLineAt(handle: Long, cellX: Int, cellY: Int): String?
     external fun nativeSelectAll(handle: Long): String?
+    // Matches of the query in the whole screen, newest first: start row, start col,
+    // end row, end col (inclusive) per match, rows counted from the oldest scrollback row.
+    external fun nativeSearch(handle: Long, query: String): IntArray
+    external fun nativeScrollToScreenRow(handle: Long, screenRow: Int)
+    external fun nativeHyperlinkAt(handle: Long, cellX: Int, cellY: Int): String?
 }

@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.Terminal
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -115,6 +116,7 @@ import io.github.andreacovelli.abyssh.ui.terminal.TerminalSelectionState
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalSpecialKey
 import io.github.andreacovelli.abyssh.ui.terminal.decodeCustomActionValue
 import io.github.andreacovelli.abyssh.ui.terminal.isPasteShortcut
+import io.github.andreacovelli.abyssh.ui.terminal.isSearchShortcut
 import io.github.andreacovelli.abyssh.ui.terminal.modifierStateForCustomAction
 import io.github.andreacovelli.abyssh.ui.terminal.toGhosttyKey
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
@@ -400,6 +402,8 @@ fun TerminalScreen(
     val filesSupported = activeTab?.spec?.transport != Transport.LocalShell
     val fileBrowserState by vm.fileBrowserState.collectAsStateWithLifecycle()
     val hostKeyPrompt by vm.hostKeyPrompt.collectAsStateWithLifecycle()
+    val searchState by vm.search.collectAsStateWithLifecycle()
+    val tappedLink by vm.tappedLink.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val haptics = LocalHapticFeedback.current
@@ -496,6 +500,10 @@ fun TerminalScreen(
                 },
                 BuiltinCommand.Actions to { settingsRepo.setShowCustomActionsFab(!showCustomActionsFab) },
                 BuiltinCommand.Settings to { onOpenSettings() },
+                BuiltinCommand.Search to {
+                    vm.selectConnectionTab(ConnectionTab.Terminal)
+                    vm.openSearch()
+                },
             )
             AbysshKeyBindings.build(
                 builtinShortcuts = builtinShortcuts,
@@ -1392,6 +1400,18 @@ fun TerminalScreen(
                                 }
                             }
                         } else {
+                            searchState?.let { search ->
+                                TerminalSearchBar(
+                                    state = search,
+                                    onQueryChange = vm::setSearchQuery,
+                                    onOlder = vm::searchOlder,
+                                    onNewer = vm::searchNewer,
+                                    onClose = {
+                                        vm.closeSearch()
+                                        requestInputFocus()
+                                    },
+                                )
+                            }
                             Box(modifier = Modifier.weight(1f)) {
                                 TerminalCanvas(
                                     snapshot = snapshot,
@@ -1414,6 +1434,7 @@ fun TerminalScreen(
                                     onResize = vm::onCanvasSizeChanged,
                                     onTap = requestInputFocus,
                                     onPrimaryClick = vm::onPrimaryMouseClick,
+                                    onLinkTap = vm::onLinkTap,
                                     onSecondaryClick = vm::onSecondaryMouseClick,
                                     onMouseButton = vm::onMouseButton,
                                     onAppSelectionDrag = vm::onAppSelectionDrag,
@@ -1425,7 +1446,33 @@ fun TerminalScreen(
                                     onScroll = vm::onScroll,
                                     onFontSizeChange = { sizeSp -> terminalFontSizeSp = sizeSp },
                                     onSelectionChanged = { state -> selectionState = state },
+                                    searchMatches = searchState?.matches.orEmpty(),
+                                    currentSearchMatch = searchState?.currentMatch,
                                 )
+
+                                tappedLink?.let { url ->
+                                    TerminalLinkBar(
+                                        url = url,
+                                        onOpen = {
+                                            vm.dismissLink()
+                                            try {
+                                                context.startActivity(
+                                                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                                )
+                                            } catch (_: ActivityNotFoundException) {
+                                                Toast.makeText(context, "No app can open this link", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        onCopy = {
+                                            vm.dismissLink()
+                                            clipboard?.setPrimaryClip(ClipData.newPlainText("link", url))
+                                            Toast.makeText(context, "Copied link", Toast.LENGTH_SHORT).show()
+                                        },
+                                        onDismiss = vm::dismissLink,
+                                        modifier = Modifier.align(Alignment.BottomCenter),
+                                    )
+                                }
 
                                 Row(
                                     modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
@@ -1664,6 +1711,13 @@ fun TerminalScreen(
                                                     val mergedMods =
                                                         mods or modifierState.terminalMods()
                                                     if (
+                                                        shouldForwardToTerminal &&
+                                                            isSearchShortcut(key, mergedMods)
+                                                    ) {
+                                                        if (action == GhosttyKeyAction.Press) {
+                                                            vm.openSearch()
+                                                        }
+                                                    } else if (
                                                         shouldForwardToTerminal &&
                                                             isPasteShortcut(key, mergedMods, ctrlVPastes)
                                                     ) {
@@ -1904,6 +1958,11 @@ fun TerminalScreen(
                             }
                         },
                         onOpenSettings = onOpenSettings,
+                        onSearch = {
+                            vm.selectConnectionTab(ConnectionTab.Terminal)
+                            vm.openSearch()
+                            showTabSheet = false
+                        },
                         useSingleRowAccessoryBar = useSingleRowAccessoryBar,
                         onSelectTab = {
                             vm.selectTab(it)

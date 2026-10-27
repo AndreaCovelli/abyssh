@@ -31,7 +31,10 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerButtons
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
@@ -77,6 +80,10 @@ fun TerminalCanvas(
         { _, _, _, _, _, _ -> },
     onTap: () -> Unit = {},
     onPrimaryClick: (x: Float, y: Float) -> Unit = { _, _ -> },
+    // A tap where a link may be: when the app doesn't take mouse input, or with Shift.
+    // textUrl is the URL written at the cell; noLink runs the usual tap when there's none.
+    onLinkTap: (col: Int, row: Int, textUrl: String?, noLink: () -> Unit) -> Unit =
+        { _, _, _, noLink -> noLink() },
     // Two-finger tap. Sent as a right click to apps that take mouse input.
     onSecondaryClick: (x: Float, y: Float) -> Unit = { _, _ -> },
     // Right or middle button of a physical mouse: press, motion and release.
@@ -91,6 +98,11 @@ fun TerminalCanvas(
     maxFontSizeSp: Float = Float.MAX_VALUE,
     onFontSizeChange: (sizeSp: Float) -> Unit = {},
     onSelectionChanged: (TerminalSelectionState?) -> Unit = {},
+    // Scrollback search hits, painted behind the text; the current one stands out.
+    searchMatches: List<SearchMatch> = emptyList(),
+    currentSearchMatch: SearchMatch? = null,
+    searchMatchColor: Color = Color(0x66FACC15),
+    currentSearchMatchColor: Color = Color(0xCCF97316),
 ) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
@@ -208,6 +220,17 @@ fun TerminalCanvas(
     val cellHeight = cellHeightInt.toFloat()
     val selectionBackgroundArgb = selectionBackgroundColor.toArgb()
     val selectionForegroundArgb = selectionForegroundColor?.toArgb()
+    val searchMatchArgb = searchMatchColor.toArgb()
+    val currentSearchMatchArgb = currentSearchMatchColor.toArgb()
+    // Visible parts of the search matches, by viewport row, flagged when current.
+    val searchSpansByRow = remember(searchMatches, currentSearchMatch, snapshot.viewportScrollY, snapshot.rows, snapshot.cols) {
+        searchMatches
+            .flatMap { match ->
+                match.viewportSpans(snapshot.viewportScrollY, snapshot.rows, snapshot.cols)
+                    .map { span -> span to (match == currentSearchMatch) }
+            }
+            .groupBy { it.first.row }
+    }
     val hasSelectionFg = selectionForegroundArgb != null
     val cursorColorArgb = cursorColor.toArgb()
     val cursorTextColorArgb = cursorTextColor?.toArgb()
@@ -218,6 +241,7 @@ fun TerminalCanvas(
     val currentOnSelectionChange = rememberUpdatedState(onSelectionChange)
     val currentOnTap = rememberUpdatedState(onTap)
     val currentOnPrimaryClick = rememberUpdatedState(onPrimaryClick)
+    val currentOnLinkTap = rememberUpdatedState(onLinkTap)
     val currentOnSecondaryClick = rememberUpdatedState(onSecondaryClick)
     val currentOnMouseButton = rememberUpdatedState(onMouseButton)
     val currentOnAppSelectionDrag = rememberUpdatedState(onAppSelectionDrag)
@@ -309,6 +333,21 @@ fun TerminalCanvas(
         }
     }
 
+    // Canvas pixels to snapshot pixels, undoing the fit-to-canvas scaling.
+    fun toSnapshotSpace(position: Offset, s: TerminalSnapshot): Offset {
+        if (!currentFitSnapshotToCanvas.value) return position
+        val cols = max(s.cols, 1)
+        val rows = max(s.rows, 1)
+        val contentWidth = cols * currentCellWidth.value
+        val contentHeight = rows * currentCellHeight.value
+        if (contentWidth <= 0f || contentHeight <= 0f) return position
+        val scale = minOf(canvasSize.width / contentWidth, canvasSize.height / contentHeight)
+        if (scale <= 0f) return position
+        val offsetX = ((canvasSize.width - (contentWidth * scale)) * 0.5f).coerceAtLeast(0f)
+        val offsetY = ((canvasSize.height - (contentHeight * scale)) * 0.5f).coerceAtLeast(0f)
+        return Offset((position.x - offsetX) / scale, (position.y - offsetY) / scale)
+    }
+
     val canvasModifier = modifier
         .fillMaxSize()
         .onSizeChanged { size ->
@@ -319,22 +358,87 @@ fun TerminalCanvas(
                 baseModifier
             } else {
                 baseModifier.pointerInput(Unit) {
+                    // Mouse wheel and touchpad scrolling. These don't press a pointer, so the
+                    // gesture handler below never sees them.
+                    var remainder = 0f
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            if (event.type != PointerEventType.Scroll) continue
+                            val change = event.changes.firstOrNull() ?: continue
+                            remainder += change.scrollDelta.y * WHEEL_ROWS_PER_NOTCH
+                            val rows = remainder.toInt()
+                            if (rows != 0) {
+                                remainder -= rows
+                                val p = toSnapshotSpace(change.position, currentSnapshot.value)
+                                scrollDeltaChannel.trySend(TerminalScrollDelta(rows, p.x, p.y))
+                            }
+                            change.consume()
+                        }
+                    }
+                }.pointerInput(Unit) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val shiftOnDown =
                             currentShiftActive.value || currentEvent.keyboardModifiers.isShiftPressed
-                        fun toSnapshotSpace(position: Offset, s: TerminalSnapshot): Offset {
-                            if (!currentFitSnapshotToCanvas.value) return position
-                            val cols = max(s.cols, 1)
-                            val rows = max(s.rows, 1)
-                            val contentWidth = cols * currentCellWidth.value
-                            val contentHeight = rows * currentCellHeight.value
-                            if (contentWidth <= 0f || contentHeight <= 0f) return position
-                            val scale = minOf(canvasSize.width / contentWidth, canvasSize.height / contentHeight)
-                            if (scale <= 0f) return position
-                            val offsetX = ((canvasSize.width - (contentWidth * scale)) * 0.5f).coerceAtLeast(0f)
-                            val offsetY = ((canvasSize.height - (contentHeight * scale)) * 0.5f).coerceAtLeast(0f)
-                            return Offset((position.x - offsetX) / scale, (position.y - offsetY) / scale)
+                        // A tap or click that didn't move: double-tap selects a word, otherwise
+                        // clear the selection or click.
+                        fun handleTap(tapTime: Long) {
+                            val s = currentSnapshot.value
+                            val tapPos = toSnapshotSpace(down.position, s)
+                            val timeSinceLastTap = tapTime - doubleTapState.lastTime
+                            val distSinceLastTap = hypot(
+                                (tapPos.x - doubleTapState.lastPos.x).toDouble(),
+                                (tapPos.y - doubleTapState.lastPos.y).toDouble(),
+                            ).toFloat()
+                            doubleTapState.lastTime = tapTime
+                            doubleTapState.lastPos = tapPos
+
+                            if (timeSinceLastTap < currentDoubleTapTimeoutMillis.value &&
+                                distSinceLastTap < currentDoubleTapSlopPx.value
+                            ) {
+                                val cellIdx = s.cellAt(
+                                    tapPos.x,
+                                    tapPos.y,
+                                    currentCellWidth.value,
+                                    currentCellHeight.value,
+                                )
+                                if (cellIdx != null) {
+                                    val wordRange = s.wordAt(cellIdx)
+                                    if (wordRange != null) {
+                                        currentOnSelectionChange.value(TerminalSelection(wordRange.first, wordRange.last))
+                                        currentHaptics.value.performHapticFeedback(
+                                            HapticFeedbackType.LongPress,
+                                        )
+                                    }
+                                }
+                            } else if (currentSelectionState.value != null) {
+                                currentOnSelectionChange.value(null)
+                            } else {
+                                val click = {
+                                    currentOnPrimaryClick.value(tapPos.x, tapPos.y)
+                                    currentOnTap.value()
+                                }
+                                val cellIdx = s.cellAt(
+                                    tapPos.x,
+                                    tapPos.y,
+                                    currentCellWidth.value,
+                                    currentCellHeight.value,
+                                )
+                                if (cellIdx != null && (!s.appTracksMouse || shiftOnDown)) {
+                                    if (s.appTracksMouse) currentOnShiftSelectionStart.value()
+                                    currentOnLinkTap.value(
+                                        cellIdx % s.cols,
+                                        cellIdx / s.cols,
+                                        s.urlAt(cellIdx),
+                                    ) {
+                                        // Shift+tap is for links only; the app doesn't see it.
+                                        if (s.appTracksMouse) currentOnTap.value() else click()
+                                    }
+                                } else {
+                                    click()
+                                }
+                            }
                         }
                         val mouseButton = if (down.type == PointerType.Mouse) {
                             nonPrimaryMouseButton(currentEvent.buttons)
@@ -363,6 +467,22 @@ fun TerminalCanvas(
                                 }
                                 change.consume()
                             }
+                            return@awaitEachGesture
+                        }
+                        if (down.type == PointerType.Mouse) {
+                            handleMouseLeftButton(
+                                down = down,
+                                toSnapshotSpace = ::toSnapshotSpace,
+                                snapshot = { currentSnapshot.value },
+                                appTakesDrag = { s -> s.appHandlesSelectionDrag && !shiftOnDown },
+                                cellWidth = { currentCellWidth.value },
+                                cellHeight = { currentCellHeight.value },
+                                selection = { currentSelectionState.value },
+                                onSelectionChange = { currentOnSelectionChange.value(it) },
+                                onAppDrag = { action, p -> currentOnAppSelectionDrag.value(action, p.x, p.y) },
+                                onClick = { time -> handleTap(time) },
+                                onTapFocus = { currentOnTap.value() },
+                            )
                             return@awaitEachGesture
                         }
                         var dragRemainder = 0f
@@ -462,43 +582,7 @@ fun TerminalCanvas(
                                         break
                                     }
                                     if (!didScroll && !didPinch && !didDragGesture) {
-                                        val tapTime = event.changes.maxOfOrNull { it.uptimeMillis } ?: lastEventUptime
-                                        val s = currentSnapshot.value
-                                        val tapPos = toSnapshotSpace(down.position, s)
-                                        val timeSinceLastTap = tapTime - doubleTapState.lastTime
-                                        val distSinceLastTap = hypot(
-                                            (tapPos.x - doubleTapState.lastPos.x).toDouble(),
-                                            (tapPos.y - doubleTapState.lastPos.y).toDouble(),
-                                        ).toFloat()
-                                        doubleTapState.lastTime = tapTime
-                                        doubleTapState.lastPos = tapPos
-
-                                        if (timeSinceLastTap < currentDoubleTapTimeoutMillis.value &&
-                                            distSinceLastTap < currentDoubleTapSlopPx.value
-                                        ) {
-                                            val cellIdx = s.cellAt(
-                                                tapPos.x,
-                                                tapPos.y,
-                                                currentCellWidth.value,
-                                                currentCellHeight.value,
-                                            )
-                                            if (cellIdx != null) {
-                                                val wordRange = s.wordAt(cellIdx)
-                                                if (wordRange != null) {
-                                                    currentOnSelectionChange.value(TerminalSelection(wordRange.first, wordRange.last))
-                                                    currentHaptics.value.performHapticFeedback(
-                                                        HapticFeedbackType.LongPress,
-                                                    )
-                                                }
-                                            }
-                                        } else {
-                                            if (currentSelectionState.value != null) {
-                                                currentOnSelectionChange.value(null)
-                                            } else {
-                                                currentOnPrimaryClick.value(tapPos.x, tapPos.y)
-                                                currentOnTap.value()
-                                            }
-                                        }
+                                        handleTap(event.changes.maxOfOrNull { it.uptimeMillis } ?: lastEventUptime)
                                     }
                                     break
                                 }
@@ -718,6 +802,17 @@ fun TerminalCanvas(
                         )
                     }
                     i = j
+                }
+
+                searchSpansByRow[row]?.forEach { (span, isCurrent) ->
+                    bgPaint.color = if (isCurrent) currentSearchMatchArgb else searchMatchArgb
+                    nCanvas.drawRect(
+                        span.firstCol * cellWidth,
+                        y,
+                        (span.lastCol + 1) * cellWidth,
+                        y + cellHeight,
+                        bgPaint,
+                    )
                 }
 
                 // Text runs
@@ -1143,7 +1238,8 @@ private enum class DragMode {
 
 /** Tracks double-tap timing/position without triggering Compose recomposition. */
 private class DoubleTapState {
-    var lastTime: Long = 0L
+    // Far in the past, so the first tap is never taken for the second of a double tap.
+    var lastTime: Long = Long.MIN_VALUE / 2
     var lastPos: Offset = Offset.Zero
 }
 
@@ -1153,4 +1249,64 @@ private fun nonPrimaryMouseButton(buttons: PointerButtons): Int? = when {
     buttons.isSecondaryPressed -> TerminalMouseButton.Right
     buttons.isTertiaryPressed -> TerminalMouseButton.Middle
     else -> null
+}
+
+/** Rows scrolled per mouse wheel notch, as in most desktop terminals. */
+private const val WHEEL_ROWS_PER_NOTCH = 3f
+
+/**
+ * Left button of a physical mouse, from press to release. When the remote app takes
+ * mouse drags the button goes to it as is; otherwise dragging selects text and a
+ * click without moving acts like a tap.
+ */
+private suspend fun AwaitPointerEventScope.handleMouseLeftButton(
+    down: PointerInputChange,
+    toSnapshotSpace: (Offset, TerminalSnapshot) -> Offset,
+    snapshot: () -> TerminalSnapshot,
+    appTakesDrag: (TerminalSnapshot) -> Boolean,
+    cellWidth: () -> Float,
+    cellHeight: () -> Float,
+    selection: () -> TerminalSelection?,
+    onSelectionChange: (TerminalSelection?) -> Unit,
+    onAppDrag: (action: Int, position: Offset) -> Unit,
+    onClick: (time: Long) -> Unit,
+    onTapFocus: () -> Unit,
+) {
+    val toApp = appTakesDrag(snapshot())
+    if (toApp) onAppDrag(TerminalMouseAction.Press, toSnapshotSpace(down.position, snapshot()))
+    down.consume()
+    val downCell = snapshot().let { s ->
+        val p = toSnapshotSpace(down.position, s)
+        s.cellAt(p.x, p.y, cellWidth(), cellHeight())
+    }
+    var selecting = false
+    while (true) {
+        val event = awaitPointerEvent()
+        val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.first()
+        val s = snapshot()
+        val pos = toSnapshotSpace(change.position, s)
+        if (!change.pressed) {
+            when {
+                toApp -> {
+                    onAppDrag(TerminalMouseAction.Release, pos)
+                    onTapFocus()
+                }
+                !selecting -> onClick(change.uptimeMillis)
+            }
+            return
+        }
+        if (change.position != change.previousPosition) {
+            if (toApp) {
+                onAppDrag(TerminalMouseAction.Motion, pos)
+            } else {
+                val cell = s.cellAt(pos.x, pos.y, cellWidth(), cellHeight())
+                if (!selecting && cell != null && downCell != null && cell != downCell) {
+                    selecting = true
+                    onSelectionChange(TerminalSelection(downCell, downCell))
+                }
+                if (selecting && cell != null) updateSelectionDrag(selection(), cell, onSelectionChange)
+            }
+        }
+        change.consume()
+    }
 }

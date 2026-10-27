@@ -83,6 +83,17 @@ android {
         compose = true
     }
     testOptions {
+        // On-device tests run on a Gradle-managed emulator: ./gradlew dev34DebugAndroidTest
+        // (needs the x86_64 native library in jniLibs/x86_64).
+        managedDevices {
+            localDevices {
+                create("dev34") {
+                    device = "Pixel 6"
+                    apiLevel = 34
+                    systemImageSource = "aosp-atd"
+                }
+            }
+        }
         unitTests {
             // Robolectric needs the merged resources to resolve app resources in tests.
             isIncludeAndroidResources = true

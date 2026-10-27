@@ -35,7 +35,9 @@ const verbose_snapshot_perf_logs = false;
 //      pane-scoped selection.)
 //  14  cursor_style (the visual shape the app requested via DECSCUSR:
 //      0 = block, 1 = bar, 2 = underline, 3 = block_hollow)
-const SNAPSHOT_HEADER_I32_COUNT = 15;
+//  15  app_tracks_mouse (1 when the app has enabled any mouse mode, so taps
+//      go to it as clicks instead of opening links)
+const SNAPSHOT_HEADER_I32_COUNT = 16;
 const SNAPSHOT_CELL_SIZE_BYTES = 11;
 // Flag bit set on a cell whose codepoint has additional grapheme codepoints
 // in the extras section.
@@ -916,6 +918,8 @@ export fn abyssh_build_text_snapshot(handle: c.jlong, out_size: [*c]usize) callc
         .block_hollow => 3,
     };
     writeIntLe(i32, buffer[0..base_total_size], 56, cursor_style);
+    const app_tracks_mouse: i32 = if (terminal.terminal.flags.mouse_event != .none) 1 else 0;
+    writeIntLe(i32, buffer[0..base_total_size], 60, app_tracks_mouse);
 
     terminal.snapshot_extras_scratch.clearRetainingCapacity();
     var extras_records: usize = 0;
@@ -1719,4 +1723,97 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     }) catch return null;
     defer allocator.free(text);
     return jniNewStringUTF(env, text.ptr);
+}
+
+// Cap on matches returned to the host, so a one-letter query over a long
+// scrollback stays cheap to copy and draw.
+const MAX_SEARCH_MATCHES: usize = 2000;
+
+/// Finds `query` in the active screen, scrollback included. Matching ignores
+/// ASCII case. Returns the matches newest first, four ints each: start screen
+/// row, start column, end screen row, end column (end inclusive). Screen rows
+/// count from the oldest scrollback row, like viewport_scroll_y.
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeSearch(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+    query_jstring: c.jstring,
+) callconv(.c) c.jintArray {
+    _ = thiz;
+    const terminal = abysshFromHandle(handle) orelse return jniIntArray(env, &.{});
+    if (query_jstring == null) return jniIntArray(env, &.{});
+    const chars = env.*.*.GetStringUTFChars.?(env, query_jstring, null) orelse return jniIntArray(env, &.{});
+    defer env.*.*.ReleaseStringUTFChars.?(env, query_jstring, chars);
+    const query = std.mem.span(chars);
+    if (query.len == 0) return jniIntArray(env, &.{});
+
+    const screen = terminal.terminal.screens.active;
+    var search = ghostty.search.Screen.init(allocator, screen, query) catch return jniIntArray(env, &.{});
+    defer search.deinit();
+    search.searchAll() catch return jniIntArray(env, &.{});
+    const found = search.matches(allocator) catch return jniIntArray(env, &.{});
+    defer allocator.free(found);
+
+    const count = @min(found.len, MAX_SEARCH_MATCHES);
+    const out = allocator.alloc(c.jint, count * 4) catch return jniIntArray(env, &.{});
+    defer allocator.free(out);
+    var n: usize = 0;
+    for (found[0..count]) |hl| {
+        const start = screen.pages.pointFromPin(.screen, hl.startPin()) orelse continue;
+        const end = screen.pages.pointFromPin(.screen, hl.endPin()) orelse continue;
+        out[n * 4 + 0] = @intCast(start.screen.y);
+        out[n * 4 + 1] = @intCast(start.screen.x);
+        out[n * 4 + 2] = @intCast(end.screen.y);
+        out[n * 4 + 3] = @intCast(end.screen.x);
+        n += 1;
+    }
+    return jniIntArray(env, out[0 .. n * 4]);
+}
+
+/// Scrolls the viewport so screen row `screen_y` is visible, centering it
+/// when it was off screen. Unlike nativeScroll this never sends wheel events
+/// to the app.
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeScrollToScreenRow(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+    screen_y: c.jint,
+) callconv(.c) void {
+    _ = env;
+    _ = thiz;
+    const terminal = abysshFromHandle(handle) orelse return;
+    const pages = &terminal.terminal.screens.active.pages;
+    const top = pages.pointFromPin(.screen, pages.getTopLeft(.viewport)) orelse return;
+    const top_y: isize = @intCast(top.screen.y);
+    const rows: isize = @intCast(pages.rows);
+    const target: isize = @intCast(screen_y);
+    if (target >= top_y and target < top_y + rows) return;
+    terminal.terminal.scrollViewport(.{ .delta = target - @divTrunc(rows, 2) - top_y });
+    update_render_state(terminal);
+}
+
+fn jniIntArray(env: *c.JNIEnv, values: []const c.jint) c.jintArray {
+    const array = env.*.*.NewIntArray.?(env, @intCast(values.len)) orelse return null;
+    if (values.len > 0) env.*.*.SetIntArrayRegion.?(env, array, 0, @intCast(values.len), values.ptr);
+    return array;
+}
+
+/// The OSC 8 hyperlink URI of a viewport cell, or null when it has none.
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeHyperlinkAt(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+    cell_x: c.jint,
+    cell_y: c.jint,
+) callconv(.c) c.jstring {
+    _ = thiz;
+    const terminal = abysshFromHandle(handle) orelse return null;
+    const pin = viewportCellToPin(terminal, @intCast(@max(0, cell_x)), @intCast(@max(0, cell_y))) orelse return null;
+    const page = &pin.node.data;
+    const cell = pin.rowAndCell().cell;
+    const link_id = page.lookupHyperlink(cell) orelse return null;
+    const uri = page.hyperlink_set.get(page.memory, link_id).uri.slice(page.memory);
+    const uri_z = allocator.dupeZ(u8, uri) catch return null;
+    defer allocator.free(uri_z);
+    return jniNewStringUTF(env, uri_z.ptr);
 }

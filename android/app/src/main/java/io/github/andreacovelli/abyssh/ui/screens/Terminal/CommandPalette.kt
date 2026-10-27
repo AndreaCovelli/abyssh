@@ -66,6 +66,7 @@ fun CommandPalette(
     abysshKeyActive: Boolean,
     onOpenFiles: () -> Unit,
     onOpenSettings: () -> Unit,
+    onSearch: () -> Unit,
     useSingleRowAccessoryBar: Boolean,
     onSelectTab: (String) -> Unit,
     onCloseTab: (String) -> Unit,
@@ -229,6 +230,15 @@ fun CommandPalette(
           PaletteHint("↵", "open")
           PaletteHint("esc", "dismiss")
           Spacer(modifier = Modifier.weight(1f))
+          AbyssButton(
+              onClick = onSearch,
+              variant = AbyssButtonVariant.Outlined,
+              bracketed = true,
+              contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+              testTag = "palette_search",
+          ) {
+            AbyssText("search", style = typography.labelSmall, color = colors.accent)
+          }
           AbyssButton(
               onClick = onAddTab,
               variant = AbyssButtonVariant.Outlined,

@@ -77,7 +77,12 @@ Kotlin declares `external fun native*` methods in five bridge classes: `GhosttyB
   commit, and ask before raising minSdk.
 - Database changes: bump `version` in `data/db/AppDatabase.kt`, add an `AutoMigration`
   (with a spec for renames and deletes), build to generate the new schema JSON, and
-  commit it. Versions 1 to 4 are gone, so version 5 is the oldest supported baseline.
+  commit it. Version 11 is the baseline; there are no migrations from older versions.
+- Passwords, key passphrases, and private keys are sealed with AES-GCM
+  (`data/secure/SecretBox`) before they reach the database. The DAOs seal on write and
+  open on read, so new secret columns must go through them too. The data key lives in
+  `no_backup/`, wrapped by an Android Keystore key (`data/secure/DataKeyStore`); when a
+  new key is created, the database is deleted because nothing sealed before can be read.
 
 ## Testing
 
@@ -87,7 +92,9 @@ Kotlin declares `external fun native*` methods in five bridge classes: `GhosttyB
   `android/app/build/outputs/roborazzi/`. Pass `-Proborazzi.test.record=true` to write
   the images; nothing compares them automatically.
 - Instrumented tests in `android/app/src/androidTest/` need a device. Say so when
-  none was available.
+  none was available. Without a phone, run them on the Gradle-managed emulator with
+  `cd android && ./gradlew dev34DebugAndroidTest`, after building the x86_64 native
+  library (`mise run native -Dtarget=x86_64-linux-android`).
 - `build.zig` has no test step, so the Zig `test` blocks never run. Test bridge logic
   through its Kotlin callers.
 - Changes to the bridge, SSH, Mosh, or the terminal need a check on a device: build the

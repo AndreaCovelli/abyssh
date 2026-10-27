@@ -55,6 +55,8 @@ data class TerminalSnapshot(
      * building a grid-wide client-side selection that crosses pane borders.
      */
     val appHandlesSelectionDrag: Boolean = false,
+    /** True when the app has enabled any mouse mode, so taps reach it as clicks. */
+    val appTracksMouse: Boolean = false,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -72,7 +74,8 @@ data class TerminalSnapshot(
             graphemeExtrasEquals(graphemeExtras, other.graphemeExtras) &&
             images == other.images &&
             viewportScrollY == other.viewportScrollY &&
-            appHandlesSelectionDrag == other.appHandlesSelectionDrag
+            appHandlesSelectionDrag == other.appHandlesSelectionDrag &&
+            appTracksMouse == other.appTracksMouse
     }
 
     override fun hashCode(): Int {
@@ -94,6 +97,7 @@ data class TerminalSnapshot(
         result = 31 * result + images.hashCode()
         result = 31 * result + viewportScrollY
         result = 31 * result + appHandlesSelectionDrag.hashCode()
+        result = 31 * result + appTracksMouse.hashCode()
         return result
     }
 
@@ -110,7 +114,7 @@ data class TerminalSnapshot(
         const val CURSOR_STYLE_BAR: Int = 1
         const val CURSOR_STYLE_UNDERLINE: Int = 2
         const val CURSOR_STYLE_BLOCK_HOLLOW: Int = 3
-        private const val HEADER_I32_COUNT = 15
+        private const val HEADER_I32_COUNT = 16
         private const val CELL_SIZE_BYTES = 11
         private const val IMAGE_HEADER_BYTES = 52
 
@@ -151,6 +155,7 @@ data class TerminalSnapshot(
             val viewportScrollY = wrapped.int
             val appHandlesSelectionDrag = wrapped.int == 1
             val cursorStyle = wrapped.int
+            val appTracksMouse = wrapped.int == 1
 
             val cellCount = cols * rows
             val expectedSize = (HEADER_I32_COUNT * 4) + (cellCount * CELL_SIZE_BYTES)
@@ -240,6 +245,7 @@ data class TerminalSnapshot(
                 images = images,
                 viewportScrollY = viewportScrollY,
                 appHandlesSelectionDrag = appHandlesSelectionDrag,
+                appTracksMouse = appTracksMouse,
             )
 
             return snapshot

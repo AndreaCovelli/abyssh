@@ -4,7 +4,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class PasteShortcutTest {
+class TerminalShortcutsTest {
     private val shift = 1 shl 0
     private val ctrl = 1 shl 1
     private val alt = 1 shl 2
@@ -52,5 +52,13 @@ class PasteShortcutTest {
     fun `raw control v from the keyboard pastes`() {
         assertTrue(isPasteShortcut("\u0016", ModifierState(), ctrlVPastes = true))
         assertFalse(isPasteShortcut("\u0016", ModifierState(), ctrlVPastes = false))
+    }
+
+    @Test
+    fun `ctrl shift f opens search`() {
+        assertTrue(isSearchShortcut(GhosttyKey.keyF, ctrl or shift))
+        assertFalse(isSearchShortcut(GhosttyKey.keyF, ctrl))
+        assertFalse(isSearchShortcut(GhosttyKey.keyF, ctrl or shift or alt))
+        assertFalse(isSearchShortcut(GhosttyKey.keyG, ctrl or shift))
     }
 }
