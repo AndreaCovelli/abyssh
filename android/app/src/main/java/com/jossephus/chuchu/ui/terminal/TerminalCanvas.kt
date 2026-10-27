@@ -1238,7 +1238,8 @@ private enum class DragMode {
 
 /** Tracks double-tap timing/position without triggering Compose recomposition. */
 private class DoubleTapState {
-    var lastTime: Long = 0L
+    // Far in the past, so the first tap is never taken for the second of a double tap.
+    var lastTime: Long = Long.MIN_VALUE / 2
     var lastPos: Offset = Offset.Zero
 }
 
