@@ -1,111 +1,67 @@
 <p align="center">
-  <img src="./assets/logo.png" alt="Chuchu logo" width="48" height="48" />
+  <img src="./assets/logo.png" alt="ctulssh logo" width="64" height="64" />
 </p>
 
-<h1 align="center">Chuchu</h1>
+<h1 align="center">ctulssh</h1>
 
 <p align="center">
- A Modern, Better, Native Android SSH client powered by libghostty
-</p>
-
-<p align="center">
-  <a href="https://github.com/jossephus/chuchu/releases/latest">Download Latest</a> ·
-  <a href="https://github.com/jossephus/chuchu/releases/">ChangeLog</a> ·
+  A native Android SSH and Mosh client powered by libghostty
 </p>
 
 ---
 
+ctulssh is a personal fork of [jossephus/chuchu](https://github.com/jossephus/chuchu),
+a native Android SSH client with a terminal-first Compose UI that supports standard
+SSH, Mosh, and Tailscale SSH.
 
-<table align="center" cellpadding="10">
-  <tr>
-    <td><img src="./assets/sample-3.jpg" alt="Chuchu sample 3" height="420" /></td>
-    <td><img src="./assets/sample-2.jpg" alt="Chuchu sample 2" height="420" /></td>
-    <td><img src="./assets/sample-1.jpg" alt="Chuchu sample 1" height="420" /></td>
-    <td><img src="./assets/sample-4.jpg" alt="Chuchu sample 4" height="420" /></td>
-</table>
+## Features
 
-Chuchu is a native Android SSH client powered by libghostty, a terminal-first Compose UI, and has support for both standard SSH and Tailscale SSH workflows.
+- Password and key authentication, including Tailscale SSH
+- Image display through libghostty's Kitty image protocol support
+- More than 400 themes from the Ghostty repository
+- Configurable accessory keys and custom terminal actions
+- Per-host post-connect actions that run after SSH or Mosh connects or reconnects
+- Encrypted import and export of SSH keys and server profiles
+- A terminal renderer with resize, scrollback, focus, modifier keys, and mouse support
 
-### Features 
-- tailscale, ssh password + key authentication
-- image display using libghostty's kitty image protocol support
-- more than 400 themes from the official ghostty repository
-- configurable accessory keys and custom terminal actions
-- per-host post-connect actions that autorun a selected custom action after SSH/Mosh connects or reconnects
-- encrypted local import/export backups for SSH keys and server profiles
-- beautiful and working terminal renderer with fully working resize, scrollback, focus, modifier keys, mouse actions 
-
-## Status
-
-Chuchu is in active development. I am daily driving it and improving any issues i found in the way. Join the journey and report any bugs you find. And I welcome any contributions.
-
-
-### Getting Started
-
-Checkout our [releases](https://github.com/jossephus/chuchu/releases) and download the APK from there.
-
-- **Stable:** the latest non-prerelease build
-- **Nightly:** every push to `main` publishes a rolling prerelease at the [`nightly`](https://github.com/jossephus/chuchu/releases/tag/nightly) tag
-
-I don't have a personal Play Store account right now (and I can't open one because of the payment limitation in my country, feel free to contact me if you want to publish it.)
-
+ctulssh installs as a separate app and does not read chuchu data or backups.
 
 ## Stack
 
-- Kotlin + Jetpack Compose for the Android app
-- Zig for native build orchestration and JNI/native bridge code
+- Kotlin and Jetpack Compose for the Android app, Room for local storage
+- Zig for the native build and the JNI bridge
 - Ghostty VT for terminal emulation
-- `libssh2` + `openssl` for the current native SSH path
-- Room for local data storage
+- `libssh2` and OpenSSL for SSH
 
+## Development
 
-### Development - Prerequisites
-
-If you have nix installed, the following three steps will get you started
-
-1. nix develop - will set you up with everything you will need.
-2. running 'make build' will build the native code needed 
-3. running 'make app' will build the apk and install it in a connected device. 
-
-If you don't have nix installed, you will need
-
-1. setup tools
-- Android Studio - This will set up the needed Android SDK, Android NDK and Java runtime (JDK 17+).
-- Zig 0.15.2
-2. build the native library
-
-Set `ANDROID_NDK_HOME` or `ANDROID_NDK_ROOT`, then build the JNI library for Android arm64:
+[mise](https://mise.jdx.dev) pins the JDK, Zig, and actionlint. You also need the
+Android SDK (`ANDROID_HOME`) with an NDK installed.
 
 ```sh
-zig build jni -Dtarget=aarch64-linux-android
+mise install
+
+# Build libctulssh_jni.so into android/app/src/main/jniLibs.
+# ANDROID_NDK_HOME must point at one NDK version.
+export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/<version>"
+mise run native -Dtarget=aarch64-linux-android
+
+mise run build     # debug APK
+mise run install   # install on a connected device and launch
+mise run check     # lint, unit tests, debug build, workflow lint
 ```
 
-That copies `libchuchu_jni.so` into `app/src/main/jniLibs/arm64-v8a/`.
+`mise tasks ls` lists every task. Without mise, use JDK 21 and Zig 0.15.2 and run the
+same commands directly:
 
-3. From android studio run 
 ```sh
-./gradlew assembleDebug
+(cd zig-src && zig build -Doptimize=ReleaseSmall jni -Dtarget=aarch64-linux-android)
+(cd android && ./gradlew lintDebug testDebugUnitTest assembleDebug)
 ```
 
-For a manual debug APK, run the native build first, then assemble the app:
+The APK must contain `lib/arm64-v8a/libctulssh_jni.so`; without it, SSH and key
+generation fail on device.
 
-```sh
-make build
-cd android && ./gradlew assembleDebug
-```
+## License
 
-The APK should include `lib/arm64-v8a/libchuchu_jni.so`; without it native SSH/key generation will fail on device.
-
-## Inspiration
-
-I have been using [vvterm](https://github.com/vivy-company/vvterm) on iOS for the past few weeks and i really liked it.  This project came from my desire to have native ssh client but for android.
-
-## Project Name
-chuchu is one of my favorite characters from the amharic book [Yesinbit Kelemat](https://www.goodreads.com/book/show/30759971) [translated to colors of adios]. 
-
-## Demo
-
-<p align="center">
-  <img src="./assets/chuchu_demo.gif" width="400" alt="Chuchu demo" />
-</p>
-
+MIT, see [LICENSE](LICENSE). Based on chuchu by jossephus and its contributors.
