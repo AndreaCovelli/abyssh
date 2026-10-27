@@ -41,6 +41,16 @@ description = "Run instrumented tests on a connected device or emulator"
 dir = "android"
 run = "./gradlew connectedDebugAndroidTest"
 
+[tasks.format]
+description = "Format Kotlin sources and Gradle scripts with ktlint"
+dir = "android"
+run = "./gradlew spotlessApply"
+
+[tasks."format:check"]
+description = "Check Kotlin and Gradle script formatting"
+dir = "android"
+run = "./gradlew spotlessCheck"
+
 [tasks."check:actions"]
 description = "Lint GitHub Actions workflows"
 run = "actionlint"

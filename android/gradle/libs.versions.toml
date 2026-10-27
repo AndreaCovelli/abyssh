@@ -17,6 +17,8 @@ kotlinxCoroutines = "1.11.0"
 biometric = "1.1.0"
 fragment = "1.9.1"
 robolectric = "4.17"
+spotless = "8.10.4"
+ktlint = "1.8.0"
 roborazzi = "1.77.0"
 
 [libraries]
@@ -48,6 +50,8 @@ androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-co
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version.ref = "roborazzi" }
 roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version.ref = "roborazzi" }
+# Not a project dependency: declared so Renovate tracks the version Spotless passes to ktlint.
+ktlint-cli = { group = "com.pinterest.ktlint", name = "ktlint-cli", version.ref = "ktlint" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -55,3 +59,4 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 room = { id = "androidx.room", version.ref = "room" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
