@@ -103,7 +103,11 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             ChuText("$ ", style = typography.headline, color = colors.textMuted)
             ChuText(
-                if (form.id != null) "edit server" else "add server",
+                when {
+                    form.id != null -> "edit server"
+                    vm.isCopy -> "copy server"
+                    else -> "add server"
+                },
                 style = typography.headline,
             )
         }

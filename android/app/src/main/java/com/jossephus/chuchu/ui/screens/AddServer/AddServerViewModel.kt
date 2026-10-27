@@ -32,20 +32,29 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class AddServerViewModel(application: Application, private val hostId: Long?) :
-    AndroidViewModel(application) {
+/**
+ * Form for adding or editing a server. With [copy], [hostId] is only the starting
+ * point: the form is prefilled from it and saving creates a new server.
+ */
+class AddServerViewModel(
+    application: Application,
+    private val hostId: Long?,
+    private val copy: Boolean = false,
+) : AndroidViewModel(application) {
     companion object {
-        fun factory(application: Application, hostId: Long?): ViewModelProvider.Factory =
+        fun factory(application: Application, hostId: Long?, copy: Boolean = false): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
                     if (modelClass.isAssignableFrom(AddServerViewModel::class.java)) {
                         @Suppress("UNCHECKED_CAST")
-                        return AddServerViewModel(application, hostId) as T
+                        return AddServerViewModel(application, hostId, copy) as T
                     }
                     throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
                 }
             }
     }
+
+    val isCopy: Boolean get() = copy
 
     private val db = AppDatabase.getInstance(application)
     private val hostRepository = HostRepository(db.hostProfileDao())
@@ -79,8 +88,8 @@ class AddServerViewModel(application: Application, private val hostId: Long?) :
                 val key = profile.keyId?.let { sshKeyRepository.getById(it) }
                 _form.value =
                     AddServerForm(
-                        id = profile.id,
-                        name = profile.name,
+                        id = if (copy) null else profile.id,
+                        name = if (copy) "${profile.name} (copy)" else profile.name,
                         host = profile.host,
                         port = profile.port.toString(),
                         username = profile.username,
