@@ -299,6 +299,8 @@
     <string name="settings_category_keys">Keys</string>
     <string name="settings_section_security">Security</string>
     <string name="settings_lock_app">Lock app on open</string>
+    <string name="settings_lock_app_verify_title">Verify to turn on app lock</string>
+    <string name="settings_lock_app_verify_subtitle">Authenticate to require verification each time the app opens</string>
     <string name="settings_verify_before_connect">Verify before server connect</string>
     <string name="settings_verify_hint">Use biometrics or device PIN/pattern.</string>
     <string name="action_manage">Manage</string>

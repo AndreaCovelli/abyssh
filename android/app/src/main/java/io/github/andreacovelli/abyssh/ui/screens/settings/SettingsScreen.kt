@@ -44,6 +44,7 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 @Composable
 fun SettingsScreen(
     vm: SettingsViewModel,
+    onEnableAppLock: () -> Unit,
     backupViewModel: SettingsBackupViewModel,
     keysViewModel: KeysViewModel,
     onBack: () -> Unit,
@@ -102,6 +103,7 @@ fun SettingsScreen(
                         GeneralSettings(
                             state = state.general,
                             actions = vm,
+                            onEnableAppLock = onEnableAppLock,
                             onOpenBackup = { openSheet = SettingsSheet.Backup },
                         )
                     SettingsCategory.Terminal ->
@@ -171,6 +173,7 @@ private fun SettingsSheets(
 private fun GeneralSettings(
     state: GeneralSettingsState,
     actions: GeneralSettingsActions,
+    onEnableAppLock: () -> Unit,
     onOpenBackup: () -> Unit,
 ) {
     val typography = AbyssTypography.current
@@ -198,7 +201,13 @@ private fun GeneralSettings(
             style = typography.label,
             modifier = Modifier.weight(1f),
         )
-        AbyssSwitch(checked = state.appLockEnabled, onCheckedChange = actions::setAppLockEnabled)
+        // Turning the lock on waits for verification; turning it off applies at once.
+        AbyssSwitch(
+            checked = state.appLockEnabled,
+            onCheckedChange = { enabled ->
+                if (enabled) onEnableAppLock() else actions.setAppLockEnabled(false)
+            },
+        )
     }
     Spacer(modifier = Modifier.height(20.dp))
     Row(
