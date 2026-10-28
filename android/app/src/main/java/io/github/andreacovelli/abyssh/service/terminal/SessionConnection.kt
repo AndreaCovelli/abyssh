@@ -1,0 +1,323 @@
+package io.github.andreacovelli.abyssh.service.terminal
+
+import android.util.Log
+import io.github.andreacovelli.abyssh.model.Transport
+import io.github.andreacovelli.abyssh.service.mosh.MoshRuntimeState
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+private const val TAG = "TerminalSession"
+private const val MAX_RECONNECT_ATTEMPTS = 8
+private const val RECONNECT_BASE_DELAY_MS = 1_000L
+private const val RECONNECT_MAX_DOUBLINGS = 5
+private const val RECONNECT_MAX_DELAY_MS = 60_000L
+private const val MAX_PTY_DRAINS = 8
+
+/** How long to wait before reconnect [attempt] (1-based): 1 s, doubling up to 32 s. */
+internal fun reconnectDelayMs(attempt: Int): Long =
+    (RECONNECT_BASE_DELAY_MS shl (attempt - 1).coerceIn(0, RECONNECT_MAX_DOUBLINGS))
+        .coerceAtMost(RECONNECT_MAX_DELAY_MS)
+
+/** How a read loop ended. */
+private class ReadOutcome(
+    val failed: Boolean = false,
+    val shellExited: Boolean = false,
+    val moshFailureCode: Int? = null,
+)
+
+/**
+ * Opens a session's transport, runs its read loop, and reconnects when the link drops.
+ * [connect] and [disconnect] may be called from any thread; every other call must run on
+ * the session thread, [dispatcher].
+ */
+// Connecting, reading, and resizing cross JNI and the network, which throw many
+// exception types; each failure becomes the session's error state.
+@Suppress("TooGenericExceptionCaught")
+internal class SessionConnection(
+    private val scope: CoroutineScope,
+    private val dispatcher: CoroutineDispatcher,
+    private val state: MutableStateFlow<SessionState>,
+    private val emulator: TerminalEmulator,
+    private val transports: SessionTransports,
+    private val multiplexers: RemoteMultiplexerProbe,
+    private val onShellExited: () -> Unit,
+) {
+    private val moshStaleness = MoshConnectionStalenessTracker()
+    private val moshEvents =
+        MoshEvents(
+            onHostBytes = ::feed,
+            onResize = emulator::resizeGrid,
+            onRuntimeState = ::onMoshRuntime,
+            onEventsDrained = { emulator.requestSnapshot() },
+        )
+
+    @Volatile private var spec: TabSpec? = null
+
+    @Volatile private var disconnectRequested = false
+    private var readJob: Job? = null
+
+    @Volatile private var reconnectJob: Job? = null
+
+    fun connect(spec: TabSpec, sessionKey: String) {
+        disconnectRequested = false
+        this.spec = spec
+        scope.launch(dispatcher) {
+            reconnectJob?.cancel()
+            reconnectJob = null
+            state.update {
+                it.copy(status = SessionStatus.Connecting, error = null, reconnectAttempt = 0, sessionKey = sessionKey)
+            }
+            val failure = preconditionFailure(spec) ?: openOrFailure(spec)
+            if (failure == null) {
+                onOpened(spec)
+            } else {
+                state.value = SessionState(status = SessionStatus.Error, sessionKey = sessionKey, error = failure)
+            }
+        }
+    }
+
+    /** Closes the session; [onClosed] runs on the session thread once everything is closed. */
+    fun disconnect(onClosed: () -> Unit) {
+        disconnectRequested = true
+        reconnectJob?.cancel()
+        reconnectJob = null
+        spec = null
+        scope.launch(dispatcher) {
+            readJob?.cancel()
+            readJob = null
+            transports.closeAll()
+            onClosed()
+        }
+    }
+
+    /** Applies [geometry] to the terminal and the far end. */
+    fun resize(geometry: TerminalGeometry) {
+        try {
+            emulator.geometry = geometry
+            if (!emulator.isOpen) return
+            emulator.applyGeometry()
+            // Flush pty output from the resize (e.g. the DEC 2048 in-band size report)
+            // so Textual-based TUIs detect the resize.
+            flushPtyWrites()
+            emulator.setMouseEncodingSize()
+            transports.resize(geometry)
+            emulator.requestSnapshot(force = true)
+        } catch (e: Exception) {
+            Log.e(TAG, "Resize failed", e)
+            onResizeFailed(e)
+        }
+    }
+
+    // User input is best-effort: a dropped transport ends the read loop, which then
+    // reports the error or reconnects, so a failed write needs no handling here.
+    fun writeBestEffort(data: ByteArray) {
+        runCatching { transports.write(data) }
+    }
+
+    /** Sends the terminal's replies to the far end, such as answers to size queries. */
+    fun flushPtyWrites() {
+        repeat(MAX_PTY_DRAINS) {
+            val ptyWrites = emulator.drainPtyWrites()
+            if (ptyWrites.isEmpty()) return
+            try {
+                transports.write(ptyWrites)
+            } catch (e: Exception) {
+                Log.e(TAG, "flushPtyWrites failed: ${e.message}")
+                scope.launch(dispatcher) {
+                    state.update { it.copy(status = SessionStatus.Error, error = "Connection lost: ${e.message}") }
+                }
+                return
+            }
+        }
+    }
+
+    private fun preconditionFailure(spec: TabSpec): String? {
+        val bridge = emulator.bridge
+        return when {
+            !bridge.isLoaded() -> "Native terminal library ${bridge.nativeStatus()}. Check ABI/NDK build."
+            transports.unavailableReason(spec.transport) != null -> transports.unavailableReason(spec.transport)
+            spec.transport != Transport.LocalShell && spec.username.isBlank() -> "Username required"
+            else -> multiplexers.availability(spec).errorMessage(spec.multiplexer)
+        }
+    }
+
+    /** Opens the session; returns why it failed, or null when it opened. */
+    private suspend fun openOrFailure(spec: TabSpec): String? = try {
+        open(spec)
+        null
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: LinkageError) {
+        Log.e(TAG, "Connect failed", e)
+        "Native terminal backend unavailable: ${e.message}"
+    } catch (e: Exception) {
+        Log.e(TAG, "Connect failed", e)
+        "${e::class.simpleName}: ${e.message}"
+    }
+
+    private suspend fun open(spec: TabSpec) {
+        transports.closeAll()
+        emulator.open()
+        if (spec.transport == Transport.Mosh) moshStaleness.reset()
+        transports.open(spec, emulator.geometry)
+    }
+
+    private fun onOpened(spec: TabSpec) {
+        state.update { it.copy(status = SessionStatus.Connected, error = null, reconnectAttempt = 0) }
+        emulator.requestSnapshot(force = true)
+        startReadLoop(spec.transport)
+        sendPostConnectCommand(spec.postConnectCommand)
+    }
+
+    // A multiplexer starts through openExecPty before this runs; later writes on that pty
+    // follow the exec request, so the attached session reads the command.
+    private fun sendPostConnectCommand(command: String?) {
+        val trimmed = command?.trim().orEmpty()
+        if (trimmed.isEmpty()) return
+        try {
+            transports.write("$trimmed\n".toByteArray(Charsets.UTF_8))
+        } catch (e: Exception) {
+            Log.e(TAG, "post-connect command failed", e)
+        }
+    }
+
+    private fun startReadLoop(transport: Transport) {
+        readJob = scope.launch(dispatcher) { onReadLoopEnded(transport, read(transport)) }
+    }
+
+    private suspend fun read(transport: Transport): ReadOutcome = try {
+        when (transport) {
+            Transport.Mosh -> ReadOutcome(moshFailureCode = transports.mosh.read(moshEvents))
+            Transport.LocalShell -> {
+                transports.readLocalShell(::feed)
+                ReadOutcome(shellExited = currentCoroutineContext().isActive)
+            }
+            else -> ReadOutcome(shellExited = transports.readSsh(::feed))
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.e(TAG, "Read loop failed", e)
+        if (transport == Transport.LocalShell && !disconnectRequested) {
+            state.update { it.copy(status = SessionStatus.Error, error = "Local shell failed: ${e.message}") }
+        }
+        ReadOutcome(failed = true)
+    }
+
+    private fun onReadLoopEnded(transport: Transport, outcome: ReadOutcome) {
+        when (readLoopExitAction(transport, outcome.shellExited && !outcome.failed)) {
+            ReadLoopExitAction.Disconnect -> {
+                if (transport == Transport.LocalShell) transports.localShell.close() else transports.ssh.close()
+                if (!disconnectRequested && !outcome.failed) {
+                    state.update { it.copy(status = SessionStatus.Disconnected) }
+                    if (outcome.shellExited) onShellExited()
+                }
+            }
+            ReadLoopExitAction.RequireManualReconnect -> {
+                transports.mosh.close()
+                if (!disconnectRequested) {
+                    val failure = outcome.moshFailureCode?.let { " (failure code $it)" }.orEmpty()
+                    state.update {
+                        it.copy(
+                            status = SessionStatus.Error,
+                            error = "Mosh session ended$failure. Reconnect to start a new session.",
+                        )
+                    }
+                }
+            }
+            ReadLoopExitAction.AutomaticReconnect -> scheduleReconnect("Connection interrupted")
+        }
+    }
+
+    private fun onResizeFailed(error: Exception) {
+        val transport = spec?.transport
+        val reconnects = !disconnectRequested &&
+            transport != null &&
+            readLoopExitAction(transport) == ReadLoopExitAction.AutomaticReconnect
+        if (reconnects) {
+            scheduleReconnect("Connection interrupted: ${error.message ?: "resize failed"}")
+            return
+        }
+        if (transport == Transport.Mosh) {
+            readJob?.cancel()
+            readJob = null
+            transports.mosh.close()
+        }
+        state.update { it.copy(status = SessionStatus.Error, error = "Resize failed: ${error.message}") }
+    }
+
+    private fun scheduleReconnect(reason: String) {
+        val spec = spec
+        if (disconnectRequested || spec == null) {
+            updateStatus(SessionStatus.Disconnected)
+            return
+        }
+        if (reconnectJob?.isActive == true) return
+        reconnectJob = scope.launch(dispatcher) { reconnect(spec, reason) }
+    }
+
+    private suspend fun reconnect(spec: TabSpec, reason: String) {
+        readJob?.cancel()
+        readJob = null
+        var attempt = 0
+        var done = false
+        while (!done && currentCoroutineContext().isActive && !disconnectRequested) {
+            attempt += 1
+            state.update { it.copy(status = SessionStatus.Reconnecting, reconnectAttempt = attempt, error = reason) }
+            delay(reconnectDelayMs(attempt))
+            done = reconnectOnce(spec, attempt)
+        }
+    }
+
+    /** One reconnect attempt; returns true when there is nothing left to try. */
+    private suspend fun reconnectOnce(spec: TabSpec, attempt: Int): Boolean {
+        if (spec.transport != Transport.LocalShell && spec.username.isBlank()) {
+            state.update { it.copy(status = SessionStatus.Error, error = "Username required") }
+            return true
+        }
+        return try {
+            open(spec)
+            onOpened(spec)
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Reconnect attempt $attempt failed", e)
+            val exhausted = attempt >= MAX_RECONNECT_ATTEMPTS
+            if (exhausted) {
+                state.update { it.copy(status = SessionStatus.Error, error = "Reconnect failed: ${e.message}") }
+            }
+            exhausted
+        }
+    }
+
+    private fun feed(chunk: ByteArray) {
+        if (!emulator.isOpen) return
+        val wasImageLoading = emulator.isImageLoading()
+        flushPtyWrites()
+        emulator.writeRemote(chunk)
+        flushPtyWrites()
+        val isImageLoading = emulator.isImageLoading()
+        when {
+            wasImageLoading && !isImageLoading -> emulator.requestSnapshot(force = true)
+            !isImageLoading -> emulator.requestSnapshot()
+        }
+    }
+
+    private fun onMoshRuntime(runtime: MoshRuntimeState) {
+        sessionStatusForMoshState(runtime.state)?.let(::updateStatus)
+        moshStaleness.observe(runtime, System.currentTimeMillis())?.let(::updateStatus)
+    }
+
+    private fun updateStatus(status: SessionStatus) {
+        state.update { if (it.status == status) it else it.copy(status = status) }
+    }
+}

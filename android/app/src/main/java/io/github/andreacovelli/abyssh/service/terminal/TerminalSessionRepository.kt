@@ -4,49 +4,39 @@ import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
-import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerRegistry
 import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSession
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
 import java.util.UUID
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
-@Suppress("TooManyFunctions")
+private const val CONNECT_WAIT_MS = 20_000L
+
+/**
+ * The open terminal tabs and which one is active. Each tab owns a
+ * [TerminalSessionEngine]; send input and terminal queries to the active tab's engine.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 class TerminalSessionRepository private constructor(application: Application) {
-    private sealed interface PreflightAttempt<out T> {
-        data class Completed<T>(val value: T) : PreflightAttempt<T>
-
-        data class HostKeyVerificationRequired(
-            val verification: PreflightHostKeyVerification,
-        ) : PreflightAttempt<Nothing>
-    }
-
-    private data class PreflightHostKeyVerification(
-        val prompt: HostKeyPrompt,
-        val keyBytes: ByteArray,
-    )
-
     private val appContext = application.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -54,16 +44,9 @@ class TerminalSessionRepository private constructor(application: Application) {
         HostKeyStore(appContext.getSharedPreferences(HostKeyStore.PREFS_NAME, Application.MODE_PRIVATE))
     private val clipboard = appContext.getSystemService(ClipboardManager::class.java)
     private val settingsRepository = SettingsRepository.getInstance(appContext)
-
-    private fun publishTerminalClipboard(tabId: String, text: String) {
-        if (!canPublishTerminalClipboard(tabId)) return
-        clipboard?.setPrimaryClip(ClipData.newPlainText("terminal clipboard", text))
-    }
-
-    private fun canPublishTerminalClipboard(tabId: String): Boolean {
-        if (!settingsRepository.remoteClipboardWriteEnabled.value) return false
-        return attachedClients > 0 && _activeTabId.value == tabId
-    }
+    private val preflight = MultiplexerPreflight(hostKeyStore)
+    private val foreground = SessionForegroundTracker(appContext)
+    private var attachedClients = 0
 
     private val _tabs = MutableStateFlow<List<TabSession>>(emptyList())
     val tabs: StateFlow<List<TabSession>> = _tabs.asStateFlow()
@@ -80,78 +63,37 @@ class TerminalSessionRepository private constructor(application: Application) {
             .flatMapLatest { tab -> tab?.sessionState ?: flowOf(SessionState()) }
             .stateIn(scope, SharingStarted.Eagerly, SessionState())
 
-    private val preflightHostKeyPrompt = MutableStateFlow<HostKeyPrompt?>(null)
-    private val preflightMutex = Mutex()
-    private var preflightEngine: TerminalSessionEngine? = null
-    private var preflightHostKeyDecision: CompletableDeferred<Boolean>? = null
-
-    private val activeHostKeyPrompt: StateFlow<HostKeyPrompt?> =
-        activeTab
-            .flatMapLatest { tab -> tab?.hostKeyPrompt ?: flowOf(null) }
-            .stateIn(scope, SharingStarted.Eagerly, null)
-
     val hostKeyPrompt: StateFlow<HostKeyPrompt?> =
-        combine(preflightHostKeyPrompt, activeHostKeyPrompt) { preflight, active -> preflight ?: active }
-            .stateIn(scope, SharingStarted.Eagerly, null)
+        combine(preflight.hostKeyPrompt, activeTab.flatMapLatest { it?.hostKeyPrompt ?: flowOf(null) }) {
+                preflight,
+                active,
+            ->
+            preflight ?: active
+        }.stateIn(scope, SharingStarted.Eagerly, null)
 
-    val connectedHostIds: StateFlow<Set<Long>> =
+    /** The tabs that are connected or on their way there, again whenever the tabs change. */
+    private val liveTabs: Flow<List<TabSession>> =
         _tabs
             .flatMapLatest { tabs ->
                 if (tabs.isEmpty()) {
                     flowOf(emptyList())
                 } else {
-                    combine(tabs.map { tab -> tab.sessionState.map { state -> tab to state } }) {
-                        it.toList()
+                    combine(tabs.map { tab -> tab.isLiveFlow().map { live -> tab.takeIf { live } } }) {
+                        it.filterNotNull()
                     }
                 }
-            }
-            .map { pairs ->
-                pairs
-                    .asSequence()
-                    .filter { (_, state) ->
-                        state.status == SessionStatus.Connecting ||
-                            state.status == SessionStatus.Connected ||
-                            state.status == SessionStatus.Reconnecting
-                    }
-                    .mapNotNull { (tab, _) -> tab.spec.hostId }
-                    .toSet()
-            }
-            .stateIn(scope, SharingStarted.Eagerly, emptySet())
+            }.shareIn(scope, SharingStarted.Eagerly, replay = 1)
 
-    private var attachedClients = 0
-    private var foregroundServiceRunning = false
-    private var foregroundNotificationLabel: String? = null
+    val connectedHostIds: StateFlow<Set<Long>> =
+        liveTabs
+            .map { tabs -> tabs.mapNotNullTo(mutableSetOf()) { it.spec.hostId } }
+            .stateIn(scope, SharingStarted.Eagerly, emptySet())
 
     init {
         scope.launch {
-            combine(_tabs, _activeTabId) { tabs, _ -> tabs }
-                .flatMapLatest { tabs ->
-                    if (tabs.isEmpty()) {
-                        flowOf(emptyList())
-                    } else {
-                        combine(tabs.map { tab -> tab.sessionState.map { tab to it } }) {
-                            it.toList()
-                        }
-                    }
-                }
-                .collect { pairs ->
-                    val anyAlive =
-                        pairs.any { (_, state) ->
-                            state.status == SessionStatus.Connecting ||
-                                state.status == SessionStatus.Connected ||
-                                state.status == SessionStatus.Reconnecting
-                        }
-                    val label = if (anyAlive) currentNotificationLabel() else null
-                    if (anyAlive && (!foregroundServiceRunning || foregroundNotificationLabel != label)) {
-                        SessionForegroundService.start(appContext, label ?: "Active session")
-                        foregroundServiceRunning = true
-                        foregroundNotificationLabel = label
-                    } else if (!anyAlive && foregroundServiceRunning) {
-                        SessionForegroundService.stop(appContext)
-                        foregroundServiceRunning = false
-                        foregroundNotificationLabel = null
-                    }
-                }
+            combine(liveTabs, activeTab) { live, active ->
+                if (live.isEmpty()) null else sessionNotificationLabel(_tabs.value.map { it.spec }, active?.spec)
+            }.collect(foreground::update)
         }
     }
 
@@ -163,147 +105,39 @@ class TerminalSessionRepository private constructor(application: Application) {
         attachedClients = (attachedClients - 1).coerceAtLeast(0)
     }
 
-    private fun currentNotificationLabel(): String {
-        val tabs = _tabs.value
-        if (tabs.isEmpty()) return "Active session"
-        val active = tabs.firstOrNull { it.id == _activeTabId.value } ?: tabs.first()
-        if (tabs.size == 1) return active.spec.notificationLabel
-        return "${tabs.size} sessions  ·  ${active.spec.notificationLabel}"
-    }
+    fun tabsForHost(hostId: Long?): List<TabSession> = _tabs.value.filter { it.spec.hostId == hostId }
 
-    fun tabsForHost(hostId: Long?): List<TabSession> =
-        _tabs.value.filter { it.spec.hostId == hostId }
+    /** SFTP for a remote tab, or null for the local shell and closed tabs. */
+    fun sftpFor(tabId: String): SftpSession? =
+        _tabs.value.firstOrNull { it.id == tabId && it.spec.transport != Transport.LocalShell }?.engine?.sftp
 
-    fun openMultiplexerSessionNamesForHost(
-        hostId: Long?,
-        multiplexer: MultiplexerType,
-    ): List<String> = tabsForHost(hostId)
-        .filter { it.spec.multiplexer == multiplexer }
-        .mapNotNull { it.spec.multiplexerSessionName }
-
-    suspend fun resolveMultiplexerSessionName(
-        spec: TabSpec,
-        reuseDetachedAbysshSession: Boolean = false,
-    ): String = withPreflightEngine { engine ->
-        engine.resolveMultiplexerSessionName(
-            spec = spec,
-            localSessionNames = openMultiplexerSessionNamesForHost(
-                hostId = spec.hostId,
-                multiplexer = spec.multiplexer ?: MultiplexerRegistry.defaultType,
-            ),
-            reuseDetachedAbysshSession = reuseDetachedAbysshSession,
-        )
+    suspend fun resolveMultiplexerSessionName(spec: TabSpec, reuseDetachedAbysshSession: Boolean = false): String {
+        val localNames = openMultiplexerSessionNames(spec)
+        return preflight.run { probe -> probe.resolveSessionName(spec, localNames, reuseDetachedAbysshSession) }
     }
 
     suspend fun listMultiplexerSessions(spec: TabSpec): List<RemoteMultiplexerSession> =
-        withPreflightEngine { engine -> engine.listMultiplexerSessions(spec) }
-
-    private suspend fun <T> withPreflightEngine(block: suspend (TerminalSessionEngine) -> T): T =
-        preflightMutex.withLock { runPreflightWithHostKeyRetries(block) }
-
-    private suspend fun <T> runPreflightWithHostKeyRetries(
-        block: suspend (TerminalSessionEngine) -> T,
-    ): T {
-        while (true) {
-            when (val attempt = runPreflightAttempt(block)) {
-                is PreflightAttempt.Completed -> return attempt.value
-                is PreflightAttempt.HostKeyVerificationRequired -> {
-                    if (!awaitPreflightHostKeyDecision(attempt.verification)) {
-                        error("Host key rejected")
-                    }
-                    val prompt = attempt.verification.prompt
-                    hostKeyStore.saveKey(
-                        prompt.host,
-                        prompt.port,
-                        prompt.algorithm,
-                        attempt.verification.keyBytes,
-                    )
-                }
-            }
-        }
-    }
-
-    private suspend fun <T> runPreflightAttempt(
-        block: suspend (TerminalSessionEngine) -> T,
-    ): PreflightAttempt<T> {
-        var verification: PreflightHostKeyVerification? = null
-        val engine =
-            TerminalSessionEngine(
-                {},
-                scope,
-                newLocalShellService(),
-                hostKeyStore,
-                onHostKeyVerificationRequired = { prompt, keyBytes ->
-                    verification = PreflightHostKeyVerification(prompt, keyBytes)
-                },
-            )
-        preflightEngine = engine
-        return try {
-            PreflightAttempt.Completed(block(engine))
-        } catch (error: IllegalStateException) {
-            verification?.let { PreflightAttempt.HostKeyVerificationRequired(it) } ?: throw error
-        } finally {
-            // A preflight key check must not retain a live libssh2 session while the
-            // user is deciding whether to trust the key.
-            if (preflightEngine === engine) {
-                preflightEngine = null
-            }
-            engine.dispose()
-        }
-    }
-
-    private suspend fun awaitPreflightHostKeyDecision(
-        verification: PreflightHostKeyVerification,
-    ): Boolean {
-        val decision = CompletableDeferred<Boolean>()
-        preflightHostKeyDecision = decision
-        preflightHostKeyPrompt.value = verification.prompt
-        return try {
-            decision.await()
-        } finally {
-            if (preflightHostKeyDecision === decision) {
-                preflightHostKeyDecision = null
-            }
-            preflightHostKeyPrompt.value = null
-        }
-    }
+        preflight.run { probe -> probe.listSessions(spec) }
 
     fun openTab(spec: TabSpec): TabSession {
         val id = UUID.randomUUID().toString()
         val engine =
             TerminalSessionEngine(
-                { text -> publishTerminalClipboard(id, text) },
-                scope,
-                newLocalShellService(),
-                hostKeyStore,
+                publishClipboardText = { text -> publishTerminalClipboard(id, text) },
+                scope = scope,
+                localShellService = NativeLocalShellService(appContext.filesDir, appContext.cacheDir),
+                hostKeyStore = hostKeyStore,
                 onShellExited = { scope.launch { closeTab(id) } },
             )
         val tab = TabSession(id, spec, engine)
-        _tabs.value = _tabs.value + tab
+        _tabs.value += tab
         _activeTabId.value = id
-        engine.connect(
-            host = spec.host,
-            port = spec.port,
-            username = spec.username,
-            password = spec.password,
-            authMethod = spec.authMethod,
-            publicKeyOpenSsh = spec.publicKeyOpenSsh,
-            privateKeyPem = spec.privateKeyPem,
-            keyPassphrase = spec.keyPassphrase,
-            transport = spec.transport,
-            sessionKey = sessionKeyFor(tab),
-            postConnectCommand = spec.postConnectCommand,
-            multiplexer = spec.multiplexer,
-            multiplexerSessionName = spec.multiplexerSessionName,
-            multiplexerCreateIfMissing = spec.multiplexerCreateIfMissing,
-        )
+        reconnectTab(tab)
         return tab
     }
 
     fun selectTab(id: String) {
-        if (_tabs.value.any { it.id == id }) {
-            _activeTabId.value = id
-        }
+        if (_tabs.value.any { it.id == id }) _activeTabId.value = id
     }
 
     fun closeTab(id: String) {
@@ -318,42 +152,22 @@ class TerminalSessionRepository private constructor(application: Application) {
     }
 
     fun reconnectActive() {
-        val tab = activeTab.value ?: return
-        reconnectTab(tab)
+        activeTab.value?.let(::reconnectTab)
     }
 
     fun switchActiveMultiplexerSession(sessionName: String): Boolean {
         val tab = activeTab.value ?: return false
         val type = tab.spec.multiplexer ?: MultiplexerRegistry.defaultType
         MultiplexerRegistry.forType(type) ?: return false
-        val updatedSpec = tab.spec.copy(
-            multiplexer = type,
-            multiplexerSessionName = sessionName,
-            multiplexerCreateIfMissing = false,
-        )
-        tab.spec = updatedSpec
+        tab.spec =
+            tab.spec.copy(multiplexer = type, multiplexerSessionName = sessionName, multiplexerCreateIfMissing = false)
         reconnectTab(tab)
         return true
     }
 
     fun reconnectTab(tab: TabSession) {
-        val spec = tab.spec
-        tab.engine.connect(
-            host = spec.host,
-            port = spec.port,
-            username = spec.username,
-            password = spec.password,
-            authMethod = spec.authMethod,
-            publicKeyOpenSsh = spec.publicKeyOpenSsh,
-            privateKeyPem = spec.privateKeyPem,
-            keyPassphrase = spec.keyPassphrase,
-            transport = spec.transport,
-            sessionKey = sessionKeyFor(tab),
-            postConnectCommand = spec.postConnectCommand,
-            multiplexer = spec.multiplexer,
-            multiplexerSessionName = spec.multiplexerSessionName,
-            multiplexerCreateIfMissing = spec.multiplexerCreateIfMissing,
-        )
+        val key = if (tab.spec.transport == Transport.LocalShell) "local-shell:${tab.id}" else tab.spec.sessionKey
+        tab.engine.connect(tab.spec, key)
     }
 
     /**
@@ -388,52 +202,24 @@ class TerminalSessionRepository private constructor(application: Application) {
             }
             // The host just got a multiplexer, or a different one: find a session first.
             scope.launch {
-                val name = runCatching {
-                    withContext(Dispatchers.IO) { resolveMultiplexerSessionName(spec) }
-                }.getOrNull()
+                val name = runCatching { resolveMultiplexerSessionName(spec) }.getOrNull()
                 if (_tabs.value.none { it.id == tab.id } || tab.spec != spec) return@launch
-                tab.spec =
-                    if (name != null) {
-                        spec.copy(multiplexerSessionName = name)
-                    } else {
-                        spec.copy(multiplexer = null)
-                    }
+                tab.spec = if (name != null) spec.copy(multiplexerSessionName = name) else spec.copy(multiplexer = null)
                 reconnectTab(tab)
             }
         }
     }
 
+    /** Closes every tab and any multiplexer check that is waiting on the user. */
     fun disconnect() {
-        preflightHostKeyDecision?.cancel()
-        preflightHostKeyDecision = null
-        preflightEngine?.dispose()
-        preflightEngine = null
-        preflightHostKeyPrompt.value = null
+        preflight.cancel()
         val tabs = _tabs.value
         _tabs.value = emptyList()
         _activeTabId.value = null
         tabs.forEach { it.engine.dispose() }
     }
 
-    private fun activeEngine(): TerminalSessionEngine? = activeTab.value?.engine
-
-    private fun sessionKeyFor(tab: TabSession): String =
-        if (tab.spec.transport == Transport.LocalShell) {
-            "local-shell:${tab.id}"
-        } else {
-            tab.spec.sessionKey
-        }
-
-    private fun newLocalShellService(): NativeLocalShellService =
-        NativeLocalShellService(appContext.filesDir, appContext.cacheDir)
-
-    private fun activeSftpEngine(): TerminalSessionEngine? =
-        activeTab.value?.takeIf { it.spec.transport != Transport.LocalShell }?.engine
-
-    private fun sftpEngineForTab(tabId: String): TerminalSessionEngine? =
-        _tabs.value.firstOrNull { it.id == tabId && it.spec.transport != Transport.LocalShell }?.engine
-
-    suspend fun awaitTabConnected(tabId: String, timeoutMs: Long = 20_000) {
+    suspend fun awaitTabConnected(tabId: String, timeoutMs: Long = CONNECT_WAIT_MS) {
         val tab = _tabs.value.firstOrNull { it.id == tabId && it.spec.transport != Transport.LocalShell } ?: return
         if (tab.sessionState.value.status == SessionStatus.Connected) return
         withTimeoutOrNull(timeoutMs) {
@@ -441,125 +227,33 @@ class TerminalSessionRepository private constructor(application: Application) {
         } ?: error("Timed out waiting for the session to reconnect")
     }
 
-    fun resize(
-        cols: Int,
-        rows: Int,
-        cellWidth: Int,
-        cellHeight: Int,
-        screenWidth: Int,
-        screenHeight: Int,
-    ) {
-        activeEngine()?.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
-    }
-
-    fun scroll(delta: Int, x: Float, y: Float) {
-        activeEngine()?.scroll(delta, x, y)
-    }
-
-    fun scrollToActive() {
-        activeEngine()?.scrollToActive()
-    }
-
-    suspend fun search(query: String): IntArray = activeEngine()?.search(query) ?: IntArray(0)
-
-    suspend fun hyperlinkAt(col: Int, row: Int): String? = activeEngine()?.hyperlinkAt(col, row)
-
-    fun scrollToScreenRow(screenRow: Int) {
-        activeEngine()?.scrollToScreenRow(screenRow)
-    }
-
-    fun writeKey(key: Int, codepoint: Int, mods: Int, action: Int, utf8: String? = null) {
-        activeEngine()?.writeKey(key, codepoint, mods, action, utf8)
-    }
-
-    fun writeText(text: String) {
-        activeEngine()?.writeText(text)
-    }
-
-    fun writePaste(text: String) {
-        activeEngine()?.writePaste(text)
-    }
-
-    fun sendFocusEvent(focused: Boolean) {
-        activeEngine()?.sendFocusEvent(focused)
-    }
-
-    fun sendMouseEvent(
-        action: Int,
-        button: Int,
-        mods: Int,
-        x: Float,
-        y: Float,
-        anyButtonPressed: Boolean,
-        trackLastCell: Boolean,
-    ) {
-        activeEngine()?.sendMouseEvent(action, button, mods, x, y, anyButtonPressed, trackLastCell)
-    }
-
-    fun setColorScheme(isDark: Boolean) {
-        _tabs.value.forEach { it.engine.setColorScheme(isDark) }
-    }
-
-    fun setDefaultColors(fg: IntArray?, bg: IntArray?, cursor: IntArray?, palette: ByteArray?) {
-        _tabs.value.forEach { it.engine.setDefaultColors(fg, bg, cursor, palette) }
-    }
-
+    /** Answers the host key prompt: a multiplexer check's first, then the active tab's. */
     fun respondToHostKey(accepted: Boolean) {
-        preflightHostKeyDecision?.let { decision ->
-            decision.complete(accepted)
-            return
-        }
-        activeEngine()?.respondToHostKey(accepted)
+        if (!preflight.respond(accepted)) activeTab.value?.engine?.respondToHostKey(accepted)
     }
 
-    suspend fun sftpListDirectory(path: String): List<String> =
-        activeSftpEngine()?.sftpListDirectory(path) ?: emptyList()
-
-    suspend fun sftpListDirectory(tabId: String, path: String): List<String> =
-        sftpEngineForTab(tabId)?.sftpListDirectory(path) ?: emptyList()
-
-    suspend fun sftpRealpath(path: String): String = activeSftpEngine()?.sftpRealpath(path) ?: "/"
-
-    suspend fun sftpRealpath(tabId: String, path: String): String =
-        sftpEngineForTab(tabId)?.sftpRealpath(path) ?: "/"
-
-    suspend fun sftpOpenWrite(path: String) {
-        activeSftpEngine()?.sftpOpenWrite(path)
+    private fun openMultiplexerSessionNames(spec: TabSpec): List<String> {
+        val type = spec.multiplexer ?: MultiplexerRegistry.defaultType
+        return tabsForHost(spec.hostId)
+            .filter { it.spec.multiplexer == type }
+            .mapNotNull { it.spec.multiplexerSessionName }
     }
 
-    suspend fun sftpOpenWrite(tabId: String, path: String) {
-        sftpEngineForTab(tabId)?.sftpOpenWrite(path)
-    }
-
-    suspend fun sftpWriteChunk(data: ByteArray): Int = activeSftpEngine()?.sftpWriteChunk(data) ?: 0
-
-    suspend fun sftpWriteChunk(tabId: String, data: ByteArray): Int =
-        sftpEngineForTab(tabId)?.sftpWriteChunk(data) ?: 0
-
-    suspend fun sftpCloseWrite() {
-        activeSftpEngine()?.sftpCloseWrite()
-    }
-
-    suspend fun sftpCloseWrite(tabId: String) {
-        sftpEngineForTab(tabId)?.sftpCloseWrite()
-    }
-
-    suspend fun sftpReadFile(tabId: String, path: String, maxBytes: Int): ByteArray =
-        sftpEngineForTab(tabId)?.sftpReadFile(path, maxBytes) ?: ByteArray(0)
-
-    suspend fun sftpDelete(tabId: String, path: String, isDirectory: Boolean) {
-        sftpEngineForTab(tabId)?.sftpDelete(path, isDirectory)
+    private fun publishTerminalClipboard(tabId: String, text: String) {
+        val allowed = settingsRepository.remoteClipboardWriteEnabled.value &&
+            attachedClients > 0 &&
+            _activeTabId.value == tabId
+        if (allowed) clipboard?.setPrimaryClip(ClipData.newPlainText("terminal clipboard", text))
     }
 
     companion object {
         @Volatile private var instance: TerminalSessionRepository? = null
 
         fun getInstance(application: Application): TerminalSessionRepository = instance
-                ?: synchronized(this) {
-                    instance
-                        ?: TerminalSessionRepository(application).also { created ->
-                            instance = created
-                        }
-                }
+            ?: synchronized(this) {
+                instance ?: TerminalSessionRepository(application).also { instance = it }
+            }
     }
 }
+
+private fun TabSession.isLiveFlow(): Flow<Boolean> = sessionState.map { it.status.isLive }.distinctUntilChanged()

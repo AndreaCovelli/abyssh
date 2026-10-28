@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionEngine
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionRepository
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalSearchState
 import io.github.andreacovelli.abyssh.ui.terminal.parseSearchMatches
@@ -31,6 +32,9 @@ class TerminalSearchController internal constructor(
     /** The link the user tapped, shown with open and copy until dismissed. */
     val tappedLink: StateFlow<String?> = _tappedLink.asStateFlow()
 
+    private val activeEngine: TerminalSessionEngine?
+        get() = sessionRepository.activeTab.value?.engine
+
     fun open() {
         if (_state.value == null) _state.value = TerminalSearchState()
     }
@@ -47,7 +51,7 @@ class TerminalSearchController internal constructor(
         searchJob?.cancel()
         searchJob = scope.launch {
             delay(SEARCH_TYPING_DELAY_MS)
-            val found = parseSearchMatches(sessionRepository.search(query))
+            val found = parseSearchMatches(activeEngine?.search(query) ?: IntArray(0))
             _state.update { it?.copy(matches = found, current = if (found.isEmpty()) -1 else 0) }
             scrollToCurrentMatch()
         }
@@ -68,13 +72,13 @@ class TerminalSearchController internal constructor(
         // keeping the one just selected.
         searchJob?.cancel()
         searchJob = scope.launch {
-            val found = parseSearchMatches(sessionRepository.search(state.query))
+            val found = parseSearchMatches(activeEngine?.search(state.query) ?: IntArray(0))
             _state.update { it?.withMatches(found) }
         }
     }
 
     private fun scrollToCurrentMatch() {
-        _state.value?.currentMatch?.let { sessionRepository.scrollToScreenRow(it.startRow) }
+        _state.value?.currentMatch?.let { activeEngine?.scrollToScreenRow(it.startRow) }
     }
 
     /**
@@ -87,7 +91,7 @@ class TerminalSearchController internal constructor(
             return
         }
         scope.launch {
-            val hyperlink = sessionRepository.hyperlinkAt(col, row)
+            val hyperlink = activeEngine?.hyperlinkAt(col, row)
             _tappedLink.value = hyperlink
             if (hyperlink == null) noLink()
         }

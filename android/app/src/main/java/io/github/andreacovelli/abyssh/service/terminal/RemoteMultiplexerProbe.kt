@@ -1,0 +1,158 @@
+package io.github.andreacovelli.abyssh.service.terminal
+
+import io.github.andreacovelli.abyssh.model.AuthMethod
+import io.github.andreacovelli.abyssh.model.MultiplexerType
+import io.github.andreacovelli.abyssh.model.Transport
+import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerAvailability
+import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerCommandResult
+import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerRegistry
+import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerSessionAllocator
+import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSession
+import io.github.andreacovelli.abyssh.service.ssh.HostKeyPolicy
+import io.github.andreacovelli.abyssh.service.ssh.NativeSshService
+
+private const val COMMAND_TIMEOUT_MS = 20_000L
+private const val EXEC_READ_BYTES = 4096
+private const val EXEC_POLL_MS = 25L
+private const val EXIT_NO_CHANNEL = 1
+private const val EXIT_TIMED_OUT = 124
+private const val EXIT_NO_MARKER = 125
+private val EXIT_MARKER = Regex("(?:^|\\n)ABYSSH_EXIT:(\\d+)\\s*$")
+
+/**
+ * Runs multiplexer commands on a host, each over its own short-lived SSH exec channel:
+ * whether the multiplexer is installed, which sessions it has, and which one a tab should
+ * attach to. The calls block, so run them off the main thread.
+ */
+internal class RemoteMultiplexerProbe(private val hostKeyPolicy: HostKeyPolicy) {
+    fun availability(spec: TabSpec): MultiplexerAvailability {
+        val type = spec.multiplexer ?: return MultiplexerAvailability.Available
+        val multiplexer =
+            MultiplexerRegistry.forType(type) ?: return MultiplexerAvailability.UnsupportedMultiplexer(type)
+        if (!spec.transport.runsRemoteCommands) return MultiplexerAvailability.UnsupportedTransport(spec.transport)
+        return runCatching {
+            if (runCommand(spec, multiplexer.availabilityCommand()).isSuccess) {
+                MultiplexerAvailability.Available
+            } else {
+                MultiplexerAvailability.Missing(type)
+            }
+        }.getOrElse { error ->
+            MultiplexerAvailability.Error(message = error.message ?: "Could not check ${type.label} on this host")
+        }
+    }
+
+    fun listSessions(spec: TabSpec): List<RemoteMultiplexerSession> {
+        val type = spec.multiplexer ?: error("No multiplexer selected")
+        val multiplexer = MultiplexerRegistry.forType(type) ?: error("${type.label} is not supported yet")
+        check(spec.transport.runsRemoteCommands) { "${type.label} is not supported for ${spec.transport} connections" }
+        val result = runCommand(spec, multiplexer.listSessionsCommand())
+        check(result.isSuccess) { result.stderr.ifBlank { "Failed to list ${type.label} sessions" } }
+        return multiplexer.parseSessions(result.stdout)
+    }
+
+    /**
+     * The session a tab for [spec] attaches to: its own name when it still applies, a
+     * detached Abyssh session when [reuseDetachedAbysshSession] allows one, or a new name
+     * that no remote session and none of [localSessionNames] uses.
+     */
+    fun resolveSessionName(
+        spec: TabSpec,
+        localSessionNames: Collection<String>,
+        reuseDetachedAbysshSession: Boolean = false,
+    ): String {
+        val type = spec.multiplexer ?: MultiplexerRegistry.defaultType
+        val multiplexer = MultiplexerRegistry.forType(type) ?: error("${type.label} is not supported yet")
+        check(spec.transport.runsRemoteCommands) { "${type.label} is not supported for ${spec.transport} connections" }
+        val typedSpec = spec.copy(multiplexer = type)
+        availability(typedSpec).errorMessage(type)?.let { error(it) }
+        val remoteSessions = listSessions(typedSpec)
+        val existingName = spec.multiplexerSessionName?.takeIf { it.isNotBlank() }
+        if (existingName != null) {
+            check(spec.multiplexerCreateIfMissing || remoteSessions.any { it.name == existingName }) {
+                "${type.label} session \"$existingName\" is no longer available"
+            }
+            return existingName
+        }
+        val reusable =
+            if (reuseDetachedAbysshSession) {
+                MultiplexerSessionAllocator.reusableDetachedAbysshSessionName(remoteSessions, localSessionNames)
+            } else {
+                null
+            }
+        return reusable ?: multiplexer.defaultSessionName(remoteSessions, localSessionNames)
+    }
+
+    private fun runCommand(spec: TabSpec, command: String): MultiplexerCommandResult =
+        NativeSshService(hostKeyPolicy = hostKeyPolicy).use { ssh ->
+            ssh.connect(spec)
+            if (ssh.openExec(withExitEnvelope(command))) {
+                readExecOutput(ssh)
+            } else {
+                MultiplexerCommandResult(EXIT_NO_CHANNEL, "", "Remote server did not open an exec channel")
+            }
+        }
+
+    private fun readExecOutput(ssh: NativeSshService): MultiplexerCommandResult {
+        val output = StringBuilder()
+        val deadline = System.currentTimeMillis() + COMMAND_TIMEOUT_MS
+        while (System.currentTimeMillis() < deadline) {
+            val chunk = ssh.read(EXEC_READ_BYTES)
+            when {
+                chunk != null && chunk.isNotEmpty() -> output.append(String(chunk, Charsets.UTF_8))
+                ssh.isChannelEof() -> return parseCommandEnvelope(output.toString())
+                else -> Thread.sleep(EXEC_POLL_MS)
+            }
+        }
+        return MultiplexerCommandResult(EXIT_TIMED_OUT, output.toString(), "Command timed out")
+    }
+}
+
+/** Whether a transport can run remote commands, which multiplexers need. */
+internal val Transport.runsRemoteCommands: Boolean
+    get() = this != Transport.Mosh && this != Transport.LocalShell
+
+/** Why a session can't use [selected], or null when it can. */
+internal fun MultiplexerAvailability.errorMessage(selected: MultiplexerType?): String? = when (this) {
+    MultiplexerAvailability.Available -> null
+    is MultiplexerAvailability.Missing -> "${multiplexer.label} executable was not found on the remote host"
+    is MultiplexerAvailability.UnsupportedMultiplexer -> "${multiplexer.label} is not supported yet"
+    is MultiplexerAvailability.UnsupportedTransport ->
+        "${selected?.label ?: "Multiplexer"} is not supported for $transport"
+    is MultiplexerAvailability.Error -> message
+}
+
+/** Logs in over [spec]'s credentials; the password only goes out for password auth. */
+internal fun NativeSshService.connect(spec: TabSpec) = connect(
+    host = spec.host,
+    port = spec.port,
+    username = spec.username,
+    authMethod = spec.authMethod,
+    password = if (spec.authMethod == AuthMethod.Password) spec.password else "",
+    publicKeyOpenSsh = spec.publicKeyOpenSsh,
+    privateKeyPem = spec.privateKeyPem,
+    keyPassphrase = spec.keyPassphrase,
+)
+
+/** The command that starts a tab's multiplexer session, or null when it has none. */
+internal fun TabSpec.multiplexerStartupCommand(): String? {
+    val type = multiplexer ?: return null
+    if (!type.runtimeSupported || !transport.runsRemoteCommands) return null
+    val sessionName = multiplexerSessionName?.takeIf { it.isNotBlank() } ?: return null
+    val runtime = MultiplexerRegistry.forType(type) ?: return null
+    return runtime.launchCommand(
+        sessionName = sessionName,
+        createIfMissing = multiplexerCreateIfMissing,
+        trustedRemoteName = true,
+    )
+}
+
+/** Appends a marker with the exit code, since an exec channel doesn't report it. */
+internal fun withExitEnvelope(command: String): String = "$command; printf '\nABYSSH_EXIT:%s\n' \"\$?\""
+
+internal fun parseCommandEnvelope(output: String): MultiplexerCommandResult {
+    val marker =
+        EXIT_MARKER.find(output)
+            ?: return MultiplexerCommandResult(EXIT_NO_MARKER, output, "Missing command exit marker")
+    val exitCode = marker.groupValues.getOrNull(1)?.toIntOrNull() ?: EXIT_NO_MARKER
+    return MultiplexerCommandResult(exitCode, output.substring(0, marker.range.first).trimEnd(), "")
+}

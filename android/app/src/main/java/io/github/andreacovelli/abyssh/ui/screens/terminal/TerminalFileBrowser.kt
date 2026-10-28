@@ -105,17 +105,17 @@ class TerminalFileBrowser internal constructor(
         val current = stateByTab.value[tabId] ?: return
         val targetPath = current.currentPath.trimEnd('/') + "/" + fileName
         sessionRepository.awaitTabConnected(tabId)
-        sessionRepository.sftpOpenWrite(tabId, targetPath)
+        sessionRepository.sftpFor(tabId)?.openWrite(targetPath)
     }
 
     suspend fun writeUploadChunk(data: ByteArray) {
         val tabId = activeTabId.value ?: return
-        sessionRepository.sftpWriteChunk(tabId, data)
+        sessionRepository.sftpFor(tabId)?.writeChunk(data)
     }
 
     suspend fun finishUpload() {
         val tabId = activeTabId.value ?: return
-        sessionRepository.sftpCloseWrite(tabId)
+        sessionRepository.sftpFor(tabId)?.closeWrite()
         withContext(Dispatchers.Main) { refresh() }
     }
 
@@ -125,13 +125,13 @@ class TerminalFileBrowser internal constructor(
     }
 
     suspend fun delete(tabId: String, entry: FileBrowserEntry) {
-        sessionRepository.sftpDelete(tabId, entry.path, entry.type == FileEntryType.Directory)
+        sessionRepository.sftpFor(tabId)?.delete(entry.path, entry.type == FileEntryType.Directory)
         withContext(Dispatchers.Main) { refresh() }
     }
 
     suspend fun read(tabId: String, entry: FileBrowserEntry, maxBytes: Int): ByteArray {
         sessionRepository.awaitTabConnected(tabId)
-        return sessionRepository.sftpReadFile(tabId, entry.path, maxBytes)
+        return sessionRepository.sftpFor(tabId)?.readFile(entry.path, maxBytes) ?: ByteArray(0)
     }
 
     private fun updateState(id: String, transform: (FileBrowserUiState) -> FileBrowserUiState) {
@@ -153,7 +153,7 @@ class TerminalFileBrowser internal constructor(
 
     private suspend fun resolveRealpath(tabId: String, path: String): String? =
         try {
-            sessionRepository.sftpRealpath(tabId, path).takeIf { it.isNotBlank() }
+            sessionRepository.sftpFor(tabId)?.realpath(path)?.takeIf { it.isNotBlank() }
         } catch (err: CancellationException) {
             throw err
         } catch (_: Exception) {
@@ -193,7 +193,7 @@ class TerminalFileBrowser internal constructor(
         updateState(tabId) { it.copy(currentPath = targetPath, isLoading = true, error = null) }
         val job = scope.launch(Dispatchers.IO) {
             try {
-                val rows = sessionRepository.sftpListDirectory(tabId, targetPath)
+                val rows = sessionRepository.sftpFor(tabId)?.listDirectory(targetPath).orEmpty()
                 val sort = stateByTab.value[tabId]?.sort ?: FileSort.Name
                 val entries = parseDirectoryListing(rows, targetPath, ::formatMtime).sortedFor(sort)
                 if (isActive && stateByTab.value[tabId]?.currentPath == targetPath) {

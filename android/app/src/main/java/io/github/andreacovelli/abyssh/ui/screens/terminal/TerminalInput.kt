@@ -2,6 +2,7 @@ package io.github.andreacovelli.abyssh.ui.screens.terminal
 
 import io.github.andreacovelli.abyssh.service.terminal.TerminalMouseAction
 import io.github.andreacovelli.abyssh.service.terminal.TerminalMouseButton
+import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionEngine
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionRepository
 import io.github.andreacovelli.abyssh.ui.terminal.CustomActionModifier
 import io.github.andreacovelli.abyssh.ui.terminal.GhosttyKey
@@ -25,11 +26,11 @@ class TerminalInput internal constructor(
         screenWidth: Int,
         screenHeight: Int,
     ) {
-        sessionRepository.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
+        activeEngine?.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
     }
 
     fun onScroll(delta: Int, x: Float, y: Float) {
-        sessionRepository.scroll(delta, x, y)
+        activeEngine?.scroll(delta, x, y)
     }
 
     fun onPrimaryMouseClick(x: Float, y: Float) {
@@ -66,7 +67,7 @@ class TerminalInput internal constructor(
         trackLastCell: Boolean,
         held: Boolean = false,
     ) {
-        sessionRepository.sendMouseEvent(
+        activeEngine?.sendMouseEvent(
             action = action,
             button = button,
             mods = 0,
@@ -81,7 +82,7 @@ class TerminalInput internal constructor(
         val hasNonTextModifier = mods and NON_TEXT_MODIFIERS != 0
         val isRelease = action == GhosttyKeyAction.Release
         if (!isRelease) {
-            sessionRepository.scrollToActive()
+            activeEngine?.scrollToActive()
         }
         val effectiveCodepoint = if (charCode > 0) charCode else codepoint
         val utf8 =
@@ -90,12 +91,12 @@ class TerminalInput internal constructor(
             } else {
                 null
             }
-        sessionRepository.writeKey(key, effectiveCodepoint, mods, action, utf8)
+        activeEngine?.writeKey(key, effectiveCodepoint, mods, action, utf8)
     }
 
     fun onTextInput(text: String) {
-        sessionRepository.scrollToActive()
-        sessionRepository.writeText(text)
+        activeEngine?.scrollToActive()
+        activeEngine?.writeText(text)
     }
 
     /**
@@ -126,23 +127,23 @@ class TerminalInput internal constructor(
     }
 
     fun onSpecialKeyInput(key: TerminalSpecialKey, mods: Int) {
-        sessionRepository.scrollToActive()
-        sessionRepository.writeKey(key.engineKey, 0, mods, GhosttyKeyAction.Press)
-        sessionRepository.writeKey(key.engineKey, 0, mods, GhosttyKeyAction.Release)
+        activeEngine?.scrollToActive()
+        activeEngine?.writeKey(key.engineKey, 0, mods, GhosttyKeyAction.Press)
+        activeEngine?.writeKey(key.engineKey, 0, mods, GhosttyKeyAction.Release)
     }
 
     fun onPasteText(text: String) {
         if (text.isEmpty()) return
-        sessionRepository.scrollToActive()
-        sessionRepository.writePaste(text)
+        activeEngine?.scrollToActive()
+        activeEngine?.writePaste(text)
     }
 
     fun onFocusChanged(focused: Boolean) {
-        sessionRepository.sendFocusEvent(focused)
+        activeEngine?.sendFocusEvent(focused)
     }
 
     fun onColorSchemeChanged(isDark: Boolean) {
-        sessionRepository.setColorScheme(isDark)
+        sessionRepository.tabs.value.forEach { it.engine.setColorScheme(isDark) }
     }
 
     fun onDefaultColorsChanged(
@@ -151,8 +152,11 @@ class TerminalInput internal constructor(
         cursor: IntArray?,
         palette: ByteArray?,
     ) {
-        sessionRepository.setDefaultColors(fg, bg, cursor, palette)
+        sessionRepository.tabs.value.forEach { it.engine.setDefaultColors(fg, bg, cursor, palette) }
     }
+
+    private val activeEngine: TerminalSessionEngine?
+        get() = sessionRepository.activeTab.value?.engine
 
     private companion object {
         // Ctrl, Alt, and Super: with any of them held, a key sends no text of its own.
