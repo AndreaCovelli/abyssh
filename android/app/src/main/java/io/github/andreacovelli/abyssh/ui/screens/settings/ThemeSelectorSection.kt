@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.layout.size
 import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
 import io.github.andreacovelli.abyssh.ui.components.AbyssExpandIcon
 import io.github.andreacovelli.abyssh.R
@@ -291,7 +294,14 @@ private fun ThemePickerRow(
                     color = if (isSelected) colors.accent else colors.textPrimary,
                 )
             }
-            if (isSelected) AbyssText("●", style = typography.label, color = colors.accent)
+            if (isSelected) {
+                Icon(
+                    painterResource(R.drawable.ic_check),
+                    contentDescription = null,
+                    tint = colors.accent,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
         }
     }
 }
@@ -325,7 +335,7 @@ private fun ThemePreview(theme: GhosttyTheme, name: String) {
 @Composable
 private fun ThemePreviewBody(theme: GhosttyTheme) {
     val typography = AbyssTypography.current
-    val mono = typography.body.copy(fontSize = 9.sp, lineHeight = 12.sp)
+    val mono = typography.code.copy(fontSize = 9.sp, lineHeight = 12.sp)
 
     Column(
         modifier = Modifier.fillMaxWidth().background(theme.background).padding(10.dp),

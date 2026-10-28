@@ -241,7 +241,7 @@ private fun NewTabHostPicker(
                                 )
                                 AbyssText(
                                     "${host.username}@${host.host}:${host.port}",
-                                    style = typography.labelSmall,
+                                    style = typography.codeSmall,
                                     color = colors.textMuted,
                                 )
                             }
@@ -1519,7 +1519,7 @@ fun TerminalScreen(
                                     if (pwdText != null) {
                                         AbyssText(
                                             text = pwdText,
-                                            style = typography.labelSmall,
+                                            style = typography.codeSmall,
                                             color = colors.textPrimary.copy(alpha = 0.7f),
                                         )
                                     }
@@ -2227,13 +2227,14 @@ private fun UploadProgressDialog(progress: UploadProgress) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            AbyssText(
-                "\u2500\u2500\u25B2\u2500\u2500",
-                style = typography.title,
-                color = colors.accent,
+            Icon(
+                painterResource(R.drawable.ic_upload),
+                contentDescription = null,
+                tint = colors.accent,
+                modifier = Modifier.size(28.dp),
             )
 
-            AbyssText(text = progress.fileName, style = typography.body, color = colors.textPrimary)
+            AbyssText(text = progress.fileName, style = typography.code, color = colors.textPrimary)
 
             if (progress.totalFiles > 1) {
                 AbyssText(

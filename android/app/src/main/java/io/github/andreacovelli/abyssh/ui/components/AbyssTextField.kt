@@ -36,6 +36,7 @@ fun AbyssTextField(
     autoFocus: Boolean = true,
     textAlign: TextAlign = TextAlign.Start,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
+    monospace: Boolean = false,
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
@@ -53,7 +54,7 @@ fun AbyssTextField(
         modifier = modifier
             .fillMaxWidth()
             .focusRequester(focusRequester),
-        textStyle = typography.body.copy(textAlign = textAlign),
+        textStyle = (if (monospace) typography.code else typography.body).copy(textAlign = textAlign),
         label = if (showLabel && label.isNotEmpty()) {
             { Text(label) }
         } else {

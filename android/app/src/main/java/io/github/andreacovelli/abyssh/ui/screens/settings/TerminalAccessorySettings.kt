@@ -280,11 +280,15 @@ internal fun TerminalSettings(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                AbyssText(
-                                    if (isSelected) "✓" else " ",
-                                    style = typography.label,
-                                    color = if (isSelected) colors.textPrimary else colors.textMuted,
-                                )
+                                Box(Modifier.size(18.dp)) {
+                                    if (isSelected) {
+                                        Icon(
+                                            painterResource(R.drawable.ic_check),
+                                            contentDescription = null,
+                                            tint = colors.textPrimary,
+                                        )
+                                    }
+                                }
                                 AbyssText(
                                     tabModeLabel(mode),
                                     style = typography.label,
@@ -1070,11 +1074,11 @@ private fun PreviewKeyChip(
                 color = if (dragging) colors.accent else colors.textPrimary,
             )
             if (entry is ResolvedAccessoryEntry.Group) {
-                AbyssText(
-                    text = "▾",
-                    style = typography.labelSmall,
-                    color = if (dragging) colors.accent else colors.textMuted,
-                    modifier = Modifier.padding(start = 4.dp),
+                Icon(
+                    painterResource(R.drawable.ic_expand_more),
+                    contentDescription = null,
+                    tint = if (dragging) colors.accent else colors.textMuted,
+                    modifier = Modifier.padding(start = 2.dp).size(16.dp),
                 )
             }
         }

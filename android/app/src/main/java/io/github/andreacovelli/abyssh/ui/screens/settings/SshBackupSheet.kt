@@ -534,7 +534,7 @@ private fun KeyInfoRow(key: SshKey, onClick: () -> Unit) {
                 if (shortPublic.isNotBlank()) {
                     AbyssText(
                         text = shortPublic,
-                        style = typography.bodySmall,
+                        style = typography.codeSmall,
                         color = colors.textMuted,
                     )
                 }
@@ -562,7 +562,7 @@ private fun KeyDetailsContent(
             AbyssText(stringResource(R.string.key_details_name), style = typography.labelSmall, color = colors.textMuted)
             AbyssText(key.name, style = typography.label)
             AbyssText(stringResource(R.string.key_details_public_key), style = typography.labelSmall, color = colors.textMuted)
-            AbyssText(key.publicKeyOpenSsh, style = typography.body)
+            AbyssText(key.publicKeyOpenSsh, style = typography.code)
         }
     }
 

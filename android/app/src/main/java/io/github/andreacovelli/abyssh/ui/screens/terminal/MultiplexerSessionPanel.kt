@@ -136,7 +136,7 @@ private fun MultiplexerSessionRow(
         )
         AbyssText(
             session.name,
-            style = typography.body,
+            style = typography.code,
             color = colors.textPrimary,
             modifier = Modifier.weight(1f),
         )

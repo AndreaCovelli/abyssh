@@ -70,8 +70,12 @@ Kotlin declares `external fun native*` methods in five bridge classes: `GhosttyB
   `getInstance(context)`, and each ViewModel provides a `factory(application)`. Follow
   that pattern rather than adding Hilt or Koin.
 - The UI uses Material 3 (`androidx.compose.material3`). `AbyssTheme` maps the active
-  Ghostty theme onto a Material color scheme and the chosen monospace font onto the
-  Material type scale. Build screens from the `Abyss*` components in `ui/components/`
+  Ghostty theme onto a Material color scheme and the bundled Inter font
+  (`res/font/inter_*.ttf`) onto the Material type scale. The terminal and the `code`
+  and `codeSmall` styles use the monospace font chosen in settings; use them for
+  literal values such as hosts, paths, keys, and commands, and pass
+  `monospace = true` to `AbyssTextField` for fields that hold them. UI text uses
+  sentence case. Build screens from the `Abyss*` components in `ui/components/`
   (buttons, icon buttons, text fields, cards, dialogs, switches, segmented controls),
   with colors from `AbyssColors.current` and type from `AbyssTypography`. Icons are
   vector drawables in `res/drawable/` shown with `Icon` or `AbyssIconButton`; don't

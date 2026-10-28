@@ -180,7 +180,7 @@ private fun KeyCard(item: KeyListItem, onRename: () -> Unit, onDelete: () -> Uni
             Spacer(modifier = Modifier.height(6.dp))
             AbyssText(
                 text = key.publicKeyOpenSsh,
-                style = typography.bodySmall,
+                style = typography.codeSmall,
                 color = colors.textMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -289,6 +289,7 @@ private fun ImportKeyDialog(onConfirm: (String, String) -> Unit, onDismiss: () -
                 value = privateKey,
                 onValueChange = { privateKey = it },
                 label = stringResource(R.string.keys_private_key),
+                monospace = true,
                 placeholder = "-----BEGIN OPENSSH PRIVATE KEY-----",
                 singleLine = false,
                 maxLines = 8,

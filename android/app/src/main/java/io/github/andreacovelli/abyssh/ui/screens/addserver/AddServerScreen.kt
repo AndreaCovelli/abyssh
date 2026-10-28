@@ -131,6 +131,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
             value = form.host,
             onValueChange = vm::updateHost,
             label = stringResource(R.string.server_host_label),
+            monospace = true,
             placeholder = "192.168.1.10",
             singleLine = true,
             keyboardOptions =
@@ -150,6 +151,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
                 value = form.port,
                 onValueChange = vm::updatePort,
                 label = stringResource(R.string.server_port_label),
+                monospace = true,
                 singleLine = true,
                 keyboardOptions =
                     KeyboardOptions(
@@ -164,6 +166,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
                 value = form.username,
                 onValueChange = vm::updateUsername,
                 label = stringResource(R.string.server_username_label),
+                monospace = true,
                 placeholder = "root",
                 singleLine = true,
                 keyboardOptions =
@@ -184,9 +187,9 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
             options = listOf(Transport.SSH, Transport.TailscaleSSH, Transport.Mosh),
             labels =
                 mapOf(
-                    Transport.SSH to "ssh",
-                    Transport.TailscaleSSH to "tailscale",
-                    Transport.Mosh to "mosh",
+                    Transport.SSH to "SSH",
+                    Transport.TailscaleSSH to "Tailscale",
+                    Transport.Mosh to "Mosh",
                 ),
             selected = form.transport,
             onSelect = vm::updateTransport,
@@ -521,6 +524,7 @@ private fun PostConnectActionSection(command: String, onCommandChange: (String) 
         value = command,
         onValueChange = onCommandChange,
         label = "",
+        monospace = true,
         placeholder = stringResource(R.string.server_auto_run_placeholder),
         showLabel = false,
         singleLine = true,

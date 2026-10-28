@@ -573,7 +573,7 @@ private fun HostCard(
                         ) {
                             AbyssText(
                                 hostLabel,
-                                style = typography.body,
+                                style = typography.code,
                                 color = colors.textSecondary,
                                 modifier = Modifier.weight(1f),
                                 maxLines = 1,
@@ -581,7 +581,7 @@ private fun HostCard(
                             )
                             if (host.transport == Transport.TailscaleSSH) {
                                 AbyssBadge(
-                                    text = "tailscale",
+                                    text = "Tailscale",
                                     color = colors.accent,
                                 )
                             }
@@ -608,7 +608,7 @@ private fun HostCard(
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                             ) {
                                 AbyssText(
-                                    stringResource(if (isConnected) R.string.action_disconnect else R.string.action_connect_lower),
+                                    stringResource(if (isConnected) R.string.action_disconnect else R.string.action_connect),
                                     style = typography.label,
                                     color = if (isConnected) colors.warning else colors.accentSecondary,
                                 )

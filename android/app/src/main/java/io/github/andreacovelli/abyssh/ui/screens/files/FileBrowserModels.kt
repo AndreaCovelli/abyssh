@@ -47,8 +47,8 @@ data class FileBrowserUiState(
 )
 
 fun formatFileSize(bytes: Long): String = when {
-        bytes < 1024 -> "$bytes b"
-        bytes < 1024 * 1024 -> "${"%.1f".format(bytes / 1024.0)} kb"
-        bytes < 1024 * 1024 * 1024 -> "${"%.1f".format(bytes / (1024.0 * 1024.0))} mb"
-        else -> "${"%.1f".format(bytes / (1024.0 * 1024.0 * 1024.0))} gb"
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${"%.1f".format(bytes / 1024.0)} KB"
+        bytes < 1024 * 1024 * 1024 -> "${"%.1f".format(bytes / (1024.0 * 1024.0))} MB"
+        else -> "${"%.1f".format(bytes / (1024.0 * 1024.0 * 1024.0))} GB"
     }

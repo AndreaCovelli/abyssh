@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.ui.components.AbyssStatusDot
 import androidx.compose.material3.MaterialTheme
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.pluralStringResource
@@ -288,11 +289,7 @@ fun TerminalTabManager(
                                             overflow = TextOverflow.Ellipsis,
                                         )
                                         if (isActive) {
-                                            AbyssText(
-                                                "\u25C9",
-                                                style = typography.labelSmall,
-                                                color = colors.success,
-                                            )
+                                            AbyssStatusDot(active = true, size = 8.dp)
                                         }
                                     }
                                     // Show alias as secondary when title is primary
@@ -308,13 +305,13 @@ fun TerminalTabManager(
                                     ) {
                                         AbyssText(
                                             userHost,
-                                            style = typography.labelSmall,
+                                            style = typography.codeSmall,
                                             color = colors.textMuted,
                                         )
                                         if (workingDirectory != null) {
                                             AbyssText(
                                                 workingDirectory,
-                                                style = typography.labelSmall,
+                                                style = typography.codeSmall,
                                                 color = colors.textMuted,
                                             )
                                         }

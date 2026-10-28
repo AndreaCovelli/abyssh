@@ -403,6 +403,7 @@ internal fun TerminalCustomActionsEditorSheet(
                                     }
                                 },
                                 label = stringResource(R.string.custom_actions_value_label),
+                                monospace = true,
                                 placeholder = ":q",
                                 singleLine = false,
                                 autoFocus = false,
@@ -527,7 +528,12 @@ private fun CustomActionSwipeRow(
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                AbyssText("⋮", style = typography.label, color = colors.textMuted)
+                Icon(
+                    painterResource(R.drawable.ic_drag_indicator),
+                    contentDescription = null,
+                    tint = colors.textMuted,
+                    modifier = Modifier.size(18.dp),
+                )
             }
             AbyssText(
                 text = if (shortcut != null) "$keyText [$shortcut]" else keyText,
@@ -538,7 +544,7 @@ private fun CustomActionSwipeRow(
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
                 AbyssText(
                     text = readableStoredActionPreview(valueText),
-                    style = typography.body,
+                    style = typography.code,
                     color = colors.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

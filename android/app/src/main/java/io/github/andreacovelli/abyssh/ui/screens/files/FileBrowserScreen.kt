@@ -169,7 +169,7 @@ fun FileBrowserScreen(
                                         )
                                         Spacer(modifier = Modifier.width(10.dp))
                                         Column(modifier = Modifier.weight(1f)) {
-                                            AbyssText(entry.name, style = typography.body)
+                                            AbyssText(entry.name, style = typography.code)
                                             val meta =
                                                 listOfNotNull(
                                                         entry.sizeBytes?.let { formatFileSize(it) },
@@ -279,7 +279,7 @@ fun FileBrowserScreen(
                             DropdownMenuItem(
                                 text = {
                                     AbyssText(
-                                        sort.name.lowercase(),
+                                        sort.name,
                                         style = typography.label,
                                         color = if (isSelected) colors.accent else colors.textPrimary,
                                     )
@@ -313,7 +313,7 @@ fun FileBrowserScreen(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            AbyssText(state.currentPath, style = typography.labelSmall, color = colors.textMuted)
+            AbyssText(state.currentPath, style = typography.codeSmall, color = colors.textMuted)
         }
     }
 }

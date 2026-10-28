@@ -47,7 +47,7 @@ fun TerminalLinkBar(
     ) {
         AbyssText(
             text = url,
-            style = typography.labelSmall,
+            style = typography.codeSmall,
             color = colors.textPrimary,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,

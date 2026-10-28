@@ -59,26 +59,26 @@ fun AbyssColorPalette.toColorScheme(): ColorScheme {
     )
 }
 
-/** Material 3 type scale set in the user's chosen monospace font. */
+/** Material 3 type scale set in the app's UI font. */
 fun AbyssTypeScale.toMaterialTypography(): Typography {
     val base = Typography()
     val family = body.fontFamily
-    fun TextStyle.mono() = copy(fontFamily = family)
+    fun TextStyle.ui() = copy(fontFamily = family)
     return Typography(
-        displayLarge = base.displayLarge.mono(),
-        displayMedium = base.displayMedium.mono(),
-        displaySmall = base.displaySmall.mono(),
-        headlineLarge = base.headlineLarge.mono(),
-        headlineMedium = base.headlineMedium.mono(),
+        displayLarge = base.displayLarge.ui(),
+        displayMedium = base.displayMedium.ui(),
+        displaySmall = base.displaySmall.ui(),
+        headlineLarge = base.headlineLarge.ui(),
+        headlineMedium = base.headlineMedium.ui(),
         headlineSmall = headline,
-        titleLarge = base.titleLarge.mono(),
+        titleLarge = base.titleLarge.ui(),
         titleMedium = title,
-        titleSmall = base.titleSmall.mono(),
-        bodyLarge = base.bodyLarge.mono(),
+        titleSmall = base.titleSmall.ui(),
+        bodyLarge = base.bodyLarge.ui(),
         bodyMedium = body,
         bodySmall = bodySmall,
         labelLarge = label,
-        labelMedium = base.labelMedium.mono(),
+        labelMedium = base.labelMedium.ui(),
         labelSmall = labelSmall,
     )
 }

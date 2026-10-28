@@ -70,6 +70,7 @@ fun TerminalSearchBar(
             value = state.query,
             onValueChange = onQueryChange,
             label = stringResource(R.string.palette_search),
+            monospace = true,
             placeholder = stringResource(R.string.search_placeholder),
             singleLine = true,
             showLabel = false,
