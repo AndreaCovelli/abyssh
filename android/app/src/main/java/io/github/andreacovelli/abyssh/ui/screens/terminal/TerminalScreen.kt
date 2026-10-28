@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.shape.CircleShape
@@ -142,6 +143,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private const val NO_HELD_KEY = -1
 
 private fun TerminalViewModel.dispatchTextWithModifierState(
     text: String,
@@ -521,6 +524,9 @@ fun TerminalScreen(
                 onSelectAmongActions = { actions -> fabFilteredActions = actions },
             )
         }
+    // The terminal input view is created once and keeps its callbacks, so it reads
+    // the bindings through this holder rather than capturing the first instance.
+    val currentAbysshKeys by rememberUpdatedState(abysshKeys)
     val multiplexerState by vm.multiplexerState.collectAsStateWithLifecycle()
 
     LaunchedEffect(terminalFontSizeSp) {
@@ -568,6 +574,8 @@ fun TerminalScreen(
                 else -> emptyList()
             }
         }
+    // Read by the terminal input view, which keeps the callbacks it was created with.
+    val currentTabsForHost by rememberUpdatedState(tabsForHost)
     val activeHostCount =
         remember(tabs) {
             tabs.map { it.spec.hostId ?: it.spec.sessionKey }
@@ -1063,6 +1071,10 @@ fun TerminalScreen(
                     // Set while a Ctrl+C that copied is held, so its repeat and release
                     // stay out of the terminal after the selection is gone.
                     val copyShortcutHeld = remember { booleanArrayOf(false) }
+
+                    // The key that completed a ⌘ shortcut, so its repeat and release
+                    // stay out of the terminal. NO_HELD_KEY when none is held.
+                    val abysshShortcutKeyHeld = remember { intArrayOf(NO_HELD_KEY) }
 
                     // Tapping the menu can move focus off the hidden input view, which
                     // leaves keys like Backspace with nowhere to go; take it back.
@@ -1625,7 +1637,7 @@ fun TerminalScreen(
                                         TerminalInputView(viewContext)
                                             .apply {
                                                 onTerminalText = { text ->
-                                                    if (abysshKeys.handleText(text)) {
+                                                    if (currentAbysshKeys.handleText(text)) {
                                                         // Consumed by the abyssh key prefix.
                                                     } else if (
                                                         isCopyShortcut(text, modifierState, hasSelectedText())
@@ -1643,10 +1655,35 @@ fun TerminalScreen(
                                                         )
                                                     }
                                                 }
-                                                onTerminalKey = { key, codepoint, mods, action, charCode ->
+                                                onTerminalKey = onKey@{ key, codepoint, mods, action, charCode ->
+                                                    if (
+                                                        action != GhosttyKeyAction.Press &&
+                                                        abysshShortcutKeyHeld[0] == key
+                                                    ) {
+                                                        if (action == GhosttyKeyAction.Release) {
+                                                            abysshShortcutKeyHeld[0] = NO_HELD_KEY
+                                                        }
+                                                        return@onKey
+                                                    }
                                                     var shouldForwardToTerminal = true
                                                     val overlayOpen = showTabSheet || showGlobalTabManager
-                                                    val overlayTabs = if (showGlobalTabManager) tabs else tabsForHost
+                                                    val overlayTabs =
+                                                        if (showGlobalTabManager) tabs else currentTabsForHost
+                                                    // Keyboards without autocorrect send letters as key
+                                                    // events rather than text, so the ⌘ prefix is checked
+                                                    // here as well as in onTerminalText.
+                                                    val typed = if (charCode != 0) charCode else codepoint
+                                                    if (
+                                                        action == GhosttyKeyAction.Press &&
+                                                        !(overlayOpen && overlayTabs.isNotEmpty()) &&
+                                                        typed > ' '.code &&
+                                                        currentAbysshKeys.handleText(
+                                                            StringBuilder().appendCodePoint(typed).toString(),
+                                                        )
+                                                    ) {
+                                                        abysshShortcutKeyHeld[0] = key
+                                                        return@onKey
+                                                    }
                                                     if (
                                                         overlayOpen &&
                                                             overlayTabs.isEmpty() &&
@@ -1660,7 +1697,7 @@ fun TerminalScreen(
                                                         var consumedByTabSwitcher = true
                                                         val isPress =
                                                             action == GhosttyKeyAction.Press
-                                                        if (isPress && abysshKeys.isPrefixActive) {
+                                                        if (isPress && currentAbysshKeys.isPrefixActive) {
                                                             when (
                                                                 codepoint.toChar().lowercaseChar()
                                                             ) {
@@ -1681,7 +1718,7 @@ fun TerminalScreen(
                                                                 }
                                                                 else -> {}
                                                             }
-                                                            abysshKeys.reset()
+                                                            currentAbysshKeys.reset()
                                                             shouldForwardToTerminal = false
                                                             consumedByTabSwitcher = true
                                                         }
