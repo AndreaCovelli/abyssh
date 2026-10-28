@@ -9,6 +9,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -43,15 +44,19 @@ import io.github.andreacovelli.abyssh.ui.security.requireUserVerification
 fun ApplicationNavController() {
     val navController = rememberNavController()
     val application = LocalContext.current.applicationContext as Application
+    // Whether the user has verified since the app last came to the foreground.
+    var appUnlocked by rememberSaveable { mutableStateOf(false) }
 
     NavHost(navController = navController, startDestination = "servers") {
         composable("servers") { ServersRoute(navController, application) }
-        composable("settings") { SettingsRoute(navController, application) }
+        composable("settings") {
+            SettingsRoute(navController, application, onAppLockVerified = { appUnlocked = true })
+        }
         serverEditorRoutes(navController, application)
         terminalRoutes(navController, application)
     }
 
-    AppLockGate(application)
+    AppLockGate(application, unlocked = appUnlocked, onUnlockedChange = { appUnlocked = it })
 }
 
 /** Runs [onVerified] after the user passes device verification. */
@@ -110,10 +115,32 @@ private fun ServersRoute(navController: NavHostController, application: Applicat
     )
 }
 
+/**
+ * Turning app lock on asks for verification first, so the setting stays off when the
+ * user cancels or fails the prompt. [onAppLockVerified] marks the app as unlocked so the
+ * gate does not ask again straight away.
+ */
 @Composable
-private fun SettingsRoute(navController: NavHostController, application: Application) {
+private fun SettingsRoute(
+    navController: NavHostController,
+    application: Application,
+    onAppLockVerified: () -> Unit,
+) {
+    val context = LocalContext.current
+    val resources = LocalResources.current
+    val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.factory(application))
     SettingsScreen(
-        vm = viewModel(factory = SettingsViewModel.factory(application)),
+        vm = vm,
+        onEnableAppLock = {
+            verifyThen(
+                context = context,
+                title = resources.getString(R.string.settings_lock_app_verify_title),
+                subtitle = resources.getString(R.string.settings_lock_app_verify_subtitle),
+            ) {
+                onAppLockVerified()
+                vm.setAppLockEnabled(true)
+            }
+        },
         backupViewModel = viewModel<SettingsBackupViewModel>(factory = SettingsBackupViewModel.factory(application)),
         keysViewModel = viewModel<KeysViewModel>(factory = KeysViewModel.factory(application)),
         onBack = {
@@ -184,48 +211,44 @@ private fun NavGraphBuilder.terminalRoutes(navController: NavHostController, app
 
 /**
  * Asks for device verification when app lock is on and the app has not been unlocked
- * since it last went to the background. A failed prompt is not repeated until app lock
- * is toggled or the app is backgrounded again.
+ * since it last went to the background. A failed prompt is not repeated until the app
+ * is backgrounded again.
  */
 @Composable
-private fun AppLockGate(application: Application) {
+private fun AppLockGate(application: Application, unlocked: Boolean, onUnlockedChange: (Boolean) -> Unit) {
     val context = LocalContext.current
     val resources = LocalResources.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var appUnlocked by rememberSaveable { mutableStateOf(false) }
+    val currentOnUnlockedChange by rememberUpdatedState(onUnlockedChange)
     var unlockPromptRequested by rememberSaveable { mutableStateOf(false) }
-    var appLockBlockedUntilToggle by rememberSaveable { mutableStateOf(false) }
-
-    fun reset() {
-        appUnlocked = false
-        unlockPromptRequested = false
-        appLockBlockedUntilToggle = false
-    }
+    var unlockPromptFailed by rememberSaveable { mutableStateOf(false) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { source, event ->
             val isConfigChange = (source as? Activity)?.isChangingConfigurations == true
-            if (event == Lifecycle.Event.ON_STOP && !isConfigChange) reset()
+            if (event == Lifecycle.Event.ON_STOP && !isConfigChange) {
+                currentOnUnlockedChange(false)
+                unlockPromptRequested = false
+                unlockPromptFailed = false
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val appLockEnabled by SettingsRepository.getInstance(application).appLockEnabled.collectAsStateWithLifecycle()
-    if (!appLockEnabled) reset()
 
-    LaunchedEffect(appLockEnabled, appUnlocked, unlockPromptRequested, appLockBlockedUntilToggle) {
-        if (appLockEnabled && !appUnlocked && !unlockPromptRequested && !appLockBlockedUntilToggle) {
+    LaunchedEffect(appLockEnabled, unlocked, unlockPromptRequested, unlockPromptFailed) {
+        if (appLockEnabled && !unlocked && !unlockPromptRequested && !unlockPromptFailed) {
             unlockPromptRequested = true
             requireUserVerification(
                 context = context,
                 title = resources.getString(R.string.nav_unlock_title),
                 subtitle = resources.getString(R.string.nav_unlock_subtitle),
             ) { result ->
-                appUnlocked = result == VerificationResult.Success
-                if (result != VerificationResult.Success) {
-                    appLockBlockedUntilToggle = true
-                }
+                val success = result == VerificationResult.Success
+                currentOnUnlockedChange(success)
+                unlockPromptFailed = !success
                 unlockPromptRequested = false
             }
         }
