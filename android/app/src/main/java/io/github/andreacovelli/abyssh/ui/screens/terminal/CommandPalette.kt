@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
 import io.github.andreacovelli.abyssh.ui.components.AbyssCloseButton
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
@@ -24,7 +27,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -117,8 +119,9 @@ fun CommandPalette(
                   .windowInsetsPadding(WindowInsets.safeDrawing)
                   .padding(top = 56.dp, start = 16.dp, end = 16.dp)
                   .fillMaxWidth()
+                  .clip(MaterialTheme.shapes.large)
                   .background(colors.surface)
-                  .border(1.dp, colors.border.copy(alpha = 0.65f)),
+                  .border(1.dp, colors.border.copy(alpha = 0.65f), MaterialTheme.shapes.large),
       ) {
         Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
           AbyssText(
@@ -135,7 +138,12 @@ fun CommandPalette(
           )
         }
         if (entries.isNotEmpty()) {
-          LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp)) {
+          LazyColumn(
+              state = listState,
+              modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp),
+              contentPadding = PaddingValues(horizontal = 8.dp),
+              verticalArrangement = Arrangement.spacedBy(2.dp),
+          ) {
             items(entries.size) { idx ->
               val (tab, alias) = entries[idx]
               val isActive = tab.id == activeTabId
@@ -147,26 +155,17 @@ fun CommandPalette(
               Row(
                   modifier =
                       Modifier.fillMaxWidth()
-                          .background(if (isFocused) colors.surface else Color.Transparent)
-                          .border(
-                              1.dp,
-                              if (isFocused) {
-                                  colors.accent.copy(alpha = 0.7f)
-                              } else {
-                                  colors.border.copy(alpha = 0.35f)
-                              },
-                          )
+                          .clip(MaterialTheme.shapes.medium)
+                          .background(if (isFocused) colors.accent.copy(alpha = 0.14f) else Color.Transparent)
                           .clickable { onSelectTab(tab.id) }
                           .padding(horizontal = 12.dp, vertical = 8.dp),
                   verticalAlignment = Alignment.CenterVertically,
                   horizontalArrangement = Arrangement.spacedBy(10.dp),
               ) {
-                Box(modifier = Modifier.width(10.dp)) {
-                  if (isFocused) AbyssText("▌", style = typography.body, color = colors.accent)
-                }
                 Box(
                     modifier =
                         Modifier.size(8.dp)
+                            .clip(CircleShape)
                             .background(if (isActive) colors.success else Color.Transparent)
                 )
                 Column(modifier = Modifier.weight(1f)) {
@@ -201,8 +200,9 @@ fun CommandPalette(
                   modifier =
                       Modifier.fillMaxWidth(0.68f)
                           .height(104.dp)
+                          .clip(MaterialTheme.shapes.small)
                           .background(colors.background.copy(alpha = 0.86f))
-                          .border(1.dp, colors.border.copy(alpha = 0.8f))
+                          .border(1.dp, colors.border.copy(alpha = 0.8f), MaterialTheme.shapes.small)
                           .align(Alignment.Center)
               ) {
                 TerminalCanvas(

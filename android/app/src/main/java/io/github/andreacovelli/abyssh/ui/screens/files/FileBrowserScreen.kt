@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.files
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -137,7 +139,8 @@ fun FileBrowserScreen(
                                         modifier =
                                             Modifier.fillMaxWidth()
                                                 .defaultMinSize(minHeight = 44.dp)
-                                                .border(1.dp, colors.border.copy(alpha = 0.5f))
+                                                .clip(MaterialTheme.shapes.medium)
+                                                .border(1.dp, colors.border.copy(alpha = 0.5f), MaterialTheme.shapes.medium)
                                                 .combinedClickable(
                                                     onClick = {
                                                         optionsEntryPath = null

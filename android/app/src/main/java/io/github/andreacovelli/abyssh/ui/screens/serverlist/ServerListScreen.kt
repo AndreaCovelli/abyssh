@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.screens.serverlist
 
+import io.github.andreacovelli.abyssh.ui.components.AbyssStatusDot
+import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.CardDefaults
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -155,7 +158,6 @@ fun ServerListScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    AbyssText("$ ", style = typography.headline, color = colors.textMuted)
                     AbyssText(stringResource(R.string.app_name), style = typography.headline)
                 }
 
@@ -194,7 +196,7 @@ fun ServerListScreen(
                 )
             }
 
-            SectionHeader(stringResource(R.string.server_list_section_hosts))
+            AbyssSectionHeader(stringResource(R.string.server_list_section_hosts))
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (localShellEnabled) {
@@ -337,29 +339,6 @@ fun ServerListScreen(
 }
 
 @Composable
-private fun SectionHeader(label: String) {
-    val colors = AbyssColors.current
-    val typography = AbyssTypography.current
-    Box(
-        modifier = Modifier.fillMaxWidth(),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(colors.border),
-        )
-        AbyssText(
-            "── $label",
-            style = typography.labelSmall,
-            color = colors.textSecondary,
-            modifier = Modifier.background(colors.background),
-        )
-    }
-}
-
-@Composable
 private fun EmptyState() {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
@@ -401,11 +380,8 @@ private fun LocalShellCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    AbyssText(
-                        if (isOpen) "● " else "○ ",
-                        style = typography.title,
-                        color = if (isOpen) colors.success else colors.textMuted,
-                    )
+                    AbyssStatusDot(active = isOpen)
+                    Spacer(modifier = Modifier.width(10.dp))
                     AbyssText(stringResource(R.string.server_list_local_shell), style = typography.title)
                 }
                 AbyssBadge(text = stringResource(R.string.server_list_local_badge), color = colors.accentSecondary)
@@ -467,7 +443,7 @@ private fun HostCard(
     val maxSwipePx = with(density) { 132.dp.toPx() }
     val disconnectThresholdPx = with(density) { 72.dp.toPx() }
     val swipeOffsetX = remember(host.id) { Animatable(0f) }
-    val hostLabel = "> ${host.username}@${host.host}:${host.port}"
+    val hostLabel = "${host.username}@${host.host}:${host.port}"
 
     LaunchedEffect(isConnected) {
         if (!isConnected) {
@@ -584,11 +560,8 @@ private fun HostCard(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                AbyssText(
-                                    if (isConnected) "● " else "○ ",
-                                    style = typography.title,
-                                    color = if (isConnected) colors.success else colors.textMuted,
-                                )
+                                AbyssStatusDot(active = isConnected)
+                                Spacer(modifier = Modifier.width(10.dp))
                                 AbyssText(host.name, style = typography.title)
                             }
                         }

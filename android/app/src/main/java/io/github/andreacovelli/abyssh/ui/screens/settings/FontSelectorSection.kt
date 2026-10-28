@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
 import io.github.andreacovelli.abyssh.ui.components.AbyssExpandIcon
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
@@ -41,12 +42,7 @@ internal fun FontSelectorSection(
     val current = remember(currentFont) { AbyssFontOption.fromId(currentFont) }
     var expanded by remember { mutableStateOf(false) }
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        AbyssText("── ", style = typography.labelSmall, color = colors.textMuted)
-        AbyssText(stringResource(R.string.settings_section_font), style = typography.labelSmall, color = colors.textMuted)
-        AbyssText(" ", style = typography.labelSmall, color = colors.textMuted)
-        Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
-    }
+    AbyssSectionHeader(stringResource(R.string.settings_section_font))
     Spacer(modifier = Modifier.height(12.dp))
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

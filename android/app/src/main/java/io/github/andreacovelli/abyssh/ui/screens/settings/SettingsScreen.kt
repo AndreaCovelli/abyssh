@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.HorizontalDivider
@@ -125,7 +126,6 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        AbyssText("$ ", style = typography.headline, color = colors.textMuted)
                         AbyssText(stringResource(R.string.server_list_settings), style = typography.headline)
                     }
                     AbyssCloseButton(
@@ -261,12 +261,7 @@ private fun GeneralSettings(
     Spacer(modifier = Modifier.height(16.dp))
     FontSelectorSection(currentFont = currentFont, onFontSelected = onFontSelected)
     Spacer(modifier = Modifier.height(16.dp))
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        AbyssText("── ", style = typography.labelSmall, color = colors.textMuted)
-        AbyssText(stringResource(R.string.settings_section_security), style = typography.labelSmall, color = colors.textMuted)
-        AbyssText(" ", style = typography.labelSmall, color = colors.textMuted)
-        Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
-    }
+    AbyssSectionHeader(stringResource(R.string.settings_section_security))
     Spacer(modifier = Modifier.height(12.dp))
     Row(
         modifier = Modifier.fillMaxWidth(),

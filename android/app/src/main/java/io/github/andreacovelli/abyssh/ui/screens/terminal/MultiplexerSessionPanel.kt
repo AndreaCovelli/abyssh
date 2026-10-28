@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
@@ -115,9 +118,11 @@ private fun MultiplexerSessionRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
             .border(
                 1.dp,
                 colors.border.copy(alpha = if (session.attached) 0.65f else 0.35f),
+                MaterialTheme.shapes.medium,
             )
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -126,6 +131,7 @@ private fun MultiplexerSessionRow(
         Box(
             modifier = Modifier
                 .size(8.dp)
+                .clip(CircleShape)
                 .background(if (session.attached) colors.success else Color.Transparent),
         )
         AbyssText(

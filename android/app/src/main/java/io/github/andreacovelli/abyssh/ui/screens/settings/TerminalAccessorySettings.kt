@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.size
@@ -121,12 +122,7 @@ internal fun TerminalSettings(
     }
     val density = LocalDensity.current
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        AbyssText("── ", style = typography.labelSmall, color = colors.textMuted)
-        AbyssText(stringResource(R.string.settings_section_terminal), style = typography.labelSmall, color = colors.textMuted)
-        AbyssText(" ", style = typography.labelSmall, color = colors.textMuted)
-        Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
-    }
+    AbyssSectionHeader(stringResource(R.string.settings_section_terminal))
     Spacer(modifier = Modifier.height(12.dp))
 
     Column(

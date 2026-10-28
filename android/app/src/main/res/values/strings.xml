@@ -260,11 +260,11 @@
         <item quantity="one">This closes %1$d session on this host.</item>
         <item quantity="other">This closes %1$d sessions on this host.</item>
     </plurals>
-    <string name="server_list_empty_title"># no hosts configured</string>
-    <string name="server_list_empty_hint">add your first host to connect quickly.</string>
+    <string name="server_list_empty_title">No hosts configured</string>
+    <string name="server_list_empty_hint">Add your first host to connect quickly.</string>
     <string name="server_list_local_shell">local shell</string>
     <string name="server_list_local_badge">android</string>
-    <string name="server_list_local_subtitle">> this device · app sandbox</string>
+    <string name="server_list_local_subtitle">this device · app sandbox</string>
     <string name="server_list_open_local_shell">Open local shell</string>
     <string name="server_list_disconnect_local_shell">Disconnect local shell</string>
     <plurals name="server_list_disconnect_local_body">

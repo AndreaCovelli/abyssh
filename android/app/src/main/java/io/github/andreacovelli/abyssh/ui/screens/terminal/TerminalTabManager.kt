@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import androidx.compose.material3.MaterialTheme
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -28,7 +29,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -185,8 +185,9 @@ fun TerminalTabManager(
                     .windowInsetsPadding(WindowInsets.safeDrawing)
                     .padding(top = 56.dp, start = 16.dp, end = 16.dp)
                     .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.large)
                     .background(colors.surface)
-                    .border(1.dp, colors.border.copy(alpha = 0.65f))
+                    .border(1.dp, colors.border.copy(alpha = 0.65f), MaterialTheme.shapes.large)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -217,6 +218,8 @@ fun TerminalTabManager(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         itemsIndexed(entries, key = { _, tab -> tab.id }) { idx, tab ->
                             val isActive = tab.id == activeTabId
@@ -242,20 +245,13 @@ fun TerminalTabManager(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .clip(MaterialTheme.shapes.medium)
                                     .background(
                                         if (isFocused) {
-                                            colors.surface
+                                            colors.accent.copy(alpha = 0.14f)
                                         } else {
                                             Color.Transparent
                                         }
-                                    )
-                                    .border(
-                                        1.dp,
-                                        if (isFocused) {
-                                            colors.accent.copy(alpha = 0.7f)
-                                        } else {
-                                            colors.border.copy(alpha = 0.35f)
-                                        },
                                     )
                                     .semantics {
                                         contentDescription = rowDescription
@@ -265,17 +261,6 @@ fun TerminalTabManager(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
-                                // Focus indicator
-                                Box(modifier = Modifier.width(10.dp)) {
-                                    if (isFocused) {
-                                        AbyssText(
-                                            "\u258c",
-                                            style = typography.body,
-                                            color = colors.accent,
-                                        )
-                                    }
-                                }
-
                                 // Status dot
                                 Box(
                                     modifier = Modifier

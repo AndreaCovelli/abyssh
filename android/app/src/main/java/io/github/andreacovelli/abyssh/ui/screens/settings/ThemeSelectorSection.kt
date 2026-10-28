@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
 import io.github.andreacovelli.abyssh.ui.components.AbyssExpandIcon
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
@@ -71,12 +72,7 @@ internal fun ThemeSelectorSection(
         availableThemes.associateWith { themeName -> GhosttyThemeRegistry.getTheme(context, themeName) }
     }
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        AbyssText("── ", style = typography.labelSmall, color = colors.textMuted)
-        AbyssText(stringResource(R.string.settings_section_theme), style = typography.labelSmall, color = colors.textMuted)
-        AbyssText(" ", style = typography.labelSmall, color = colors.textMuted)
-        Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
-    }
+    AbyssSectionHeader(stringResource(R.string.settings_section_theme))
     Spacer(modifier = Modifier.height(12.dp))
 
     ThemeModePills(themeMode = themeMode, onThemeModeChanged = onThemeModeChanged)

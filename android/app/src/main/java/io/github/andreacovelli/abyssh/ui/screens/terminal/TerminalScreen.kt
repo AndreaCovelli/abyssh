@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -1565,8 +1568,10 @@ fun TerminalScreen(
                                         modifier =
                                             Modifier.offset { IntOffset(menuX, menuY) }
                                                 .onGloballyPositioned { menuSize = it.size }
-                                                .background(colors.background)
-                                                .border(1.dp, colors.border)
+                                                .shadow(3.dp, MaterialTheme.shapes.medium)
+                                                .clip(MaterialTheme.shapes.medium)
+                                                .background(colors.surface)
+                                                .border(1.dp, colors.border, MaterialTheme.shapes.medium)
                                                 .padding(horizontal = 4.dp, vertical = 2.dp),
                                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                                         verticalAlignment = Alignment.CenterVertically,
@@ -1826,8 +1831,9 @@ fun TerminalScreen(
                                         modifier =
                                             Modifier.fillMaxWidth()
                                                 .padding(horizontal = 10.dp, vertical = 4.dp)
+                                                .clip(MaterialTheme.shapes.medium)
                                                 .background(colors.surface)
-                                                .border(1.dp, colors.border)
+                                                .border(1.dp, colors.border, MaterialTheme.shapes.medium)
                                                 .padding(horizontal = 10.dp, vertical = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
@@ -2177,8 +2183,9 @@ private fun UploadProgressDialog(progress: UploadProgress) {
     ) {
         Column(
             modifier =
-                Modifier.background(colors.surfaceVariant)
-                    .border(1.dp, colors.border)
+                Modifier.clip(MaterialTheme.shapes.extraLarge)
+                    .background(colors.surfaceVariant)
+                    .border(1.dp, colors.border, MaterialTheme.shapes.extraLarge)
                     .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -2203,8 +2210,8 @@ private fun UploadProgressDialog(progress: UploadProgress) {
                 modifier =
                     Modifier.width(barWidthDp)
                         .height(barHeightDp)
-                        .background(colors.surface)
-                        .border(1.dp, colors.border),
+                        .clip(CircleShape)
+                        .background(colors.surface),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 Box(
