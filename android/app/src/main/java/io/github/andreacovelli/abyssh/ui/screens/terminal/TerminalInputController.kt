@@ -2,6 +2,7 @@ package io.github.andreacovelli.abyssh.ui.screens.terminal
 
 import android.content.ClipboardManager
 import android.content.Context
+import android.os.IBinder
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -78,6 +79,15 @@ internal class TerminalInputController(
 
     fun requestFocus() {
         inputView?.showKeyboard(inputMethodManager)
+    }
+
+    /**
+     * Hides the keyboard in the window that [windowToken] names. The input view leaves
+     * with the terminal, and the keyboard would otherwise stay up over the next screen
+     * with nothing to type into.
+     */
+    fun hideKeyboard(windowToken: IBinder?) {
+        if (windowToken != null) inputMethodManager?.hideSoftInputFromWindow(windowToken, 0)
     }
 
     fun clearSelection() {

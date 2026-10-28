@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -43,6 +44,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -136,10 +138,6 @@ private fun TerminalSessionEffects(
     val haptics = LocalHapticFeedback.current
     LaunchedEffect(sessionState.handle, activeTabId) { input.clearSelection() }
     LaunchedEffect(input) { input.watchClipboard() }
-    LaunchedEffect(input) {
-        input.requestFocus()
-        vm.input.onFocusChanged(true)
-    }
     val isDark = (theme?.background ?: colors.background).luminance() < 0.5f
     LaunchedEffect(theme, colors, isDark) {
         vm.input.onColorSchemeChanged(isDark)
@@ -183,6 +181,25 @@ private fun rememberFilesShortcut(vm: TerminalViewModel, filesSupported: Boolean
     }
 }
 
+/**
+ * Shows the keyboard while the terminal pane is on screen, and hides it when the pane
+ * leaves for the file browser or another screen. The keyboard would otherwise stay up
+ * after its input view is gone, with nothing to type into.
+ */
+@Composable
+private fun TerminalKeyboardEffect(vm: TerminalViewModel, input: TerminalInputController) {
+    // The Compose host view stays attached after the input view goes, so its token
+    // still reaches the window that owns the keyboard.
+    val hostView = LocalView.current
+    LaunchedEffect(input) {
+        input.requestFocus()
+        vm.input.onFocusChanged(true)
+    }
+    DisposableEffect(input, hostView) {
+        onDispose { input.hideKeyboard(hostView.windowToken) }
+    }
+}
+
 @Composable
 private fun TerminalPane(
     vm: TerminalViewModel,
@@ -196,6 +213,7 @@ private fun TerminalPane(
     val theme = host.settings.ghosttyTheme
     val searchState by vm.search.state.collectAsStateWithLifecycle()
     val multiplexer by vm.multiplexer.state.collectAsStateWithLifecycle()
+    TerminalKeyboardEffect(vm, input)
     Column(modifier = modifier) {
         searchState?.let { search ->
             TerminalSearchBar(
