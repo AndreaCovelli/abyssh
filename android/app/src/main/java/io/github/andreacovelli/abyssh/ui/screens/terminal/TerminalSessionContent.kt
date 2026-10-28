@@ -3,9 +3,9 @@ package io.github.andreacovelli.abyssh.ui.screens.terminal
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.core.net.toUri
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -311,7 +311,7 @@ private fun TerminalLinkPrompt(vm: TerminalViewModel, modifier: Modifier = Modif
 
 private fun openLink(context: Context, url: String) {
     try {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (_: ActivityNotFoundException) {
         Toast.makeText(context, context.resources.getString(R.string.terminal_link_no_app), Toast.LENGTH_SHORT).show()
     }

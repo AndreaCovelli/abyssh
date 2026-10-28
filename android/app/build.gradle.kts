@@ -92,6 +92,11 @@ android {
     buildFeatures {
         compose = true
     }
+    lint {
+        // Nightly and release APKs ship arm64-v8a only (ANDROID_ABI_FILTERS);
+        // ChromeOS and x86 devices are not supported targets.
+        disable += "ChromeOsAbiSupport"
+    }
     testOptions {
         // On-device tests run on a Gradle-managed emulator: ./gradlew dev34DebugAndroidTest
         // (needs the x86_64 native library in jniLibs/x86_64).

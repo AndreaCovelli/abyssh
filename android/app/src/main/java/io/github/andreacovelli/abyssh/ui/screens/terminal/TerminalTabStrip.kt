@@ -24,8 +24,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
@@ -76,15 +76,15 @@ fun TerminalTabStrip(
     onTabSelected: (String) -> Unit,
     onAddTab: () -> Unit,
     onOpenManager: () -> Unit,
-    newTabPicker: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
+    newTabPicker: @Composable () -> Unit = {},
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
     val scrollState = rememberScrollState()
     val trailingActionWidth = if (tabs.isNotEmpty()) 72.dp else 40.dp
     val tabOffsets = remember { mutableStateMapOf<String, Int>() }
-    val rowRootLeft = remember { mutableStateOf(0) }
+    val rowRootLeft = remember { mutableIntStateOf(0) }
     val titles = tabs.map { tab ->
         val title by remember(tab) {
             tab.sessionState.map { it.title?.takeIf(String::isNotBlank) }
@@ -115,7 +115,7 @@ fun TerminalTabStrip(
                 .padding(end = trailingActionWidth)
                 .horizontalScroll(scrollState)
                 .onGloballyPositioned { coords ->
-                    rowRootLeft.value = coords.localToRoot(Offset.Zero).x.roundToInt()
+                    rowRootLeft.intValue = coords.localToRoot(Offset.Zero).x.roundToInt()
                 },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -133,7 +133,7 @@ fun TerminalTabStrip(
                 Box(
                     modifier = Modifier
                         .onGloballyPositioned { coords ->
-                            tabOffsets[tab.id] = coords.localToRoot(Offset.Zero).x.roundToInt() - rowRootLeft.value + scrollState.value
+                            tabOffsets[tab.id] = coords.localToRoot(Offset.Zero).x.roundToInt() - rowRootLeft.intValue + scrollState.value
                         }
                         .semantics { contentDescription = label }
                         .defaultMinSize(minHeight = 32.dp)

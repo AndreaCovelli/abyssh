@@ -22,7 +22,6 @@
             android:name="io.github.andreacovelli.abyssh.MainActivity"
             android:enabled="true"
             android:exported="true"
-            android:label="@string/app_name"
             android:windowSoftInputMode="adjustNothing"
             android:theme="@style/Theme.Abyssh">
             <intent-filter>

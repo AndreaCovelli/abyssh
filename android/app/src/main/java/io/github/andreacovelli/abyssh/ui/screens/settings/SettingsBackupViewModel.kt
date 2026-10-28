@@ -286,6 +286,5 @@ class SettingsBackupViewModel(
 
     override fun onCleared() {
         clearAllState()
-        super.onCleared()
     }
 }

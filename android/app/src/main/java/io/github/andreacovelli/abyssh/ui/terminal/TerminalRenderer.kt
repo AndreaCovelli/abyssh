@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
 import android.graphics.Canvas
+import androidx.core.graphics.withTranslation
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
@@ -149,17 +150,16 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
     }
 
     fun draw(canvas: Canvas, frame: TerminalFrame, paints: TerminalTextPaints, placement: SnapshotPlacement) {
-        canvas.save()
-        canvas.translate(placement.offsetX, placement.offsetY)
-        if (placement.scale != 1f) canvas.scale(placement.scale, placement.scale)
-        for (row in 0 until frame.rows) {
-            drawBackgrounds(canvas, frame, row)
-            drawSearchSpans(canvas, frame, row)
-            drawText(canvas, frame, paints, row)
+        canvas.withTranslation(placement.offsetX, placement.offsetY) {
+            if (placement.scale != 1f) scale(placement.scale, placement.scale)
+            for (row in 0 until frame.rows) {
+                drawBackgrounds(this, frame, row)
+                drawSearchSpans(this, frame, row)
+                drawText(this, frame, paints, row)
+            }
+            drawImages(this, frame)
+            drawCursor(this, frame, paints)
         }
-        drawImages(canvas, frame)
-        drawCursor(canvas, frame, paints)
-        canvas.restore()
     }
 
     private fun drawBackgrounds(canvas: Canvas, frame: TerminalFrame, row: Int) {
