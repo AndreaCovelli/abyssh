@@ -1,5 +1,13 @@
 package io.github.andreacovelli.abyssh.ui.screens.addserver
 
+import io.github.andreacovelli.abyssh.model.toUiText
+
+import io.github.andreacovelli.abyssh.model.UiTextException
+
+import io.github.andreacovelli.abyssh.model.UiText
+
+import io.github.andreacovelli.abyssh.R
+
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
@@ -77,8 +85,8 @@ class AddServerViewModel(
     private val _keys = MutableStateFlow<List<SshKey>>(emptyList())
     val keys: StateFlow<List<SshKey>> = _keys.asStateFlow()
 
-    private val _errorMessage = MutableSharedFlow<String>(extraBufferCapacity = 8)
-    val errorMessage: SharedFlow<String> = _errorMessage.asSharedFlow()
+    private val _errorMessage = MutableSharedFlow<UiText>(extraBufferCapacity = 8)
+    val errorMessage: SharedFlow<UiText> = _errorMessage.asSharedFlow()
 
     init {
         viewModelScope.launch { sshKeyRepository.observeAll().collect { _keys.value = it } }
@@ -164,7 +172,7 @@ class AddServerViewModel(
                             privateKeyPem = result.key.privateKeyPem,
                             publicKeyOpenSsh = result.key.publicKeyOpenSsh,
                         )
-                KeyGenerationResult.Failed -> _errorMessage.emit("Key generation failed")
+                KeyGenerationResult.Failed -> _errorMessage.emit(UiText.Resource(R.string.keys_generate_failed))
             }
         }
     }
@@ -234,7 +242,7 @@ class AddServerViewModel(
         if (username.isBlank()) return
         _testState.value = ConnectionTestState(status = ConnectionTestStatus.Running)
         viewModelScope.launch {
-            var hostKeyError: String? = null
+            var hostKeyError: UiText? = null
             val result =
                 withContext(Dispatchers.IO) {
                     runCatching {
@@ -245,19 +253,22 @@ class AddServerViewModel(
                             ) {
                                 is HostKeyCheck.Match -> true
                                 is HostKeyCheck.Unknown -> {
-                                    hostKeyError =
-                                        "host key not verified — connect once to verify this host"
+                                    hostKeyError = UiText.Resource(R.string.add_server_host_key_unknown)
                                     false
                                 }
                                 is HostKeyCheck.Changed -> {
-                                    hostKeyError =
-                                        "host key CHANGED (${result.previousFingerprint} → ${result.fingerprint}) — connect once to verify this host"
+                                    hostKeyError = UiText.Resource(R.string.add_server_host_key_changed,
+                                        result.previousFingerprint,
+                                        result.fingerprint,
+                                    )
                                     false
                                 }
                             }
                         }
                         NativeSshService(hostKeyPolicy = policy).use { nativeSsh ->
-                            check(nativeSsh.isAvailable()) { "Native SSH unavailable" }
+                            if (!nativeSsh.isAvailable()) {
+                                throw UiTextException(UiText.Resource(R.string.error_native_ssh_unavailable), "Native SSH unavailable")
+                            }
                             nativeSsh.connect(
                                 host = host,
                                 port = port,
@@ -278,15 +289,13 @@ class AddServerViewModel(
                 }
             _testState.value =
                 if (result.isSuccess) {
-                    ConnectionTestState(
-                        status = ConnectionTestStatus.Success,
-                        message = "Connected",
-                    )
+                    ConnectionTestState(status = ConnectionTestStatus.Success)
                 } else {
                     ConnectionTestState(
                         status = ConnectionTestStatus.Error,
-                        message =
-                            hostKeyError ?: result.exceptionOrNull()?.message ?: "Connection failed",
+                        message = hostKeyError
+                            ?: result.exceptionOrNull()?.toUiText(UiText.Resource(R.string.terminal_connection_failed))
+                            ?: UiText.Resource(R.string.terminal_connection_failed),
                     )
                 }
         }
@@ -391,5 +400,5 @@ enum class ConnectionTestStatus {
 
 data class ConnectionTestState(
     val status: ConnectionTestStatus = ConnectionTestStatus.Idle,
-    val message: String? = null,
+    val message: UiText? = null,
 )

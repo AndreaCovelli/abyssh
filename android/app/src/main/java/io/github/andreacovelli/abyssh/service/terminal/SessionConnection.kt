@@ -1,6 +1,10 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
 import android.util.Log
+import io.github.andreacovelli.abyssh.R
+import io.github.andreacovelli.abyssh.model.UiText
+import io.github.andreacovelli.abyssh.model.UiTextException
+import io.github.andreacovelli.abyssh.model.toUiText
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.service.mosh.MoshRuntimeState
 import kotlinx.coroutines.CancellationException
@@ -132,35 +136,35 @@ internal class SessionConnection(
             } catch (e: Exception) {
                 Log.e(TAG, "flushPtyWrites failed: ${e.message}")
                 scope.launch(dispatcher) {
-                    state.update { it.copy(status = SessionStatus.Error, error = "Connection lost: ${e.message}") }
+                    state.update { it.copy(status = SessionStatus.Error, error = UiText.Resource(R.string.error_connection_lost, e.reason())) }
                 }
                 return
             }
         }
     }
 
-    private fun preconditionFailure(spec: TabSpec): String? {
+    private fun preconditionFailure(spec: TabSpec): UiText? {
         val bridge = emulator.bridge
         return when {
-            !bridge.isLoaded() -> "Native terminal library ${bridge.nativeStatus()}. Check ABI/NDK build."
+            !bridge.isLoaded() -> UiText.Resource(R.string.error_native_terminal_unavailable, bridge.nativeStatus())
             transports.unavailableReason(spec.transport) != null -> transports.unavailableReason(spec.transport)
-            spec.transport != Transport.LocalShell && spec.username.isBlank() -> "Username required"
+            spec.transport != Transport.LocalShell && spec.username.isBlank() -> UiText.Resource(R.string.error_username_required)
             else -> multiplexers.availability(spec).errorMessage(spec.multiplexer)
         }
     }
 
     /** Opens the session; returns why it failed, or null when it opened. */
-    private suspend fun openOrFailure(spec: TabSpec): String? = try {
+    private suspend fun openOrFailure(spec: TabSpec): UiText? = try {
         open(spec)
         null
     } catch (e: CancellationException) {
         throw e
     } catch (e: LinkageError) {
         Log.e(TAG, "Connect failed", e)
-        "Native terminal backend unavailable: ${e.message}"
+        UiText.Resource(R.string.error_native_terminal_backend, e.reason())
     } catch (e: Exception) {
         Log.e(TAG, "Connect failed", e)
-        "${e::class.simpleName}: ${e.message}"
+        (e as? UiTextException)?.text ?: UiText.Raw("${e::class.simpleName}: ${e.message}")
     }
 
     private suspend fun open(spec: TabSpec) {
@@ -207,7 +211,7 @@ internal class SessionConnection(
     } catch (e: Exception) {
         Log.e(TAG, "Read loop failed", e)
         if (transport == Transport.LocalShell && !disconnectRequested) {
-            state.update { it.copy(status = SessionStatus.Error, error = "Local shell failed: ${e.message}") }
+            state.update { it.copy(status = SessionStatus.Error, error = UiText.Resource(R.string.error_local_shell_failed, e.reason())) }
         }
         ReadOutcome(failed = true)
     }
@@ -224,16 +228,16 @@ internal class SessionConnection(
             ReadLoopExitAction.RequireManualReconnect -> {
                 transports.mosh.close()
                 if (!disconnectRequested) {
-                    val failure = outcome.moshFailureCode?.let { " (failure code $it)" }.orEmpty()
                     state.update {
                         it.copy(
                             status = SessionStatus.Error,
-                            error = "Mosh session ended$failure. Reconnect to start a new session.",
+                            error = outcome.moshFailureCode?.let { UiText.Resource(R.string.error_mosh_session_ended_code, it) }
+                                ?: UiText.Resource(R.string.error_mosh_session_ended),
                         )
                     }
                 }
             }
-            ReadLoopExitAction.AutomaticReconnect -> scheduleReconnect("Connection interrupted")
+            ReadLoopExitAction.AutomaticReconnect -> scheduleReconnect(UiText.Resource(R.string.error_connection_interrupted))
         }
     }
 
@@ -243,7 +247,7 @@ internal class SessionConnection(
             transport != null &&
             readLoopExitAction(transport) == ReadLoopExitAction.AutomaticReconnect
         if (reconnects) {
-            scheduleReconnect("Connection interrupted: ${error.message ?: "resize failed"}")
+            scheduleReconnect(UiText.Resource(R.string.error_connection_interrupted_reason, error.reason()))
             return
         }
         if (transport == Transport.Mosh) {
@@ -251,10 +255,10 @@ internal class SessionConnection(
             readJob = null
             transports.mosh.close()
         }
-        state.update { it.copy(status = SessionStatus.Error, error = "Resize failed: ${error.message}") }
+        state.update { it.copy(status = SessionStatus.Error, error = UiText.Resource(R.string.error_resize_failed, error.reason())) }
     }
 
-    private fun scheduleReconnect(reason: String) {
+    private fun scheduleReconnect(reason: UiText) {
         val spec = spec
         if (disconnectRequested || spec == null) {
             updateStatus(SessionStatus.Disconnected)
@@ -264,7 +268,7 @@ internal class SessionConnection(
         reconnectJob = scope.launch(dispatcher) { reconnect(spec, reason) }
     }
 
-    private suspend fun reconnect(spec: TabSpec, reason: String) {
+    private suspend fun reconnect(spec: TabSpec, reason: UiText) {
         readJob?.cancel()
         readJob = null
         var attempt = 0
@@ -280,7 +284,7 @@ internal class SessionConnection(
     /** One reconnect attempt; returns true when there is nothing left to try. */
     private suspend fun reconnectOnce(spec: TabSpec, attempt: Int): Boolean {
         if (spec.transport != Transport.LocalShell && spec.username.isBlank()) {
-            state.update { it.copy(status = SessionStatus.Error, error = "Username required") }
+            state.update { it.copy(status = SessionStatus.Error, error = UiText.Resource(R.string.error_username_required)) }
             return true
         }
         return try {
@@ -293,7 +297,7 @@ internal class SessionConnection(
             Log.e(TAG, "Reconnect attempt $attempt failed", e)
             val exhausted = attempt >= MAX_RECONNECT_ATTEMPTS
             if (exhausted) {
-                state.update { it.copy(status = SessionStatus.Error, error = "Reconnect failed: ${e.message}") }
+                state.update { it.copy(status = SessionStatus.Error, error = UiText.Resource(R.string.error_reconnect_failed, e.reason())) }
             }
             exhausted
         }
@@ -321,3 +325,6 @@ internal class SessionConnection(
         state.update { if (it.status == status) it else it.copy(status = status) }
     }
 }
+
+/** The cause to show after a failure's prefix, such as "Reconnect failed: …". */
+private fun Throwable.reason(): UiText = toUiText(UiText.Resource(R.string.error_unknown))

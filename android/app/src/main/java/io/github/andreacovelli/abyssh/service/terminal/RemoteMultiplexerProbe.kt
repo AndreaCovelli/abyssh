@@ -1,8 +1,13 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.AuthMethod
 import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.Transport
+import io.github.andreacovelli.abyssh.model.UiText
+import io.github.andreacovelli.abyssh.model.UiTextException
+import io.github.andreacovelli.abyssh.model.toUiText
+import io.github.andreacovelli.abyssh.service.multiplexer.Multiplexer
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerAvailability
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerCommandResult
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerRegistry
@@ -37,16 +42,19 @@ internal class RemoteMultiplexerProbe(private val hostKeyPolicy: HostKeyPolicy) 
                 MultiplexerAvailability.Missing(type)
             }
         }.getOrElse { error ->
-            MultiplexerAvailability.Error(message = error.message ?: "Could not check ${type.label} on this host")
+            MultiplexerAvailability.Error(message = error.toUiText(UiText.Resource(R.string.multiplexer_check_failed, type.label)))
         }
     }
 
     fun listSessions(spec: TabSpec): List<RemoteMultiplexerSession> {
         val type = spec.multiplexer ?: error("No multiplexer selected")
-        val multiplexer = MultiplexerRegistry.forType(type) ?: error("${type.label} is not supported yet")
-        check(spec.transport.runsRemoteCommands) { "${type.label} is not supported for ${spec.transport} connections" }
+        val multiplexer = supportedMultiplexer(type, spec.transport)
         val result = runCommand(spec, multiplexer.listSessionsCommand())
-        check(result.isSuccess) { result.stderr.ifBlank { "Failed to list ${type.label} sessions" } }
+        if (!result.isSuccess) {
+            val stderr = result.stderr.trim()
+            val text = if (stderr.isEmpty()) UiText.Resource(R.string.multiplexer_list_failed) else UiText.Raw(stderr)
+            throw UiTextException(text, "Failed to list ${type.label} sessions")
+        }
         return multiplexer.parseSessions(result.stdout)
     }
 
@@ -61,10 +69,9 @@ internal class RemoteMultiplexerProbe(private val hostKeyPolicy: HostKeyPolicy) 
         reuseDetachedAbysshSession: Boolean = false,
     ): String {
         val type = spec.multiplexer ?: MultiplexerRegistry.defaultType
-        val multiplexer = MultiplexerRegistry.forType(type) ?: error("${type.label} is not supported yet")
-        check(spec.transport.runsRemoteCommands) { "${type.label} is not supported for ${spec.transport} connections" }
+        val multiplexer = supportedMultiplexer(type, spec.transport)
         val typedSpec = spec.copy(multiplexer = type)
-        availability(typedSpec).errorMessage(type)?.let { error(it) }
+        availability(typedSpec).errorMessage(type)?.let { throw UiTextException(it, "${type.label} unavailable") }
         val remoteSessions = listSessions(typedSpec)
         val existingName = spec.multiplexerSessionName?.takeIf { it.isNotBlank() }
         if (existingName != null) {
@@ -112,14 +119,32 @@ internal val Transport.runsRemoteCommands: Boolean
     get() = this != Transport.Mosh && this != Transport.LocalShell
 
 /** Why a session can't use [selected], or null when it can. */
-internal fun MultiplexerAvailability.errorMessage(selected: MultiplexerType?): String? = when (this) {
+internal fun MultiplexerAvailability.errorMessage(selected: MultiplexerType?): UiText? = when (this) {
     MultiplexerAvailability.Available -> null
-    is MultiplexerAvailability.Missing -> "${multiplexer.label} executable was not found on the remote host"
-    is MultiplexerAvailability.UnsupportedMultiplexer -> "${multiplexer.label} is not supported yet"
-    is MultiplexerAvailability.UnsupportedTransport ->
-        "${selected?.label ?: "Multiplexer"} is not supported for $transport"
+    is MultiplexerAvailability.Missing -> UiText.Resource(R.string.multiplexer_missing, multiplexer.label)
+    is MultiplexerAvailability.UnsupportedMultiplexer -> UiText.Resource(R.string.multiplexer_unsupported, multiplexer.label)
+    is MultiplexerAvailability.UnsupportedTransport -> UiText.Resource(R.string.multiplexer_unsupported_transport,
+        selected?.label ?: UiText.Resource(R.string.multiplexer_generic),
+        transport.name,
+    )
     is MultiplexerAvailability.Error -> message
 }
+
+/** The multiplexer for [type], or a failure the user can read when [transport] can't run it. */
+private fun supportedMultiplexer(type: MultiplexerType, transport: Transport): Multiplexer {
+    val multiplexer = MultiplexerRegistry.forType(type) ?: throw UiTextException(
+        UiText.Resource(R.string.multiplexer_unsupported, type.label),
+        "${type.label} is not supported yet",
+    )
+    if (!transport.runsRemoteCommands) {
+        throw UiTextException(
+            UiText.Resource(R.string.multiplexer_unsupported_transport, type.label, transport.name),
+            "${type.label} is not supported for $transport connections",
+        )
+    }
+    return multiplexer
+}
+
 
 /** Logs in over [spec]'s credentials; the password only goes out for password auth. */
 internal fun NativeSshService.connect(spec: TabSpec) = connect(

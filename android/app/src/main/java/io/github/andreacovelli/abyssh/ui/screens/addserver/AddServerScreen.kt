@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.addserver
 
+import io.github.andreacovelli.abyssh.ui.components.asString
+
 import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
@@ -66,11 +68,12 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
     val context = LocalContext.current
+    val resources = LocalResources.current
     var showAdditionalSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(vm) {
         vm.errorMessage.collect { message ->
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, message.resolve(resources), Toast.LENGTH_SHORT).show()
         }
     }
     pendingReconnect?.let { pending ->
@@ -370,7 +373,7 @@ private fun TestAndSaveButtons(
     }
     val errorMessage = testState.message
     if (testState.status == ConnectionTestStatus.Error && errorMessage != null) {
-        AbyssText(errorMessage, style = typography.bodySmall, color = AbyssColors.current.error)
+        AbyssText(errorMessage.asString(), style = typography.bodySmall, color = AbyssColors.current.error)
     }
     AbyssButton(onClick = onSave, enabled = form.canSave(), modifier = Modifier.fillMaxWidth()) {
         AbyssText(stringResource(R.string.action_save), style = typography.label)

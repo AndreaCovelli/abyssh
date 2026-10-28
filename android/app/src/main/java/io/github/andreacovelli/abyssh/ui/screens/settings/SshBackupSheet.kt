@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import io.github.andreacovelli.abyssh.ui.components.asString
+
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -260,8 +262,8 @@ private fun BackupStatusMessages(viewModel: SettingsBackupViewModel) {
     val success by viewModel.success.collectAsStateWithLifecycle()
 
     if (isBusy) BackupStatusCard(stringResource(R.string.backup_working), colors.textMuted, background = colors.surface)
-    error?.let { BackupStatusCard(it, colors.error, background = colors.error.copy(alpha = 0.12f)) }
-    success?.let { BackupStatusCard(it, colors.accent, background = colors.accent.copy(alpha = 0.12f)) }
+    error?.let { BackupStatusCard(it.asString(), colors.error, background = colors.error.copy(alpha = 0.12f)) }
+    success?.let { BackupStatusCard(it.asString(), colors.accent, background = colors.accent.copy(alpha = 0.12f)) }
 }
 
 @Composable

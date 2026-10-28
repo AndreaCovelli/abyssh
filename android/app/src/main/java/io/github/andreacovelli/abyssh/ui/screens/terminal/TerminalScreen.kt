@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.model.UiText
+
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets
@@ -222,7 +224,7 @@ private fun TerminalSwitcherEffects(
 
 /** Toasts a connection that just failed and a multiplexer check that failed. */
 @Composable
-private fun TerminalNoticeEffects(status: SessionStatus, error: String?, preflightError: String?) {
+private fun TerminalNoticeEffects(status: SessionStatus, error: UiText?, preflightError: UiText?) {
     val context = LocalContext.current
     val resources = LocalResources.current
     var lastStatus by remember { mutableStateOf<SessionStatus?>(null) }
@@ -230,11 +232,11 @@ private fun TerminalNoticeEffects(status: SessionStatus, error: String?, preflig
         val previous = lastStatus
         lastStatus = status
         if (status == SessionStatus.Error && previous != SessionStatus.Error) {
-            val message = error ?: resources.getString(R.string.terminal_connection_failed)
+            val message = error?.resolve(resources) ?: resources.getString(R.string.terminal_connection_failed)
             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
         }
     }
     LaunchedEffect(preflightError) {
-        if (preflightError != null) Toast.makeText(context, preflightError, Toast.LENGTH_LONG).show()
+        if (preflightError != null) Toast.makeText(context, preflightError.resolve(resources), Toast.LENGTH_LONG).show()
     }
 }

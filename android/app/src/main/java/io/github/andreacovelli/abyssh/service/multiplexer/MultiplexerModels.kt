@@ -2,6 +2,7 @@ package io.github.andreacovelli.abyssh.service.multiplexer
 
 import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.Transport
+import io.github.andreacovelli.abyssh.model.UiText
 
 data class RemoteMultiplexerSession(
     val name: String,
@@ -13,7 +14,7 @@ sealed interface MultiplexerAvailability {
     data class Missing(val multiplexer: MultiplexerType) : MultiplexerAvailability
     data class UnsupportedMultiplexer(val multiplexer: MultiplexerType) : MultiplexerAvailability
     data class UnsupportedTransport(val transport: Transport) : MultiplexerAvailability
-    data class Error(val message: String, val output: String = "") : MultiplexerAvailability
+    data class Error(val message: UiText, val output: String = "") : MultiplexerAvailability
 }
 
 data class MultiplexerCommandResult(

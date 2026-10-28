@@ -1,5 +1,9 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import io.github.andreacovelli.abyssh.R
+import io.github.andreacovelli.abyssh.model.UiText
+import io.github.andreacovelli.abyssh.model.UiTextException
+
 import android.util.Log
 import io.github.andreacovelli.abyssh.service.mosh.MoshBootstrapParser
 import io.github.andreacovelli.abyssh.service.mosh.MoshEndpointResolver
@@ -174,13 +178,15 @@ internal class MoshTransport(private val ssh: NativeSshService, private val serv
     private fun bootstrapFailed(rawOutput: String, execOpened: Boolean): Nothing {
         val eofBeforeClose = !execOpened || ssh.isChannelEof()
         ssh.close()
-        val reason = when {
-            rawOutput.isNotBlank() -> rawOutput.trim()
-            execOpened && !eofBeforeClose -> "Mosh bootstrap command still running after timeout (no output, no EOF)"
-            else -> "Mosh bootstrap produced no output"
+        val (reason, text) = when {
+            rawOutput.isNotBlank() -> rawOutput.trim().let { it to UiText.Raw(it) }
+            execOpened && !eofBeforeClose ->
+                "Mosh bootstrap command still running after timeout (no output, no EOF)" to
+                    UiText.Resource(R.string.error_mosh_bootstrap_timeout)
+            else -> "Mosh bootstrap produced no output" to UiText.Resource(R.string.error_mosh_bootstrap_no_output)
         }
         Log.e(TAG, "MOSH: Bootstrap failed: $reason")
-        error(reason)
+        throw UiTextException(text, reason)
     }
 
     private fun startClient(endpoint: MoshBootstrapParser.MoshEndpoint, geometry: TerminalGeometry) {

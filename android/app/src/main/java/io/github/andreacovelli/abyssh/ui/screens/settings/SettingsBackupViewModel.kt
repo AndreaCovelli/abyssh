@@ -1,5 +1,9 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import io.github.andreacovelli.abyssh.model.UiText
+
+import io.github.andreacovelli.abyssh.R
+
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
@@ -54,11 +58,11 @@ class SettingsBackupViewModel(
     private val _isBusy = MutableStateFlow(false)
     val isBusy: StateFlow<Boolean> = _isBusy.asStateFlow()
 
-    private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error.asStateFlow()
+    private val _error = MutableStateFlow<UiText?>(null)
+    val error: StateFlow<UiText?> = _error.asStateFlow()
 
-    private val _success = MutableStateFlow<String?>(null)
-    val success: StateFlow<String?> = _success.asStateFlow()
+    private val _success = MutableStateFlow<UiText?>(null)
+    val success: StateFlow<UiText?> = _success.asStateFlow()
 
     // Passphrase fields
     private val _exportPassphrase = MutableStateFlow("")
@@ -130,11 +134,11 @@ class SettingsBackupViewModel(
                         output.write(encryptedBytes)
                     } ?: throw BackupFormatException("Could not open backup destination")
                 }
-                _success.value = "Backup exported successfully"
+                _success.value = UiText.Resource(R.string.backup_export_success)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                _error.value = "Export failed. Please choose another location and try again."
+                _error.value = UiText.Resource(R.string.backup_export_failed)
             } finally {
                 passphrase.fill('\u0000')
                 _isBusy.value = false
@@ -172,15 +176,15 @@ class SettingsBackupViewModel(
                 _importPassphrase.value = ""
                 _importPlan.value = plan
             } catch (_: InvalidBackupPassphraseException) {
-                _error.value = "Wrong passphrase. Could not decrypt backup."
+                _error.value = UiText.Resource(R.string.backup_wrong_passphrase)
                 clearImportPassphrase()
             } catch (_: BackupFormatException) {
-                _error.value = "Import failed. Choose a valid abyssh backup file."
+                _error.value = UiText.Resource(R.string.backup_invalid_file)
                 clearImportPassphrase()
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                _error.value = "Import failed. Could not read the selected backup file."
+                _error.value = UiText.Resource(R.string.backup_read_failed)
                 clearImportPassphrase()
             } finally {
                 passphrase.fill('\u0000')
@@ -200,18 +204,19 @@ class SettingsBackupViewModel(
                 val result = withContext(Dispatchers.IO) {
                     backupRepo.importPayload(payload)
                 }
-                val parts = mutableListOf<String>()
-                if (result.importedKeys > 0) parts += "${result.importedKeys} key(s)"
-                if (result.reusedKeys > 0) parts += "${result.reusedKeys} reused"
-                if (result.renamedKeys > 0) parts += "${result.renamedKeys} key(s) renamed"
-                if (result.importedHosts > 0) parts += "${result.importedHosts} host(s)"
-                if (result.renamedHosts > 0) parts += "${result.renamedHosts} host(s) renamed"
-                _success.value = "Import complete: ${parts.joinToString(", ")}"
+                val parts = listOf(
+                    R.plurals.backup_summary_new_keys to result.importedKeys,
+                    R.plurals.backup_summary_reused_keys to result.reusedKeys,
+                    R.plurals.backup_summary_renamed_keys to result.renamedKeys,
+                    R.plurals.backup_summary_hosts to result.importedHosts,
+                    R.plurals.backup_summary_renamed_hosts to result.renamedHosts,
+                ).filter { (_, count) -> count > 0 }.map { (id, count) -> UiText.Plural(id, count) }
+                _success.value = UiText.Resource(R.string.backup_import_complete, UiText.Joined(parts))
                 clearImportState()
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                _error.value = "Import failed. Nothing was changed."
+                _error.value = UiText.Resource(R.string.backup_import_nothing_changed)
                 clearImportState()
             } finally {
                 _isBusy.value = false

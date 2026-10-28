@@ -1,5 +1,10 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.model.toUiText
+
+import io.github.andreacovelli.abyssh.model.UiText
+import io.github.andreacovelli.abyssh.model.UiTextException
+
 import android.content.Context
 import android.content.Intent
 import android.content.res.Resources
@@ -67,7 +72,7 @@ internal fun TerminalFilesPane(vm: TerminalViewModel, modifier: Modifier = Modif
             scope.launch(Dispatchers.IO) {
                 val result = runCatching {
                     context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                        ?: error("Cannot open destination")
+                        ?: throw UiTextException(UiText.Resource(R.string.files_cannot_open_destination), "Cannot open destination")
                 }
                 withContext(Dispatchers.Main) {
                     result.fold(
@@ -160,7 +165,7 @@ private fun Context.toast(message: String, duration: Int = Toast.LENGTH_SHORT) {
 }
 
 private fun Context.toastFailure(resources: Resources, messageRes: Int, error: Throwable) {
-    toast(resources.getString(messageRes, error.message.orEmpty()), Toast.LENGTH_LONG)
+    toast(resources.getString(messageRes, error.toUiText(UiText.Raw("")).resolve(resources)), Toast.LENGTH_LONG)
 }
 
 /** Saves [bytes] to the cache and returns an intent that views them through the FileProvider. */
@@ -177,10 +182,10 @@ private fun cacheRemoteFile(context: Context, name: String, bytes: ByteArray): I
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 }
 
-private data class UploadResult(val succeeded: Int, val failed: Int, val lastError: String?) {
+private data class UploadResult(val succeeded: Int, val failed: Int, val lastError: UiText?) {
     fun message(resources: Resources): String = when {
         failed == 0 -> resources.getQuantityString(R.plurals.terminal_uploaded, succeeded, succeeded)
-        lastError != null -> resources.getString(R.string.terminal_uploaded_with_error, succeeded, failed, lastError)
+        lastError != null -> resources.getString(R.string.terminal_uploaded_with_error, succeeded, failed, lastError.resolve(resources))
         else -> resources.getString(R.string.terminal_uploaded_partial, succeeded, failed)
     }
 }
@@ -191,7 +196,7 @@ private data class UploadResult(val succeeded: Int, val failed: Int, val lastErr
 private suspend fun uploadFiles(context: Context, files: TerminalFileBrowser, uris: List<Uri>): UploadResult {
     var succeeded = 0
     var failed = 0
-    var lastError: String? = null
+    var lastError: UiText? = null
     uris.forEachIndexed { index, uri ->
         val meta = queryOpenable(context, uri)
         val fileName = meta.name ?: uri.lastPathSegment ?: "uploaded_$index"
@@ -203,7 +208,7 @@ private suspend fun uploadFiles(context: Context, files: TerminalFileBrowser, ur
             throw e
         } catch (e: Exception) {
             failed++
-            lastError = e.message ?: e.javaClass.simpleName
+            lastError = e.toUiText(UiText.Raw(e.javaClass.simpleName))
             runCatching { files.finishUpload() }
         } finally {
             files.setUploadProgress(null)
@@ -213,7 +218,7 @@ private suspend fun uploadFiles(context: Context, files: TerminalFileBrowser, ur
 }
 
 private suspend fun uploadFile(context: Context, files: TerminalFileBrowser, uri: Uri, progress: UploadProgress) {
-    val stream = context.contentResolver.openInputStream(uri) ?: error("Cannot open file")
+    val stream = context.contentResolver.openInputStream(uri) ?: throw UiTextException(UiText.Resource(R.string.files_cannot_open_source), "Cannot open file")
     stream.use { input ->
         files.beginUpload(progress.fileName)
         files.setUploadProgress(progress)

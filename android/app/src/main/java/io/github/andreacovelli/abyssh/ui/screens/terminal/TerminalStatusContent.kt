@@ -1,5 +1,9 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.ui.components.asString
+
+import io.github.andreacovelli.abyssh.model.UiText
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -53,7 +57,7 @@ private fun TerminalStatusFrame(
 @Composable
 internal fun TerminalDisconnectedContent(
     vm: TerminalViewModel,
-    error: String?,
+    error: UiText?,
     multiplexer: MultiplexerUiState,
     tabStrip: (@Composable () -> Unit)?,
     showNoSessions: Boolean,
@@ -62,7 +66,7 @@ internal fun TerminalDisconnectedContent(
     modifier: Modifier = Modifier,
 ) {
     TerminalStatusFrame(tabStrip = tabStrip, modifier = modifier) {
-        val message = multiplexer.preflightError ?: error
+        val message = (multiplexer.preflightError ?: error)?.asString()
         when {
             message != null -> TerminalRecoveryActions(
                 message = message,

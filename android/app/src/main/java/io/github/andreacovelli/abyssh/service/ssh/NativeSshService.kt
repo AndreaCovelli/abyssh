@@ -1,6 +1,9 @@
 package io.github.andreacovelli.abyssh.service.ssh
 
+import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.AuthMethod
+import io.github.andreacovelli.abyssh.model.UiText
+import io.github.andreacovelli.abyssh.model.UiTextException
 import java.io.Closeable
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -14,12 +17,13 @@ class NativeSshService(
         private const val MAX_SFTP_READ_BYTES = 4 * 1024 * 1024
     }
 
-    private fun passwordAuthErrorMessage(nativeError: String?): String {
-        if (nativeError.isNullOrBlank()) return "Native SSH password auth failed"
-        if (nativeError.contains("Keyboard-interactive auth failed", ignoreCase = true)) {
-            return "$nativeError. Server-side password authentication may be disabled for this endpoint (for example Tailscale SSH or sshd Match rules on tailnet addresses)."
-        }
-        return nativeError
+    private fun passwordAuthFailure(nativeError: String?): Exception = when {
+        nativeError.isNullOrBlank() -> IllegalStateException("Native SSH password auth failed")
+        nativeError.contains("Keyboard-interactive auth failed", ignoreCase = true) -> UiTextException(
+            UiText.Resource(R.string.error_ssh_password_auth_disabled, nativeError),
+            nativeError,
+        )
+        else -> IllegalStateException(nativeError)
     }
 
     private object Ipc {
@@ -128,7 +132,7 @@ class NativeSshService(
             bridge.nativeGetHostKey(handle)
                 ?: error("Missing server host key")
         if (!hostKeyPolicy.verify(host, port, algorithm, keyBytes)) {
-            error("Host key rejected")
+            throw UiTextException(UiText.Resource(R.string.error_host_key_rejected), "Host key rejected")
         }
 
         when (authMethod) {
@@ -142,9 +146,7 @@ class NativeSshService(
             }
             AuthMethod.Password -> {
                 if (!bridge.nativeAuthenticatePassword(handle, password)) {
-                    error(
-                        passwordAuthErrorMessage(bridge.nativeGetLastError(handle))
-                    )
+                    throw passwordAuthFailure(bridge.nativeGetLastError(handle))
                 }
             }
             AuthMethod.Key -> {
@@ -176,22 +178,16 @@ class NativeSshService(
                     )
                 if (!ok) {
                     val nativeError = bridge.nativeGetLastError(handle)
-                    val hint =
-                        if (
-                            nativeError?.contains("Callback returned error", ignoreCase = true) ==
-                                true ||
-                                nativeError?.contains(
-                                    "Public key memory auth failed",
-                                    ignoreCase = true,
-                                ) == true
-                        ) {
-                            "Encrypted key authentication failed. Verify you entered the key passphrase (not the server account password)."
-                        } else {
-                            null
-                        }
-                    error(
-                        hint ?: nativeError ?: "Native SSH public key auth failed"
-                    )
+                    val wrongPassphrase =
+                        nativeError?.contains("Callback returned error", ignoreCase = true) == true ||
+                            nativeError?.contains("Public key memory auth failed", ignoreCase = true) == true
+                    if (wrongPassphrase) {
+                        throw UiTextException(
+                            UiText.Resource(R.string.error_ssh_key_passphrase),
+                            "Encrypted key authentication failed: $nativeError",
+                        )
+                    }
+                    error(nativeError ?: "Native SSH public key auth failed")
                 }
             }
         }

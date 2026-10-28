@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.files
 
+import io.github.andreacovelli.abyssh.ui.components.asString
+
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.DropdownMenu
@@ -177,7 +179,7 @@ private fun FileBrowserStatus(
     val typography = AbyssTypography.current
     when {
         state.isLoading -> AbyssText(stringResource(R.string.files_loading), style = typography.body)
-        state.error != null -> AbyssText(state.error, style = typography.body, color = colors.error)
+        state.error != null -> AbyssText(state.error.asString(), style = typography.body, color = colors.error)
         state.entries.isEmpty() ->
             AbyssText(stringResource(R.string.files_empty), style = typography.body, color = colors.textMuted)
         filteredEntries.isEmpty() ->

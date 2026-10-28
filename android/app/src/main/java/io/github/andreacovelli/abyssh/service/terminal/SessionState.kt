@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import io.github.andreacovelli.abyssh.model.UiText
+
 enum class SessionStatus {
     Disconnected,
     Connecting,
@@ -22,7 +24,7 @@ data class SessionState(
     val bellCount: Int = 0,
     val nativeVersion: String? = null,
     val reconnectAttempt: Int = 0,
-    val error: String? = null,
+    val error: UiText? = null,
     val handle: Long = 0,
 )
 

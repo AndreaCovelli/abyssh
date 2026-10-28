@@ -1,5 +1,11 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.model.toUiText
+
+import io.github.andreacovelli.abyssh.model.UiText
+
+import io.github.andreacovelli.abyssh.R
+
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerRegistry
 import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSession
@@ -18,13 +24,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class MultiplexerUiState(
-    val preflightError: String? = null,
+    val preflightError: UiText? = null,
     val preflightLoading: Boolean = false,
     val preflightHostLabel: String? = null,
     val duplicateLoading: Boolean = false,
     val sessions: List<RemoteMultiplexerSession> = emptyList(),
     val sessionsLoading: Boolean = false,
-    val sessionsError: String? = null,
+    val sessionsError: UiText? = null,
     val sessionsSourceTabId: String? = null,
     val sessionsSourceHostId: Long? = null,
     val reconnectRecovery: Boolean = false,
@@ -68,7 +74,7 @@ class TerminalMultiplexer internal constructor(
                         onSuccess = { name -> sessionRepository.openTab(duplicateSpec.copy(multiplexerSessionName = name)) },
                         onFailure = { error ->
                             _state.update {
-                                it.copy(preflightError = error.message ?: "Could not create multiplexer session")
+                                it.copy(preflightError = error.toUiText(UiText.Resource(R.string.multiplexer_create_failed)))
                             }
                         },
                     )
@@ -177,7 +183,7 @@ class TerminalMultiplexer internal constructor(
                             it.copy(
                                 preflightLoading = false,
                                 preflightHostLabel = null,
-                                preflightError = error.message ?: "Could not prepare multiplexer session",
+                                preflightError = error.toUiText(UiText.Resource(R.string.multiplexer_prepare_failed)),
                             )
                         }
                     },
@@ -186,11 +192,12 @@ class TerminalMultiplexer internal constructor(
         }
     }
 
-    private fun unsupportedReason(spec: TabSpec): String? {
+    private fun unsupportedReason(spec: TabSpec): UiText? {
         val multiplexer = spec.multiplexer ?: MultiplexerRegistry.defaultType
         return when {
-            spec.transport == Transport.Mosh -> "${multiplexer.label} is not supported for Mosh connections"
-            !multiplexer.runtimeSupported -> "${multiplexer.label} is not supported yet"
+            spec.transport == Transport.Mosh ->
+                UiText.Resource(R.string.multiplexer_unsupported_transport, multiplexer.label, Transport.Mosh.name)
+            !multiplexer.runtimeSupported -> UiText.Resource(R.string.multiplexer_unsupported, multiplexer.label)
             else -> null
         }
     }
@@ -210,7 +217,7 @@ class TerminalMultiplexer internal constructor(
             is PendingAction.Reconnect -> {
                 if (!reconnectTabWithSpec(action.tabId, nextSpec)) {
                     _state.value = MultiplexerUiState(
-                        preflightError = "Terminal session is no longer available",
+                        preflightError = UiText.Resource(R.string.terminal_session_unavailable),
                         reconnectRecovery = true,
                     )
                 }
@@ -224,11 +231,11 @@ class TerminalMultiplexer internal constructor(
                 it.copy(
                     preflightLoading = false,
                     preflightHostLabel = null,
-                    preflightError = "Connection preparation was cancelled",
+                    preflightError = UiText.Resource(R.string.terminal_preparation_cancelled),
                 )
             }
             pendingAction == null -> _state.value = MultiplexerUiState(
-                preflightError = "Connection preparation was superseded",
+                preflightError = UiText.Resource(R.string.terminal_preparation_superseded),
                 reconnectRecovery = action is PendingAction.Reconnect,
             )
         }
@@ -267,9 +274,7 @@ class TerminalMultiplexer internal constructor(
                     it.copy(
                         sessions = result.getOrDefault(emptyList()),
                         sessionsLoading = false,
-                        sessionsError = result.exceptionOrNull()?.let { error ->
-                            error.message ?: "Failed to list sessions"
-                        },
+                        sessionsError = result.exceptionOrNull()?.toUiText(UiText.Resource(R.string.multiplexer_list_failed)),
                         sessionsSourceTabId = sourceTabId,
                         sessionsSourceHostId = sourceHostId,
                     )
@@ -292,7 +297,7 @@ class TerminalMultiplexer internal constructor(
                     },
                     onFailure = { error ->
                         _state.update {
-                            it.copy(sessionsError = error.message ?: "Could not create multiplexer session")
+                            it.copy(sessionsError = error.toUiText(UiText.Resource(R.string.multiplexer_create_failed)))
                         }
                     },
                 )
@@ -316,7 +321,7 @@ class TerminalMultiplexer internal constructor(
             _state.value = state.copy(
                 sessions = emptyList(),
                 sessionsLoading = false,
-                sessionsError = "Session list is stale. Refresh sessions and try again.",
+                sessionsError = UiText.Resource(R.string.multiplexer_sessions_stale),
                 sessionsSourceTabId = activeTab?.id,
                 sessionsSourceHostId = activeHostId,
             )

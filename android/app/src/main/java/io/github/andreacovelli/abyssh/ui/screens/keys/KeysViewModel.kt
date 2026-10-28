@@ -1,5 +1,9 @@
 package io.github.andreacovelli.abyssh.ui.screens.keys
 
+import io.github.andreacovelli.abyssh.model.UiText
+
+import io.github.andreacovelli.abyssh.R
+
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
@@ -63,7 +67,7 @@ class KeysViewModel(application: Application) : AndroidViewModel(application) {
                 is KeyGenerationResult.Success ->
                     _events.emit(KeysEvent.Generated(result.key.name))
                 KeyGenerationResult.Failed ->
-                    _events.emit(KeysEvent.GenerateFailed("Key generation failed"))
+                    _events.emit(KeysEvent.GenerateFailed(UiText.Resource(R.string.keys_generate_failed)))
             }
         }
     }
@@ -74,9 +78,9 @@ class KeysViewModel(application: Application) : AndroidViewModel(application) {
                 when (val result = sshKeyRepository.import(nameHint, privateKeyPem)) {
                     is ImportResult.Success ->
                         KeysEvent.Imported(result.key.name, result.publicKeyDerived)
-                    ImportResult.Blank -> KeysEvent.ImportFailed("Paste a private key first")
+                    ImportResult.Blank -> KeysEvent.ImportFailed(UiText.Resource(R.string.keys_import_blank))
                     ImportResult.NotAPrivateKey ->
-                        KeysEvent.ImportFailed("That doesn't look like a private key")
+                        KeysEvent.ImportFailed(UiText.Resource(R.string.keys_import_not_private))
                 }
             _events.emit(event)
         }
@@ -87,9 +91,9 @@ class KeysViewModel(application: Application) : AndroidViewModel(application) {
             val event =
                 when (sshKeyRepository.rename(id, newName)) {
                     RenameResult.Success -> KeysEvent.Renamed
-                    RenameResult.Blank -> KeysEvent.RenameFailed("Name can't be empty")
+                    RenameResult.Blank -> KeysEvent.RenameFailed(UiText.Resource(R.string.keys_rename_blank))
                     RenameResult.NameTaken ->
-                        KeysEvent.RenameFailed("A key named \"${newName.trim()}\" already exists")
+                        KeysEvent.RenameFailed(UiText.Resource(R.string.keys_rename_duplicate, newName.trim()))
                 }
             _events.emit(event)
         }
@@ -115,13 +119,13 @@ sealed interface KeysEvent {
 
     data class Imported(val name: String, val publicKeyDerived: Boolean) : KeysEvent
 
-    data class ImportFailed(val message: String) : KeysEvent
+    data class ImportFailed(val message: UiText) : KeysEvent
 
-    data class GenerateFailed(val message: String) : KeysEvent
+    data class GenerateFailed(val message: UiText) : KeysEvent
 
     data object Renamed : KeysEvent
 
-    data class RenameFailed(val message: String) : KeysEvent
+    data class RenameFailed(val message: UiText) : KeysEvent
 
     data object Deleted : KeysEvent
 }

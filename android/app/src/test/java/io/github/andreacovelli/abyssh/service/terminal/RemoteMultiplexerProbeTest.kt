@@ -1,7 +1,9 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.Transport
+import io.github.andreacovelli.abyssh.model.UiText
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerAvailability
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerCommandResult
 import org.junit.Assert.assertEquals
@@ -45,18 +47,23 @@ class RemoteMultiplexerProbeTest {
     fun availabilityErrorMessages() {
         assertNull(MultiplexerAvailability.Available.errorMessage(MultiplexerType.Tmux))
         assertEquals(
-            "tmux executable was not found on the remote host",
+            UiText.Resource(R.string.multiplexer_missing, "tmux"),
             MultiplexerAvailability.Missing(MultiplexerType.Tmux).errorMessage(MultiplexerType.Tmux),
         )
         assertEquals(
-            "zmx is not supported for Mosh",
+            UiText.Resource(R.string.multiplexer_unsupported_transport, "zmx", "Mosh"),
             MultiplexerAvailability.UnsupportedTransport(Transport.Mosh).errorMessage(MultiplexerType.Zmx),
         )
         assertEquals(
-            "Multiplexer is not supported for Mosh",
+            UiText.Resource(
+                R.string.multiplexer_unsupported_transport,
+                UiText.Resource(R.string.multiplexer_generic),
+                "Mosh",
+            ),
             MultiplexerAvailability.UnsupportedTransport(Transport.Mosh).errorMessage(null),
         )
-        assertEquals("boom", MultiplexerAvailability.Error("boom").errorMessage(MultiplexerType.Tmux))
+        val raw = UiText.Raw("boom")
+        assertEquals(raw, MultiplexerAvailability.Error(raw).errorMessage(MultiplexerType.Tmux))
     }
 
     @Test
