@@ -99,7 +99,11 @@ class AddServerViewModel(
                         publicKeyOpenSsh = key?.publicKeyOpenSsh ?: "",
                         keyPassphrase = profile.keyPassphrase,
                         transport = profile.transport,
-                        authMethod = profile.authMethod,
+                        // Only Tailscale SSH can connect without credentials.
+                        authMethod =
+                            profile.authMethod.takeUnless {
+                                it == AuthMethod.None && profile.transport != Transport.TailscaleSSH
+                            } ?: AuthMethod.Password,
                         requireAuthOnConnect = profile.requireAuthOnConnect,
                         postConnectCommand = profile.postConnectCommand.orEmpty(),
                         multiplexer = profile.multiplexer,
@@ -169,7 +173,7 @@ class AddServerViewModel(
         val current = _form.value
         val nextAuthMethod =
             when {
-                transport == Transport.SSH && current.authMethod == AuthMethod.None ->
+                transport != Transport.TailscaleSSH && current.authMethod == AuthMethod.None ->
                     AuthMethod.Password
                 else -> current.authMethod
             }
@@ -192,6 +196,15 @@ class AddServerViewModel(
             return
         }
         _form.value = current.copy(authMethod = authMethod)
+    }
+
+    /** Switches between a key with and without a passphrase; turning it off clears the passphrase. */
+    fun setKeyPassphraseEnabled(enabled: Boolean) {
+        if (enabled) {
+            updateAuthMethod(AuthMethod.KeyWithPassphrase)
+        } else {
+            _form.value = _form.value.copy(authMethod = AuthMethod.Key, keyPassphrase = "")
+        }
     }
 
     fun updateRequireAuthOnConnect(enabled: Boolean) {

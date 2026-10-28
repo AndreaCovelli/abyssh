@@ -69,15 +69,11 @@ private fun ServersRoute(navController: NavHostController, application: Applicat
     val settingsRepo = SettingsRepository.getInstance(application)
     val requireAuthOnConnect by settingsRepo.requireAuthOnConnect.collectAsStateWithLifecycle()
     val localShellEnabled by settingsRepo.localShellEnabled.collectAsStateWithLifecycle()
-    val hosts by vm.hosts.collectAsStateWithLifecycle()
-    val searchQuery by vm.search.collectAsStateWithLifecycle()
 
     ServerListScreen(
-        hosts = hosts,
-        searchQuery = searchQuery,
-        onSearchChange = vm::updateSearchQuery,
-        onAddServer = { navController.navigate("servers/add") },
+        vm = vm,
         localShellEnabled = localShellEnabled,
+        onAddServer = { navController.navigate("servers/add") },
         onOpenLocalShell = localShell@{
             if (!localShellEnabled) return@localShell
             val open = { navController.navigate("terminal/local") }
@@ -94,13 +90,12 @@ private fun ServersRoute(navController: NavHostController, application: Applicat
         },
         onEditServer = { id -> navController.navigate("servers/edit/$id") },
         onCopyServer = { id -> navController.navigate("servers/copy/$id") },
-        onConnectServer = { id ->
-            val hostRequiresAuth = hosts.firstOrNull { it.id == id }?.requireAuthOnConnect == true
+        onConnectServer = { host ->
             val connect = {
-                vm.prepareConnect(id)
-                navController.navigate("terminal/$id")
+                vm.prepareConnect(host.id)
+                navController.navigate("terminal/${host.id}")
             }
-            if (!requireAuthOnConnect && !hostRequiresAuth) {
+            if (!requireAuthOnConnect && !host.requireAuthOnConnect) {
                 connect()
             } else {
                 verifyThen(
@@ -111,7 +106,6 @@ private fun ServersRoute(navController: NavHostController, application: Applicat
                 )
             }
         },
-        onDeleteServer = vm::deleteServer,
         onOpenSettings = { navController.navigate("settings") },
     )
 }
