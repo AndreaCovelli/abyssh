@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.andreacovelli.abyssh.model.AuthMethod
 import io.github.andreacovelli.abyssh.model.MultiplexerType
+import io.github.andreacovelli.abyssh.model.SshKey
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
@@ -55,18 +57,15 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
-@Suppress("LongMethod")
 @Composable
 fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifier = Modifier) {
     val form by vm.form.collectAsStateWithLifecycle()
     val testState by vm.testState.collectAsStateWithLifecycle()
     val keys by vm.keys.collectAsStateWithLifecycle()
+    val pendingReconnect by vm.pendingReconnect.collectAsStateWithLifecycle()
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
-
-    val scrollState = rememberScrollState()
     val context = LocalContext.current
-    val resources = LocalResources.current
     var showAdditionalSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(vm) {
@@ -74,227 +73,37 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
     }
-    val pendingReconnect by vm.pendingReconnect.collectAsStateWithLifecycle()
     pendingReconnect?.let { pending ->
-        val count = pending.tabs.size
-        AbyssDialog(
-            title = pluralStringResource(R.plurals.reconnect_sessions_title, count, count),
-            confirmLabel = stringResource(R.string.reconnect_confirm),
-            dismissLabel = stringResource(R.string.reconnect_keep),
-            onConfirm = { vm.finishPendingReconnect(reconnect = true) },
-            onDismiss = { vm.finishPendingReconnect(reconnect = false) },
-        ) {
-            AbyssText(
-                pluralStringResource(R.plurals.reconnect_sessions_body, count, count),
-                style = typography.body,
-                color = colors.textMuted,
-            )
-            AbyssText(
-                stringResource(R.string.reconnect_sessions_note),
-                style = typography.bodySmall,
-                color = colors.textMuted,
-            )
-        }
+        ReconnectDialog(
+            count = pending.tabs.size,
+            onFinish = { reconnect -> vm.finishPendingReconnect(reconnect = reconnect) },
+        )
     }
+
     Column(
         modifier =
             modifier
                 .fillMaxSize()
                 .background(colors.background)
                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                .verticalScroll(scrollState)
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            AbyssText(
-                when {
-                    form.id != null -> stringResource(R.string.server_edit_title)
-                    vm.isCopy -> stringResource(R.string.server_copy_title)
-                    else -> stringResource(R.string.server_add_title)
-                },
-                style = typography.headline,
-            )
-        }
-
-        AbyssSectionHeader(stringResource(R.string.server_section_connection))
-        AbyssTextField(
-            value = form.name,
-            onValueChange = vm::updateName,
-            label = stringResource(R.string.server_name_label),
-            placeholder = stringResource(R.string.server_name_placeholder),
-            singleLine = true,
-            autoFocus = false,
-            modifier = Modifier.fillMaxWidth(),
+        AbyssText(
+            when {
+                form.id != null -> stringResource(R.string.server_edit_title)
+                vm.isCopy -> stringResource(R.string.server_copy_title)
+                else -> stringResource(R.string.server_add_title)
+            },
+            style = typography.headline,
         )
-        AbyssTextField(
-            value = form.host,
-            onValueChange = vm::updateHost,
-            label = stringResource(R.string.server_host_label),
-            monospace = true,
-            placeholder = "192.168.1.10",
-            singleLine = true,
-            keyboardOptions =
-                KeyboardOptions(
-                    keyboardType = KeyboardType.Uri,
-                    capitalization = KeyboardCapitalization.None,
-                    autoCorrectEnabled = false,
-                ),
-            autoFocus = false,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            AbyssTextField(
-                value = form.port,
-                onValueChange = vm::updatePort,
-                label = stringResource(R.string.server_port_label),
-                monospace = true,
-                singleLine = true,
-                keyboardOptions =
-                    KeyboardOptions(
-                        keyboardType = KeyboardType.Number,
-                        capitalization = KeyboardCapitalization.None,
-                        autoCorrectEnabled = false,
-                    ),
-                autoFocus = false,
-                modifier = Modifier.weight(0.3f),
-            )
-            AbyssTextField(
-                value = form.username,
-                onValueChange = vm::updateUsername,
-                label = stringResource(R.string.server_username_label),
-                monospace = true,
-                placeholder = "root",
-                singleLine = true,
-                keyboardOptions =
-                    KeyboardOptions(
-                        keyboardType = KeyboardType.Ascii,
-                        capitalization = KeyboardCapitalization.None,
-                        autoCorrectEnabled = false,
-                    ),
-                autoFocus = false,
-                modifier = Modifier.weight(0.7f),
-            )
-        }
 
+        ConnectionSection(form = form, vm = vm)
         SectionDivider()
-
-        AbyssSectionHeader(stringResource(R.string.server_section_transport))
-        AbyssSegmentedControl(
-            options = listOf(Transport.SSH, Transport.TailscaleSSH, Transport.Mosh),
-            labels =
-                mapOf(
-                    Transport.SSH to "SSH",
-                    Transport.TailscaleSSH to "Tailscale",
-                    Transport.Mosh to "Mosh",
-                ),
-            selected = form.transport,
-            onSelect = vm::updateTransport,
-        )
-        if (form.transport == Transport.TailscaleSSH) {
-            AbyssText(
-                stringResource(R.string.server_tailscale_hint),
-                style = typography.bodySmall,
-                color = colors.textMuted,
-            )
-        }
-
+        TransportSection(selected = form.transport, onSelect = vm::updateTransport)
         SectionDivider()
-
-        AbyssSectionHeader(stringResource(R.string.server_section_authentication))
-        val authOptions =
-            when (form.transport) {
-                Transport.TailscaleSSH ->
-                    listOf(AuthMethod.Password, AuthMethod.Key, AuthMethod.None)
-                else -> listOf(AuthMethod.Password, AuthMethod.Key)
-            }
-        if (form.authMethod == AuthMethod.None && form.transport != Transport.TailscaleSSH) {
-            androidx.compose.runtime.SideEffect { vm.updateAuthMethod(AuthMethod.Password) }
-        }
-        val segmentSelected =
-            if (form.authMethod == AuthMethod.KeyWithPassphrase) AuthMethod.Key else form.authMethod
-        AbyssSegmentedControl(
-            options = authOptions,
-            labels =
-                mapOf(
-                    AuthMethod.Password to stringResource(R.string.auth_password),
-                    AuthMethod.Key to stringResource(R.string.auth_ssh_key),
-                    AuthMethod.None to stringResource(R.string.auth_none),
-                ),
-            selected = segmentSelected,
-            onSelect = vm::updateAuthMethod,
-        )
-
-        when (form.authMethod) {
-            AuthMethod.Password -> {
-                AbyssTextField(
-                    value = form.password,
-                    onValueChange = vm::updatePassword,
-                    label = stringResource(R.string.server_password_label),
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    autoFocus = false,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            AuthMethod.Key,
-            AuthMethod.KeyWithPassphrase -> {
-                KeyAuthSection(
-                    form = form,
-                    keys = keys,
-                    onGenerate = { vm.generateKey(form.name) },
-                    onSelectKey = { vm.selectStoredKey(it) },
-                    onCopyPublicKey = {
-                        if (form.publicKeyOpenSsh.isBlank()) {
-                            Toast.makeText(context, resources.getString(R.string.public_key_unavailable), Toast.LENGTH_SHORT)
-                                .show()
-                        } else {
-                            copyToClipboard(context, "SSH Public Key", form.publicKeyOpenSsh, R.string.public_key_copied)
-                        }
-                    },
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                ) {
-                    AbyssSwitch(
-                        checked = form.authMethod == AuthMethod.KeyWithPassphrase,
-                        onCheckedChange = { checked ->
-                            if (checked) {
-                                vm.updateAuthMethod(AuthMethod.KeyWithPassphrase)
-                            } else {
-                                vm.updateAuthMethod(AuthMethod.Key)
-                                vm.updateKeyPassphrase("")
-                            }
-                        },
-                    )
-                    AbyssText(stringResource(R.string.key_set_passphrase), style = typography.label)
-                }
-                if (form.authMethod == AuthMethod.KeyWithPassphrase) {
-                    AbyssTextField(
-                        value = form.keyPassphrase,
-                        onValueChange = vm::updateKeyPassphrase,
-                        label = stringResource(R.string.key_passphrase_label),
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        autoFocus = false,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-            AuthMethod.None -> {
-                AbyssText(
-                    stringResource(R.string.auth_none_hint),
-                    style = typography.bodySmall,
-                    color = colors.textMuted,
-                )
-            }
-        }
-
+        AuthenticationSection(form = form, keys = keys, vm = vm)
         SectionDivider()
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -305,58 +114,266 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
                 AbyssText(stringResource(R.string.server_additional_settings), style = typography.label)
             }
         }
-        if (showAdditionalSettings) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-            ) {
-                AbyssText(
-                    stringResource(R.string.server_require_biometric),
-                    style = typography.label,
-                    modifier = Modifier.weight(1f),
-                )
-                AbyssSwitch(
-                    checked = form.requireAuthOnConnect,
-                    onCheckedChange = vm::updateRequireAuthOnConnect,
-                )
-            }
-            SectionDivider()
-            MultiplexerSection(selected = form.multiplexer, onSelect = vm::updateMultiplexer)
-            SectionDivider()
-            PostConnectActionSection(
-                command = form.postConnectCommand,
-                onCommandChange = vm::updatePostConnectCommand,
-            )
-            SectionDivider()
+        if (showAdditionalSettings) AdditionalSettingsSection(form = form, vm = vm)
+
+        TestAndSaveButtons(
+            form = form,
+            testState = testState,
+            onTest = vm::testConnection,
+            onSave = { vm.save(onBack) },
+        )
+    }
+}
+
+@Composable
+private fun ReconnectDialog(count: Int, onFinish: (reconnect: Boolean) -> Unit) {
+    val colors = AbyssColors.current
+    val typography = AbyssTypography.current
+    AbyssDialog(
+        title = pluralStringResource(R.plurals.reconnect_sessions_title, count, count),
+        confirmLabel = stringResource(R.string.reconnect_confirm),
+        dismissLabel = stringResource(R.string.reconnect_keep),
+        onConfirm = { onFinish(true) },
+        onDismiss = { onFinish(false) },
+    ) {
+        AbyssText(
+            pluralStringResource(R.plurals.reconnect_sessions_body, count, count),
+            style = typography.body,
+            color = colors.textMuted,
+        )
+        AbyssText(
+            stringResource(R.string.reconnect_sessions_note),
+            style = typography.bodySmall,
+            color = colors.textMuted,
+        )
+    }
+}
+
+private fun plainKeyboard(type: KeyboardType) = KeyboardOptions(
+    keyboardType = type,
+    capitalization = KeyboardCapitalization.None,
+    autoCorrectEnabled = false,
+)
+
+@Composable
+private fun ConnectionSection(form: AddServerForm, vm: AddServerViewModel) {
+    AbyssSectionHeader(stringResource(R.string.server_section_connection))
+    AbyssTextField(
+        value = form.name,
+        onValueChange = vm::updateName,
+        label = stringResource(R.string.server_name_label),
+        placeholder = stringResource(R.string.server_name_placeholder),
+        singleLine = true,
+        autoFocus = false,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    AbyssTextField(
+        value = form.host,
+        onValueChange = vm::updateHost,
+        label = stringResource(R.string.server_host_label),
+        monospace = true,
+        placeholder = "192.168.1.10",
+        singleLine = true,
+        keyboardOptions = plainKeyboard(KeyboardType.Uri),
+        autoFocus = false,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        AbyssTextField(
+            value = form.port,
+            onValueChange = vm::updatePort,
+            label = stringResource(R.string.server_port_label),
+            monospace = true,
+            singleLine = true,
+            keyboardOptions = plainKeyboard(KeyboardType.Number),
+            autoFocus = false,
+            modifier = Modifier.weight(0.3f),
+        )
+        AbyssTextField(
+            value = form.username,
+            onValueChange = vm::updateUsername,
+            label = stringResource(R.string.server_username_label),
+            monospace = true,
+            placeholder = "root",
+            singleLine = true,
+            keyboardOptions = plainKeyboard(KeyboardType.Ascii),
+            autoFocus = false,
+            modifier = Modifier.weight(0.7f),
+        )
+    }
+}
+
+@Composable
+private fun TransportSection(selected: Transport, onSelect: (Transport) -> Unit) {
+    AbyssSectionHeader(stringResource(R.string.server_section_transport))
+    AbyssSegmentedControl(
+        options = listOf(Transport.SSH, Transport.TailscaleSSH, Transport.Mosh),
+        labels =
+            mapOf(
+                Transport.SSH to "SSH",
+                Transport.TailscaleSSH to "Tailscale",
+                Transport.Mosh to "Mosh",
+            ),
+        selected = selected,
+        onSelect = onSelect,
+    )
+    if (selected == Transport.TailscaleSSH) {
+        AbyssText(
+            stringResource(R.string.server_tailscale_hint),
+            style = AbyssTypography.current.bodySmall,
+            color = AbyssColors.current.textMuted,
+        )
+    }
+}
+
+@Composable
+private fun AuthenticationSection(form: AddServerForm, keys: List<SshKey>, vm: AddServerViewModel) {
+    val context = LocalContext.current
+    val resources = LocalResources.current
+    val authOptions =
+        if (form.transport == Transport.TailscaleSSH) {
+            listOf(AuthMethod.Password, AuthMethod.Key, AuthMethod.None)
+        } else {
+            listOf(AuthMethod.Password, AuthMethod.Key)
         }
 
-        val canTest = form.host.isNotBlank() && form.username.isNotBlank()
-        AbyssButton(
-            onClick = vm::testConnection,
-            enabled = canTest,
-            variant = AbyssButtonVariant.Outlined,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            val label =
-                when (testState.status) {
-                    ConnectionTestStatus.Idle -> stringResource(R.string.connection_test)
-                    ConnectionTestStatus.Running -> stringResource(R.string.connection_testing)
-                    ConnectionTestStatus.Success -> stringResource(R.string.connection_connected)
-                    ConnectionTestStatus.Error -> stringResource(R.string.connection_test_failed)
-                }
-            AbyssText(label, style = typography.label)
+    AbyssSectionHeader(stringResource(R.string.server_section_authentication))
+    AbyssSegmentedControl(
+        options = authOptions,
+        labels =
+            mapOf(
+                AuthMethod.Password to stringResource(R.string.auth_password),
+                AuthMethod.Key to stringResource(R.string.auth_ssh_key),
+                AuthMethod.None to stringResource(R.string.auth_none),
+            ),
+        selected = if (form.authMethod == AuthMethod.KeyWithPassphrase) AuthMethod.Key else form.authMethod,
+        onSelect = vm::updateAuthMethod,
+    )
+
+    when (form.authMethod) {
+        AuthMethod.Password -> SecretField(
+            value = form.password,
+            onValueChange = vm::updatePassword,
+            label = stringResource(R.string.server_password_label),
+        )
+        AuthMethod.Key,
+        AuthMethod.KeyWithPassphrase -> {
+            KeyAuthSection(
+                form = form,
+                keys = keys,
+                onGenerate = { vm.generateKey(form.name) },
+                onSelectKey = vm::selectStoredKey,
+                onCopyPublicKey = {
+                    if (form.publicKeyOpenSsh.isBlank()) {
+                        Toast.makeText(context, resources.getString(R.string.public_key_unavailable), Toast.LENGTH_SHORT)
+                            .show()
+                    } else {
+                        copyToClipboard(context, "SSH Public Key", form.publicKeyOpenSsh, R.string.public_key_copied)
+                    }
+                },
+            )
+            KeyPassphraseFields(form = form, vm = vm)
         }
-        if (testState.status == ConnectionTestStatus.Error && testState.message != null) {
-            AbyssText(testState.message ?: "", style = typography.bodySmall, color = colors.error)
-        }
-        AbyssButton(
-            onClick = { vm.save(onBack) },
-            enabled = form.canSave(),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            AbyssText(stringResource(R.string.action_save), style = typography.label)
-        }
+        AuthMethod.None -> AbyssText(
+            stringResource(R.string.auth_none_hint),
+            style = AbyssTypography.current.bodySmall,
+            color = AbyssColors.current.textMuted,
+        )
+    }
+}
+
+@Composable
+private fun SecretField(value: String, onValueChange: (String) -> Unit, label: String) {
+    AbyssTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = label,
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        autoFocus = false,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+private fun KeyPassphraseFields(form: AddServerForm, vm: AddServerViewModel) {
+    val hasPassphrase = form.authMethod == AuthMethod.KeyWithPassphrase
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AbyssSwitch(checked = hasPassphrase, onCheckedChange = vm::setKeyPassphraseEnabled)
+        AbyssText(stringResource(R.string.key_set_passphrase), style = AbyssTypography.current.label)
+    }
+    if (hasPassphrase) {
+        SecretField(
+            value = form.keyPassphrase,
+            onValueChange = vm::updateKeyPassphrase,
+            label = stringResource(R.string.key_passphrase_label),
+        )
+    }
+}
+
+@Composable
+private fun AdditionalSettingsSection(form: AddServerForm, vm: AddServerViewModel) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AbyssText(
+            stringResource(R.string.server_require_biometric),
+            style = AbyssTypography.current.label,
+            modifier = Modifier.weight(1f),
+        )
+        AbyssSwitch(
+            checked = form.requireAuthOnConnect,
+            onCheckedChange = vm::updateRequireAuthOnConnect,
+        )
+    }
+    SectionDivider()
+    MultiplexerSection(selected = form.multiplexer, onSelect = vm::updateMultiplexer)
+    SectionDivider()
+    PostConnectActionSection(
+        command = form.postConnectCommand,
+        onCommandChange = vm::updatePostConnectCommand,
+    )
+    SectionDivider()
+}
+
+@Composable
+private fun TestAndSaveButtons(
+    form: AddServerForm,
+    testState: ConnectionTestState,
+    onTest: () -> Unit,
+    onSave: () -> Unit,
+) {
+    val typography = AbyssTypography.current
+    AbyssButton(
+        onClick = onTest,
+        enabled = form.host.isNotBlank() && form.username.isNotBlank(),
+        variant = AbyssButtonVariant.Outlined,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        val label =
+            when (testState.status) {
+                ConnectionTestStatus.Idle -> R.string.connection_test
+                ConnectionTestStatus.Running -> R.string.connection_testing
+                ConnectionTestStatus.Success -> R.string.connection_connected
+                ConnectionTestStatus.Error -> R.string.connection_test_failed
+            }
+        AbyssText(stringResource(label), style = typography.label)
+    }
+    val errorMessage = testState.message
+    if (testState.status == ConnectionTestStatus.Error && errorMessage != null) {
+        AbyssText(errorMessage, style = typography.bodySmall, color = AbyssColors.current.error)
+    }
+    AbyssButton(onClick = onSave, enabled = form.canSave(), modifier = Modifier.fillMaxWidth()) {
+        AbyssText(stringResource(R.string.action_save), style = typography.label)
     }
 }
 
@@ -368,7 +385,7 @@ private fun SectionDivider() {
 @Composable
 private fun KeyAuthSection(
     form: AddServerForm,
-    keys: List<io.github.andreacovelli.abyssh.model.SshKey>,
+    keys: List<SshKey>,
     onGenerate: () -> Unit,
     onSelectKey: (Long?) -> Unit,
     onCopyPublicKey: () -> Unit,
@@ -379,7 +396,7 @@ private fun KeyAuthSection(
     var pickerExpanded by remember { mutableStateOf(false) }
 
     if (selectedKey != null) {
-        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 painterResource(R.drawable.ic_check),
                 contentDescription = null,
@@ -451,11 +468,11 @@ private fun KeyAuthSection(
                                 }
                                 .padding(vertical = 6.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Box(modifier = Modifier.size(18.dp)) {
                                 if (isSelected) {

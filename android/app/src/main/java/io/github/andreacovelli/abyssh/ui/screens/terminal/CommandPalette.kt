@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,237 +43,262 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSession
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
-import io.github.andreacovelli.abyssh.ui.terminal.AccessoryAction
-import io.github.andreacovelli.abyssh.ui.terminal.KeyboardAccessoryBar
-import io.github.andreacovelli.abyssh.ui.terminal.ModifierState
-import io.github.andreacovelli.abyssh.ui.terminal.ResolvedAccessoryEntry
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCanvas
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
-@Suppress("LongMethod", "LongParameterList")
+/**
+ * Full-screen tab switcher for the current host. [accessoryBar] draws the keyboard
+ * accessory bar along the bottom edge and receives the modifier that places it;
+ * [multiplexerPanel] draws below the tab list.
+ */
 @Composable
 fun CommandPalette(
     tabs: List<TabSession>,
     activeTabId: String?,
     focusedTabIndex: Int,
     onFocusedTabIndexChange: (Int) -> Unit,
-    accessoryEntries: List<ResolvedAccessoryEntry>,
-    accessoryModifierState: ModifierState,
-    onAccessoryAction: (AccessoryAction) -> Unit,
-    onAbysshKey: () -> Unit,
-    abysshKeyActive: Boolean,
-    onOpenFiles: () -> Unit,
-    onOpenSettings: () -> Unit,
     onSearch: () -> Unit,
-    useSingleRowAccessoryBar: Boolean,
     onSelectTab: (String) -> Unit,
     onCloseTab: (String) -> Unit,
     onAddTab: () -> Unit,
     onDismiss: () -> Unit,
-    // Multiplexer section parameters (optional, scoped to current host)
-    multiplexerSessions: List<RemoteMultiplexerSession> = emptyList(),
-    multiplexerSessionsLoading: Boolean = false,
-    multiplexerSessionsError: String? = null,
-    multiplexerEnabled: Boolean = false,
-    onMultiplexerRefresh: () -> Unit = {},
-    onMultiplexerNew: () -> Unit = {},
-    onMultiplexerAttach: (String) -> Unit = {},
+    accessoryBar: @Composable (Modifier) -> Unit,
+    multiplexerPanel: @Composable () -> Unit = {},
 ) {
-  val colors = AbyssColors.current
-  val typography = AbyssTypography.current
-  val context = LocalContext.current
-  val view = LocalView.current
-  val keyboardController = LocalSoftwareKeyboardController.current
-  val entries = remember(tabs) { tabs.map { it to terminalTabDisplayLabel(it) } }
-  val maxIndex = (entries.size - 1).coerceAtLeast(0)
-  LaunchedEffect(entries.size) { onFocusedTabIndexChange(focusedTabIndex.coerceIn(0, maxIndex)) }
-  LaunchedEffect(activeTabId, entries) {
-    val activeIndex = entries.indexOfFirst { it.first.id == activeTabId }
-    if (activeIndex >= 0) onFocusedTabIndexChange(activeIndex)
-  }
-  val listState = rememberLazyListState()
-  LaunchedEffect(focusedTabIndex, entries.size) {
-    if (entries.isNotEmpty()) listState.animateScrollToItem(focusedTabIndex.coerceIn(0, maxIndex))
-  }
-  LaunchedEffect(Unit) {
-    keyboardController?.hide()
-    val imm = context.getSystemService(InputMethodManager::class.java)
-    imm?.hideSoftInputFromWindow(view.windowToken, 0)
-  }
-
-  AnimatedVisibility(visible = true, enter = fadeIn(), exit = fadeOut()) {
-    Box(
-        modifier =
-            Modifier.fillMaxSize().background(colors.background).clickable(onClick = onDismiss)
-    ) {
-      Column(
-          modifier =
-              Modifier.align(Alignment.TopCenter)
-                  .windowInsetsPadding(WindowInsets.safeDrawing)
-                  .padding(top = 56.dp, start = 16.dp, end = 16.dp)
-                  .fillMaxWidth()
-                  .clip(MaterialTheme.shapes.large)
-                  .background(colors.surface)
-                  .border(1.dp, colors.border.copy(alpha = 0.65f), MaterialTheme.shapes.large),
-      ) {
-        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
-          AbyssText(
-              stringResource(R.string.tab_manager_title),
-              style = typography.body,
-              color = colors.textSecondary,
-              modifier = Modifier.align(Alignment.Center),
-          )
-          AbyssText(
-              "${entries.size}/${tabs.size}",
-              style = typography.labelSmall,
-              color = colors.textMuted,
-              modifier = Modifier.align(Alignment.CenterEnd),
-          )
-        }
-        if (entries.isNotEmpty()) {
-          LazyColumn(
-              state = listState,
-              modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp),
-              contentPadding = PaddingValues(horizontal = 8.dp),
-              verticalArrangement = Arrangement.spacedBy(2.dp),
-          ) {
-            items(entries.size) { idx ->
-              val (tab, alias) = entries[idx]
-              val isActive = tab.id == activeTabId
-              val isFocused = idx == focusedTabIndex
-              val title by remember(tab) {
-                  tab.sessionState.map { it.title?.takeIf(String::isNotBlank) }
-              }.collectAsStateWithLifecycle(initialValue = null)
-              val displayLabel = title ?: alias
-              Row(
-                  modifier =
-                      Modifier.fillMaxWidth()
-                          .clip(MaterialTheme.shapes.medium)
-                          .background(if (isFocused) colors.accent.copy(alpha = 0.14f) else Color.Transparent)
-                          .clickable { onSelectTab(tab.id) }
-                          .padding(horizontal = 12.dp, vertical = 8.dp),
-                  verticalAlignment = Alignment.CenterVertically,
-                  horizontalArrangement = Arrangement.spacedBy(10.dp),
-              ) {
-                Box(
-                    modifier =
-                        Modifier.size(8.dp)
-                            .clip(CircleShape)
-                            .background(if (isActive) colors.success else Color.Transparent)
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                  AbyssText(
-                      displayLabel,
-                      style = typography.body,
-                      color = if (isFocused) colors.accent else colors.textPrimary,
-                  )
-                }
-                if (tabs.size > 1) {
-                  AbyssCloseButton(
-                      onClick = { onCloseTab(tab.id) },
-                      contentDescription = stringResource(R.string.tab_manager_close_tab, displayLabel),
-                      color = colors.textMuted,
-                      iconSize = 18.dp,
-                  )
-                }
-              }
-            }
-          }
-        }
-        val focusedTab = entries.getOrNull(focusedTabIndex)?.first
-        if (focusedTab != null) {
-          val focusedSnapshot by remember(focusedTab) {
-              focusedTab.sessionState.map { it.snapshot }
-          }.collectAsStateWithLifecycle(initialValue = null)
-          val snapshot = focusedSnapshot
-          if (snapshot != null) {
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(colors.border))
-            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-              Box(
-                  modifier =
-                      Modifier.fillMaxWidth(0.68f)
-                          .height(104.dp)
-                          .clip(MaterialTheme.shapes.small)
-                          .background(colors.background.copy(alpha = 0.86f))
-                          .border(1.dp, colors.border.copy(alpha = 0.8f), MaterialTheme.shapes.small)
-                          .align(Alignment.Center)
-              ) {
-                TerminalCanvas(
-                    snapshot = snapshot,
-                    fontSizeSp = 10.5f,
-                    fitSnapshotToCanvas = true,
-                    enableGestures = false,
-                    cursorColor = Color.Transparent,
-                    selectionBackgroundColor = Color.Transparent,
-                    selectionForegroundColor = Color.Transparent,
-                    onTap = {},
-                    onPrimaryClick = { _, _ -> },
-                    onScroll = { _, _, _ -> },
-                    onFontSizeChange = {},
-                    onSelectionChanged = {},
-                    modifier = Modifier.fillMaxSize(),
-                )
-              }
-            }
-          }
-        }
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(colors.border))
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-          PaletteHint("↵", stringResource(R.string.action_open))
-          PaletteHint("esc", stringResource(R.string.action_dismiss))
-          Spacer(modifier = Modifier.weight(1f))
-          AbyssButton(
-              onClick = onSearch,
-              variant = AbyssButtonVariant.Outlined,
-              contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-              testTag = "palette_search",
-          ) {
-            AbyssText(stringResource(R.string.palette_search), style = typography.labelSmall, color = colors.accent)
-          }
-          AbyssButton(
-              onClick = onAddTab,
-              variant = AbyssButtonVariant.Outlined,
-              contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-          ) {
-            AbyssText(stringResource(R.string.tab_manager_new), style = typography.labelSmall, color = colors.accent)
-          }
-        }
-        if (multiplexerEnabled) {
-          MultiplexerSessionPanel(
-              sessions = multiplexerSessions,
-              loading = multiplexerSessionsLoading,
-              error = multiplexerSessionsError,
-              onRefresh = onMultiplexerRefresh,
-              onNew = onMultiplexerNew,
-              onAttach = onMultiplexerAttach,
-              onDismiss = onDismiss,
-          )
-        }
-      }
-      KeyboardAccessoryBar(
-          entries = accessoryEntries,
-          modifierState = accessoryModifierState,
-          onAction = onAccessoryAction,
-          onSettings = onOpenSettings,
-          onAbysshKey = onAbysshKey,
-          abysshKeyActive = abysshKeyActive,
-          onOpenFiles = onOpenFiles,
-          useSingleRow = useSingleRowAccessoryBar,
-          modifier =
-              Modifier.align(Alignment.BottomCenter)
-                  .windowInsetsPadding(WindowInsets.safeDrawing)
-                  .background(colors.background.copy(alpha = 0.92f)),
-      )
+    val colors = AbyssColors.current
+    val entries = remember(tabs) { tabs.map { it to terminalTabDisplayLabel(it) } }
+    val maxIndex = (entries.size - 1).coerceAtLeast(0)
+    LaunchedEffect(entries.size) { onFocusedTabIndexChange(focusedTabIndex.coerceIn(0, maxIndex)) }
+    LaunchedEffect(activeTabId, entries) {
+        val activeIndex = entries.indexOfFirst { it.first.id == activeTabId }
+        if (activeIndex >= 0) onFocusedTabIndexChange(activeIndex)
     }
-  }
+    HideSoftKeyboardOnShow()
+
+    AnimatedVisibility(visible = true, enter = fadeIn(), exit = fadeOut()) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(colors.background).clickable(onClick = onDismiss),
+        ) {
+            Column(
+                modifier =
+                    Modifier.align(Alignment.TopCenter)
+                        .windowInsetsPadding(WindowInsets.safeDrawing)
+                        .padding(top = 56.dp, start = 16.dp, end = 16.dp)
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.large)
+                        .background(colors.surface)
+                        .border(1.dp, colors.border.copy(alpha = 0.65f), MaterialTheme.shapes.large),
+            ) {
+                PaletteHeader(shown = entries.size, total = tabs.size)
+                if (entries.isNotEmpty()) {
+                    PaletteTabList(
+                        entries = entries,
+                        activeTabId = activeTabId,
+                        focusedTabIndex = focusedTabIndex.coerceIn(0, maxIndex),
+                        canClose = tabs.size > 1,
+                        onSelectTab = onSelectTab,
+                        onCloseTab = onCloseTab,
+                    )
+                }
+                entries.getOrNull(focusedTabIndex)?.first?.let { FocusedTabPreview(it) }
+                PaletteDivider()
+                PaletteFooter(onSearch = onSearch, onAddTab = onAddTab)
+                multiplexerPanel()
+            }
+            accessoryBar(
+                Modifier.align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .background(colors.background.copy(alpha = 0.92f)),
+            )
+        }
+    }
+}
+
+/** The palette is driven from a hardware keyboard or by touch, so hide the soft keyboard. */
+@Composable
+private fun HideSoftKeyboardOnShow() {
+    val context = LocalContext.current
+    val view = LocalView.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) {
+        keyboardController?.hide()
+        context.getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(view.windowToken, 0)
+    }
+}
+
+@Composable
+private fun PaletteHeader(shown: Int, total: Int) {
+    val colors = AbyssColors.current
+    val typography = AbyssTypography.current
+    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+        AbyssText(
+            stringResource(R.string.tab_manager_title),
+            style = typography.body,
+            color = colors.textSecondary,
+            modifier = Modifier.align(Alignment.Center),
+        )
+        AbyssText(
+            "$shown/$total",
+            style = typography.labelSmall,
+            color = colors.textMuted,
+            modifier = Modifier.align(Alignment.CenterEnd),
+        )
+    }
+}
+
+@Composable
+private fun PaletteDivider() {
+    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(AbyssColors.current.border))
+}
+
+@Composable
+private fun PaletteTabList(
+    entries: List<Pair<TabSession, String>>,
+    activeTabId: String?,
+    focusedTabIndex: Int,
+    canClose: Boolean,
+    onSelectTab: (String) -> Unit,
+    onCloseTab: (String) -> Unit,
+) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(focusedTabIndex, entries.size) { listState.animateScrollToItem(focusedTabIndex) }
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp),
+        contentPadding = PaddingValues(horizontal = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        items(entries.size) { idx ->
+            val (tab, alias) = entries[idx]
+            PaletteTabRow(
+                tab = tab,
+                alias = alias,
+                isActive = tab.id == activeTabId,
+                isFocused = idx == focusedTabIndex,
+                canClose = canClose,
+                onSelect = { onSelectTab(tab.id) },
+                onClose = { onCloseTab(tab.id) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PaletteTabRow(
+    tab: TabSession,
+    alias: String,
+    isActive: Boolean,
+    isFocused: Boolean,
+    canClose: Boolean,
+    onSelect: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val colors = AbyssColors.current
+    val title by remember(tab) {
+        tab.sessionState.map { it.title?.takeIf(String::isNotBlank) }
+    }.collectAsStateWithLifecycle(initialValue = null)
+    val displayLabel = title ?: alias
+    Row(
+        modifier =
+            Modifier.fillMaxWidth()
+                .clip(MaterialTheme.shapes.medium)
+                .background(if (isFocused) colors.accent.copy(alpha = 0.14f) else Color.Transparent)
+                .clickable(onClick = onSelect)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(
+            modifier =
+                Modifier.size(8.dp)
+                    .clip(CircleShape)
+                    .background(if (isActive) colors.success else Color.Transparent),
+        )
+        AbyssText(
+            displayLabel,
+            style = AbyssTypography.current.body,
+            color = if (isFocused) colors.accent else colors.textPrimary,
+            modifier = Modifier.weight(1f),
+        )
+        if (canClose) {
+            AbyssCloseButton(
+                onClick = onClose,
+                contentDescription = stringResource(R.string.tab_manager_close_tab, displayLabel),
+                color = colors.textMuted,
+                iconSize = 18.dp,
+            )
+        }
+    }
+}
+
+/** A small, non-interactive render of the focused tab's screen. */
+@Composable
+private fun FocusedTabPreview(tab: TabSession) {
+    val colors = AbyssColors.current
+    val snapshot by remember(tab) { tab.sessionState.map { it.snapshot } }
+        .collectAsStateWithLifecycle(initialValue = null)
+    val shown = snapshot ?: return
+    PaletteDivider()
+    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Box(
+            modifier =
+                Modifier.fillMaxWidth(0.68f)
+                    .height(104.dp)
+                    .clip(MaterialTheme.shapes.small)
+                    .background(colors.background.copy(alpha = 0.86f))
+                    .border(1.dp, colors.border.copy(alpha = 0.8f), MaterialTheme.shapes.small)
+                    .align(Alignment.Center),
+        ) {
+            TerminalCanvas(
+                snapshot = shown,
+                fontSizeSp = 10.5f,
+                fitSnapshotToCanvas = true,
+                enableGestures = false,
+                cursorColor = Color.Transparent,
+                selectionBackgroundColor = Color.Transparent,
+                selectionForegroundColor = Color.Transparent,
+                onTap = {},
+                onPrimaryClick = { _, _ -> },
+                onScroll = { _, _, _ -> },
+                onFontSizeChange = {},
+                onSelectionChanged = {},
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PaletteFooter(onSearch: () -> Unit, onAddTab: () -> Unit) {
+    val colors = AbyssColors.current
+    val typography = AbyssTypography.current
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        PaletteHint("↵", stringResource(R.string.action_open))
+        PaletteHint("esc", stringResource(R.string.action_dismiss))
+        Spacer(modifier = Modifier.weight(1f))
+        AbyssButton(
+            onClick = onSearch,
+            variant = AbyssButtonVariant.Outlined,
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            testTag = "palette_search",
+        ) {
+            AbyssText(stringResource(R.string.palette_search), style = typography.labelSmall, color = colors.accent)
+        }
+        AbyssButton(
+            onClick = onAddTab,
+            variant = AbyssButtonVariant.Outlined,
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+        ) {
+            AbyssText(stringResource(R.string.tab_manager_new), style = typography.labelSmall, color = colors.accent)
+        }
+    }
 }

@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -153,4 +155,22 @@ private fun MultiplexerSessionRow(
             AbyssText(stringResource(R.string.multiplexer_attach), style = typography.labelSmall, color = colors.accent)
         }
     }
+}
+
+/** The multiplexer sessions on the active tab's host, shown only when that tab uses one. */
+@Composable
+internal fun TerminalMultiplexerPanel(vm: TerminalViewModel, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    val activeTab by vm.activeTab.collectAsStateWithLifecycle()
+    if (activeTab?.spec?.usesRuntimeMultiplexer != true) return
+    val state by vm.multiplexer.state.collectAsStateWithLifecycle()
+    MultiplexerSessionPanel(
+        sessions = state.sessions,
+        loading = state.sessionsLoading,
+        error = state.sessionsError,
+        onRefresh = vm.multiplexer::listSessionsForActiveHost,
+        onNew = vm.multiplexer::createNextSession,
+        onAttach = { name -> vm.multiplexer.switchToSession(name, state.sessionsSourceTabId) },
+        onDismiss = onDismiss,
+        modifier = modifier,
+    )
 }

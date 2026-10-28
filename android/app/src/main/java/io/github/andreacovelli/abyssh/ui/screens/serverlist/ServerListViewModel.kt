@@ -8,11 +8,14 @@ import androidx.lifecycle.viewModelScope
 import io.github.andreacovelli.abyssh.data.db.AppDatabase
 import io.github.andreacovelli.abyssh.data.repository.HostRepository
 import io.github.andreacovelli.abyssh.model.HostProfile
+import io.github.andreacovelli.abyssh.model.Transport
+import io.github.andreacovelli.abyssh.service.terminal.TabSession
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -41,6 +44,19 @@ class ServerListViewModel(
             emptyList(),
         )
 
+    /** Hosts with at least one connected tab. */
+    val connectedHostIds: StateFlow<Set<Long>> = sessionRepository.connectedHostIds
+
+    /** How many tabs are open per host and on the local shell. */
+    val openSessions: StateFlow<OpenSessions> = sessionRepository.tabs
+        .map { tabs ->
+            OpenSessions(
+                localShellTabs = tabs.count { it.spec.transport == Transport.LocalShell },
+                tabsByHost = tabs.mapNotNull { it.spec.hostId }.groupingBy { it }.eachCount(),
+            )
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), OpenSessions())
+
     fun updateSearchQuery(value: String) {
         searchQuery.value = value
     }
@@ -48,6 +64,20 @@ class ServerListViewModel(
     /** Retries the host's failed tabs before the terminal screen shows them again. */
     fun prepareConnect(id: Long) {
         sessionRepository.reconnectIdleTabsForHost(id)
+    }
+
+    /** Closes every tab connected to the host. */
+    fun disconnectHost(id: Long) {
+        closeTabsWhere { it.spec.hostId == id }
+    }
+
+    /** Closes every local shell tab. */
+    fun disconnectLocalShell() {
+        closeTabsWhere { it.spec.transport == Transport.LocalShell }
+    }
+
+    private fun closeTabsWhere(predicate: (TabSession) -> Boolean) {
+        sessionRepository.tabs.value.filter(predicate).map { it.id }.forEach(sessionRepository::closeTab)
     }
 
     fun deleteServer(id: Long) {
@@ -75,4 +105,14 @@ class ServerListViewModel(
                 }
             }
     }
+}
+
+/** Open tab counts shown on the server list. */
+data class OpenSessions(
+    val localShellTabs: Int = 0,
+    val tabsByHost: Map<Long, Int> = emptyMap(),
+) {
+    val hasLocalShell: Boolean get() = localShellTabs > 0
+
+    fun tabsFor(hostId: Long): Int = tabsByHost[hostId] ?: 0
 }

@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -37,76 +38,31 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssSwitch
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.screens.keys.KeysContent
 import io.github.andreacovelli.abyssh.ui.screens.keys.KeysViewModel
-import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalTabMode
-import io.github.andreacovelli.abyssh.ui.terminal.TerminalCustomKeyGroup
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
-import io.github.andreacovelli.abyssh.ui.theme.ThemeMode
 
-@Suppress("LongMethod", "LongParameterList")
 @Composable
 fun SettingsScreen(
-    currentTheme: String,
-    currentFont: String,
-    appLockEnabled: Boolean,
-    requireAuthOnConnect: Boolean,
-    localShellEnabled: Boolean,
-    keepScreenAwake: Boolean,
-    hideScreenContents: Boolean,
-    disableAutocorrect: Boolean,
-    remoteClipboardWriteEnabled: Boolean,
-    ctrlVPastes: Boolean,
-    currentAccessoryLayoutIds: List<String>,
-    accessoryBarSingleRow: Boolean,
-    currentTerminalCustomKeyGroups: List<TerminalCustomKeyGroup>,
-    showCustomActionsFab: Boolean,
-    onShowCustomActionsFabChanged: (Boolean) -> Unit,
-    builtinShortcuts: Map<String, String> = emptyMap(),
-    onBuiltinShortcutsChanged: (Map<String, String>) -> Unit = {},
-    currentTabMode: TerminalTabMode = TerminalTabMode.Classic,
-    onTabModeChanged: (TerminalTabMode) -> Unit = {},
-    themeMode: ThemeMode,
-    lightThemeName: String,
-    onThemeSelected: (String) -> Unit,
-    onThemeModeChanged: (ThemeMode) -> Unit,
-    onLightThemeSelected: (String) -> Unit,
-    onFontSelected: (String) -> Unit,
-    onAppLockEnabledChanged: (Boolean) -> Unit,
-    onRequireAuthOnConnectChanged: (Boolean) -> Unit,
-    onLocalShellEnabledChanged: (Boolean) -> Unit,
-    onKeepScreenAwakeChanged: (Boolean) -> Unit,
-    onHideScreenContentsChanged: (Boolean) -> Unit,
-    onDisableAutocorrectChanged: (Boolean) -> Unit,
-    onRemoteClipboardWriteEnabledChanged: (Boolean) -> Unit,
-    onCtrlVPastesChanged: (Boolean) -> Unit,
-    onAccessoryLayoutChanged: (List<String>) -> Unit,
-    onAccessoryBarSingleRowChanged: (Boolean) -> Unit,
-    currentTerminalFontSize: Float = 14f,
-    onTerminalFontSizeChanged: (Float) -> Unit = {},
-    onTerminalCustomActionsChanged: (List<TerminalCustomKeyGroup>) -> Unit,
-    backupViewModel: SettingsBackupViewModel? = null,
+    vm: SettingsViewModel,
+    backupViewModel: SettingsBackupViewModel,
     keysViewModel: KeysViewModel,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val state by vm.uiState.collectAsStateWithLifecycle()
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
     var selectedCategory by remember { mutableStateOf(SettingsCategory.General) }
-    var showAccessoryEditor by remember { mutableStateOf(false) }
-    var showCustomActionEditor by remember { mutableStateOf(false) }
-    var showAbysshCommandsEditor by remember { mutableStateOf(false) }
-    var showBackupSheet by remember { mutableStateOf(false) }
+    var openSheet by remember { mutableStateOf<SettingsSheet?>(null) }
 
     BackHandler(enabled = true) {
-        when {
-            showBackupSheet -> {
-                backupViewModel?.dismissSheet()
-                showBackupSheet = false
+        when (openSheet) {
+            null -> onBack()
+            SettingsSheet.Backup -> {
+                backupViewModel.dismissSheet()
+                openSheet = null
             }
-            showCustomActionEditor -> showCustomActionEditor = false
-            showAbysshCommandsEditor -> showAbysshCommandsEditor = false
-            showAccessoryEditor -> showAccessoryEditor = false
-            else -> onBack()
+            else -> openSheet = null
         }
     }
 
@@ -125,9 +81,7 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        AbyssText(stringResource(R.string.server_list_settings), style = typography.headline)
-                    }
+                    AbyssText(stringResource(R.string.server_list_settings), style = typography.headline)
                     AbyssCloseButton(
                         onClick = onBack,
                         contentDescription = stringResource(R.string.action_close),
@@ -146,120 +100,91 @@ fun SettingsScreen(
                 when (selectedCategory) {
                     SettingsCategory.General ->
                         GeneralSettings(
-                            currentTheme = currentTheme,
-                            currentFont = currentFont,
-                            onThemeSelected = onThemeSelected,
-                            onThemeModeChanged = onThemeModeChanged,
-                            themeMode = themeMode,
-                            lightThemeName = lightThemeName,
-                            onLightThemeSelected = onLightThemeSelected,
-                            onFontSelected = onFontSelected,
-                            appLockEnabled = appLockEnabled,
-                            requireAuthOnConnect = requireAuthOnConnect,
-                            onAppLockEnabledChanged = onAppLockEnabledChanged,
-                            onRequireAuthOnConnectChanged = onRequireAuthOnConnectChanged,
-                            onOpenBackup = { showBackupSheet = true },
+                            state = state.general,
+                            actions = vm,
+                            onOpenBackup = { openSheet = SettingsSheet.Backup },
                         )
                     SettingsCategory.Terminal ->
                         TerminalSettings(
-                            currentAccessoryLayoutIds = currentAccessoryLayoutIds,
-                            onEditAccessoryLayout = { showAccessoryEditor = true },
-                            accessoryBarSingleRow = accessoryBarSingleRow,
-                            onAccessoryBarSingleRowChanged = onAccessoryBarSingleRowChanged,
-                            currentTerminalFontSize = currentTerminalFontSize,
-                            onTerminalFontSizeChanged = onTerminalFontSizeChanged,
-                            currentTerminalCustomKeyGroups = currentTerminalCustomKeyGroups,
-                            onEditCustomActions = { showCustomActionEditor = true },
-                            showCustomActionsFab = showCustomActionsFab,
-                            onShowCustomActionsFabChanged = onShowCustomActionsFabChanged,
-                            builtinShortcuts = builtinShortcuts,
-                            onEditAbysshCommands = { showAbysshCommandsEditor = true },
-                            currentTabMode = currentTabMode,
-                            onTabModeChanged = onTabModeChanged,
-                            localShellEnabled = localShellEnabled,
-                            onLocalShellEnabledChanged = onLocalShellEnabledChanged,
-                            keepScreenAwake = keepScreenAwake,
-                            onKeepScreenAwakeChanged = onKeepScreenAwakeChanged,
-                            hideScreenContents = hideScreenContents,
-                            onHideScreenContentsChanged = onHideScreenContentsChanged,
-                            disableAutocorrect = disableAutocorrect,
-                            onDisableAutocorrectChanged = onDisableAutocorrectChanged,
-                            remoteClipboardWriteEnabled = remoteClipboardWriteEnabled,
-                            onRemoteClipboardWriteEnabledChanged = onRemoteClipboardWriteEnabledChanged,
-                            ctrlVPastes = ctrlVPastes,
-                            onCtrlVPastesChanged = onCtrlVPastesChanged,
+                            state = state.terminal,
+                            actions = vm,
+                            onOpenSheet = { openSheet = it },
                         )
                     SettingsCategory.Keys -> KeysContent(vm = keysViewModel)
                 }
             }
         }
 
-        AccessoryLayoutEditorSheet(
-            visible = showAccessoryEditor,
-            selectedIds = currentAccessoryLayoutIds,
-            onSave = {
-                onAccessoryLayoutChanged(it)
-                showAccessoryEditor = false
-            },
-            onDismiss = { showAccessoryEditor = false },
+        SettingsSheets(
+            openSheet = openSheet,
+            terminal = state.terminal,
+            actions = vm,
+            backupViewModel = backupViewModel,
+            onDismiss = { openSheet = null },
         )
-
-        TerminalCustomActionsEditorSheet(
-            visible = showCustomActionEditor,
-            initialGroups = currentTerminalCustomKeyGroups,
-            onSave = onTerminalCustomActionsChanged,
-            onDismiss = { showCustomActionEditor = false },
-        )
-
-        AbysshCommandsEditorSheet(
-            visible = showAbysshCommandsEditor,
-            builtinShortcuts = builtinShortcuts,
-            onSave = {
-                onBuiltinShortcutsChanged(it)
-                showAbysshCommandsEditor = false
-            },
-            onDismiss = { showAbysshCommandsEditor = false },
-        )
-
-        if (backupViewModel != null) {
-            SshBackupSheet(
-                visible = showBackupSheet,
-                viewModel = backupViewModel,
-                onDismiss = { showBackupSheet = false },
-            )
-        }
     }
 }
 
-@Suppress("LongParameterList")
+/** The editor sheets that open over the settings list. At most one is visible. */
+internal enum class SettingsSheet { AccessoryLayout, CustomActions, AppCommands, Backup }
+
+@Composable
+private fun SettingsSheets(
+    openSheet: SettingsSheet?,
+    terminal: TerminalSettingsState,
+    actions: TerminalSettingsActions,
+    backupViewModel: SettingsBackupViewModel,
+    onDismiss: () -> Unit,
+) {
+    AccessoryLayoutEditorSheet(
+        visible = openSheet == SettingsSheet.AccessoryLayout,
+        selectedIds = terminal.accessoryLayoutIds,
+        onSave = {
+            actions.setAccessoryLayout(it)
+            onDismiss()
+        },
+        onDismiss = onDismiss,
+    )
+    TerminalCustomActionsEditorSheet(
+        visible = openSheet == SettingsSheet.CustomActions,
+        initialGroups = terminal.customKeyGroups,
+        onSave = actions::setCustomKeyGroups,
+        onDismiss = onDismiss,
+    )
+    AbysshCommandsEditorSheet(
+        visible = openSheet == SettingsSheet.AppCommands,
+        builtinShortcuts = terminal.builtinShortcuts,
+        onSave = {
+            actions.setBuiltinShortcuts(it)
+            onDismiss()
+        },
+        onDismiss = onDismiss,
+    )
+    SshBackupSheet(
+        visible = openSheet == SettingsSheet.Backup,
+        viewModel = backupViewModel,
+        onDismiss = onDismiss,
+    )
+}
+
 @Composable
 private fun GeneralSettings(
-    currentTheme: String,
-    currentFont: String,
-    onThemeSelected: (String) -> Unit,
-    onThemeModeChanged: (ThemeMode) -> Unit,
-    themeMode: ThemeMode,
-    lightThemeName: String,
-    onLightThemeSelected: (String) -> Unit,
-    onFontSelected: (String) -> Unit,
-    appLockEnabled: Boolean,
-    requireAuthOnConnect: Boolean,
-    onAppLockEnabledChanged: (Boolean) -> Unit,
-    onRequireAuthOnConnectChanged: (Boolean) -> Unit,
-    onOpenBackup: () -> Unit = {},
+    state: GeneralSettingsState,
+    actions: GeneralSettingsActions,
+    onOpenBackup: () -> Unit,
 ) {
     val typography = AbyssTypography.current
     val colors = AbyssColors.current
     ThemeSelectorSection(
-        darkThemeName = currentTheme,
-        onDarkThemeSelected = onThemeSelected,
-        lightThemeName = lightThemeName,
-        onLightThemeSelected = onLightThemeSelected,
-        themeMode = themeMode,
-        onThemeModeChanged = onThemeModeChanged,
+        darkThemeName = state.darkThemeName,
+        onDarkThemeSelected = actions::setDarkTheme,
+        lightThemeName = state.lightThemeName,
+        onLightThemeSelected = actions::setLightTheme,
+        themeMode = state.themeMode,
+        onThemeModeChanged = actions::setThemeMode,
     )
     Spacer(modifier = Modifier.height(16.dp))
-    FontSelectorSection(currentFont = currentFont, onFontSelected = onFontSelected)
+    FontSelectorSection(currentFont = state.fontName, onFontSelected = actions::setFont)
     Spacer(modifier = Modifier.height(16.dp))
     AbyssSectionHeader(stringResource(R.string.settings_section_security))
     Spacer(modifier = Modifier.height(12.dp))
@@ -273,7 +198,7 @@ private fun GeneralSettings(
             style = typography.label,
             modifier = Modifier.weight(1f),
         )
-        AbyssSwitch(checked = appLockEnabled, onCheckedChange = onAppLockEnabledChanged)
+        AbyssSwitch(checked = state.appLockEnabled, onCheckedChange = actions::setAppLockEnabled)
     }
     Spacer(modifier = Modifier.height(20.dp))
     Row(
@@ -286,7 +211,7 @@ private fun GeneralSettings(
             style = typography.label,
             modifier = Modifier.weight(1f),
         )
-        AbyssSwitch(checked = requireAuthOnConnect, onCheckedChange = onRequireAuthOnConnectChanged)
+        AbyssSwitch(checked = state.requireAuthOnConnect, onCheckedChange = actions::setRequireAuthOnConnect)
     }
     Spacer(modifier = Modifier.height(4.dp))
     AbyssText(

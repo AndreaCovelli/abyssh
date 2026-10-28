@@ -10,38 +10,30 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -53,8 +45,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
+import io.github.andreacovelli.abyssh.ui.components.AbyssBottomSheet
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
-import io.github.andreacovelli.abyssh.ui.components.AbyssCloseButton
+import io.github.andreacovelli.abyssh.ui.components.AbyssSheetHeader
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssCard
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
@@ -78,7 +71,67 @@ private data class CustomKeyValueDraft(
     val shortcut: String? = null,
 )
 
-@Suppress("LongMethod", "CyclomaticComplexMethod")
+/** The add or edit form below the action list. */
+@Stable
+private class CustomActionForm {
+    var visible by mutableStateOf(false)
+    var showModifiers by mutableStateOf(false)
+    var modifiers by mutableStateOf(setOf<CustomActionModifier>())
+    var editingIndex by mutableStateOf<Int?>(null)
+    var key by mutableStateOf("")
+    var value by mutableStateOf("")
+    var shortcut by mutableStateOf("")
+
+    val baseValue: String get() = value.trim().trimEnd('\n', '\r')
+
+    fun beginAdd() {
+        editingIndex = null
+        visible = true
+    }
+
+    fun beginEdit(index: Int, item: CustomKeyValueDraft) {
+        val decoded = decodeCustomActionValue(item.value)
+        key = item.key
+        modifiers = decoded.modifiers
+        value = decoded.text
+        shortcut = item.shortcut ?: ""
+        showModifiers = true
+        visible = true
+        editingIndex = index
+    }
+
+    fun clear() {
+        visible = false
+        key = ""
+        value = ""
+        shortcut = ""
+        modifiers = emptySet()
+        showModifiers = false
+        editingIndex = null
+    }
+
+    fun toggleModifier(modifier: CustomActionModifier) {
+        modifiers = if (modifier in modifiers) modifiers - modifier else modifiers + modifier
+    }
+
+    /** The draft this form describes, or `null` while the key or the value is empty. */
+    fun toDraft(id: Long): CustomKeyValueDraft? {
+        val trimmedKey = key.trim()
+        val encoded = encodeCustomActionValue(baseValue, modifiers)
+        if (trimmedKey.isEmpty() || encoded.isEmpty()) return null
+        return CustomKeyValueDraft(id = id, key = trimmedKey, value = encoded, shortcut = shortcut.trim().ifEmpty { null })
+    }
+
+    /** Keeps the edited row's index in step when a drag swaps it with its neighbour. */
+    fun onItemMoved(from: Int, to: Int) {
+        if (editingIndex == from) {
+            editingIndex = to
+        } else if (editingIndex == to) {
+            editingIndex = from
+        }
+    }
+}
+
 @Composable
 internal fun TerminalCustomActionsEditorSheet(
     visible: Boolean,
@@ -86,363 +139,250 @@ internal fun TerminalCustomActionsEditorSheet(
     onSave: (List<TerminalCustomKeyGroup>) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val colors = AbyssColors.current
     val typography = AbyssTypography.current
-    val density = LocalDensity.current
-    val reorderStepPx = with(density) { 64.dp.toPx() }
     var draftItems by remember(initialGroups) {
-        mutableStateOf(
-            groupsToDraftItems(TerminalCustomActionStore.normalize(initialGroups)),
-        )
+        mutableStateOf(groupsToDraftItems(TerminalCustomActionStore.normalize(initialGroups)))
     }
-    var showAddRow by remember { mutableStateOf(false) }
-    var showModifierDropdown by remember { mutableStateOf(false) }
-    var enabledModifiers by remember { mutableStateOf(setOf<CustomActionModifier>()) }
-    var editingIndex by remember { mutableStateOf<Int?>(null) }
-    var draggingItemId by remember { mutableStateOf<Long?>(null) }
-    var dragRemainderPx by remember { mutableFloatStateOf(0f) }
-    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
-    var reorderDirty by remember { mutableStateOf(false) }
-    var keyInput by remember { mutableStateOf("") }
-    var valueInput by remember { mutableStateOf("") }
-    var shortcutInput by remember { mutableStateOf("") }
+    val form = remember { CustomActionForm() }
 
-    fun persistDraft(items: List<CustomKeyValueDraft>) {
+    fun persist(items: List<CustomKeyValueDraft>) {
+        draftItems = items
         onSave(TerminalCustomActionStore.normalize(draftItemsToGroups(items)))
     }
 
-    fun cancelEdit() {
-        showAddRow = false
-        keyInput = ""
-        valueInput = ""
-        shortcutInput = ""
-        enabledModifiers = emptySet()
-        showModifierDropdown = false
-        editingIndex = null
-    }
-
-    fun moveDraftItem(fromIndex: Int, direction: Int): Boolean {
-        if (fromIndex !in draftItems.indices) return false
-        val toIndex = (fromIndex + direction).coerceIn(0, draftItems.lastIndex)
-        if (toIndex == fromIndex) return false
-        val updated = draftItems.toMutableList()
-        val item = updated.removeAt(fromIndex)
-        updated.add(toIndex, item)
-        draftItems = updated
-        reorderDirty = true
-        if (editingIndex == fromIndex) {
-            editingIndex = toIndex
-        } else if (editingIndex == toIndex) {
-            editingIndex = fromIndex
-        }
-        return true
-    }
-
-    fun registerDraftItem() {
-        val baseKey = keyInput.trim()
-        val baseValue = valueInput.trim().trimEnd('\n', '\r')
-        val normalizedValue = encodeCustomActionValue(baseValue, enabledModifiers)
-        if (baseKey.isEmpty() || normalizedValue.isEmpty()) return
-        val shortcut = shortcutInput.trim().takeIf { it.isNotEmpty() }
+    fun submitForm() {
         val nextId = (draftItems.maxOfOrNull { it.id } ?: 0L) + 1L
-        val item = CustomKeyValueDraft(
-            id = nextId,
-            key = baseKey,
-            value = normalizedValue,
-            shortcut = shortcut,
+        val item = form.toDraft(nextId) ?: return
+        val index = form.editingIndex
+        persist(
+            if (index != null && index in draftItems.indices) {
+                draftItems.toMutableList().also { it[index] = item.copy(id = it[index].id) }
+            } else {
+                draftItems + item
+            },
         )
-        val nextItems = editingIndex?.let { index ->
-            draftItems.toMutableList().also { list ->
-                if (index in list.indices) {
-                    list[index] = item.copy(id = list[index].id)
-                } else {
-                    list += item
-                }
-            }
-        } ?: (draftItems + item)
-        draftItems = nextItems
-        persistDraft(nextItems)
-        keyInput = ""
-        valueInput = ""
-        shortcutInput = ""
-        enabledModifiers = emptySet()
-        showModifierDropdown = false
-        showAddRow = false
-        editingIndex = null
+        form.clear()
     }
 
-    val valuePreview = remember(valueInput, enabledModifiers) {
-        val baseValue = valueInput.trim().trimEnd('\n', '\r')
-        readableActionPreview(baseValue, enabledModifiers)
-    }
+    AbyssBottomSheet(visible = visible, onDismiss = onDismiss, heightFraction = 0.88f, verticalSpacing = 12.dp) {
+        AbyssSheetHeader(title = stringResource(R.string.settings_custom_actions), onClose = onDismiss)
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        AnimatedVisibility(
-            visible = visible,
-            enter = fadeIn(),
-            exit = fadeOut(),
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(colors.background.copy(alpha = 0.72f))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onDismiss,
-                    ),
+            CustomActionList(
+                items = draftItems,
+                onItemsReordered = ::persist,
+                onReorder = { items, from, to ->
+                    draftItems = items
+                    form.onItemMoved(from, to)
+                },
+                onEdit = { index, item ->
+                    if (form.editingIndex == index) form.clear() else form.beginEdit(index, item)
+                },
+                onDelete = { index ->
+                    persist(draftItems.filterIndexed { rowIndex, _ -> rowIndex != index })
+                    if (form.editingIndex == index) form.clear()
+                },
             )
-        }
 
-        AnimatedVisibility(
-            visible = visible,
-            enter = slideInVertically { it },
-            exit = slideOutVertically { it },
-            modifier = Modifier.align(Alignment.BottomCenter),
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.88f)
-                    .background(colors.surfaceVariant)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {},
-                    )
-                    .windowInsetsPadding(WindowInsets.safeDrawing)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Row(
+            if (form.visible) {
+                CustomActionFormCard(form = form, onSubmit = ::submitForm, onCancel = form::clear)
+            } else {
+                AbyssButton(
+                    onClick = form::beginAdd,
+                    variant = AbyssButtonVariant.Outlined,
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    AbyssText(stringResource(R.string.settings_custom_actions), style = typography.headline)
-                    AbyssCloseButton(
-                        onClick = onDismiss,
-                        contentDescription = stringResource(R.string.action_close),
+                    Icon(
+                        painterResource(R.drawable.ic_add),
+                        contentDescription = null,
+                        modifier = Modifier.size(ButtonDefaults.IconSize),
                     )
+                    Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                    AbyssText(stringResource(R.string.custom_actions_add), style = typography.label)
                 }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    draftItems.forEachIndexed { index, item ->
-                        key(item.id) {
-                            val isDragging = draggingItemId == item.id
-                            CustomActionSwipeRow(
-                                keyText = item.key,
-                                valueText = item.value,
-                                shortcut = item.shortcut,
-                                dragging = isDragging,
-                                dragOffsetPx = if (isDragging) dragOffsetPx else 0f,
-                                onEdit = {
-                                    if (editingIndex == index) {
-                                        cancelEdit()
-                                    } else {
-                                        keyInput = item.key
-                                        val decoded = decodeCustomActionValue(item.value)
-                                        enabledModifiers = decoded.modifiers
-                                        valueInput = decoded.text
-                                        shortcutInput = item.shortcut ?: ""
-                                        showModifierDropdown = true
-                                        showAddRow = true
-                                        editingIndex = index
-                                    }
-                                },
-                                onDelete = {
-                                    val nextItems = draftItems.filterIndexed { rowIndex, _ -> rowIndex != index }
-                                    draftItems = nextItems
-                                    persistDraft(nextItems)
-                                    if (editingIndex == index) {
-                                        editingIndex = null
-                                        showAddRow = false
-                                        keyInput = ""
-                                        valueInput = ""
-                                        shortcutInput = ""
-                                        enabledModifiers = emptySet()
-                                        showModifierDropdown = false
-                                    }
-                                },
-                                onReorderStart = {
-                                    draggingItemId = item.id
-                                    dragRemainderPx = 0f
-                                    dragOffsetPx = 0f
-                                    reorderDirty = false
-                                },
-                                onReorderDrag = reorder@{ deltaY ->
-                                    val draggingId = draggingItemId ?: return@reorder
-                                    dragRemainderPx += deltaY
-                                    dragOffsetPx += deltaY
-                                    while (dragRemainderPx >= reorderStepPx) {
-                                        val activeIndex = draftItems.indexOfFirst { it.id == draggingId }
-                                        if (activeIndex < 0 || !moveDraftItem(activeIndex, 1)) break
-                                        dragRemainderPx -= reorderStepPx
-                                        dragOffsetPx -= reorderStepPx
-                                    }
-                                    while (dragRemainderPx <= -reorderStepPx) {
-                                        val activeIndex = draftItems.indexOfFirst { it.id == draggingId }
-                                        if (activeIndex < 0 || !moveDraftItem(activeIndex, -1)) break
-                                        dragRemainderPx += reorderStepPx
-                                        dragOffsetPx += reorderStepPx
-                                    }
-                                },
-                                onReorderEnd = {
-                                    if (reorderDirty) {
-                                        persistDraft(draftItems)
-                                    }
-                                    draggingItemId = null
-                                    dragRemainderPx = 0f
-                                    dragOffsetPx = 0f
-                                    reorderDirty = false
-                                },
-                            )
-                        }
-                    }
-
-                    if (!showAddRow) {
-                        AbyssButton(
-                            onClick = {
-                                editingIndex = null
-                                showAddRow = true
-                            },
-                            variant = AbyssButtonVariant.Outlined,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Icon(
-                                painterResource(R.drawable.ic_add),
-                                contentDescription = null,
-                                modifier = Modifier.size(ButtonDefaults.IconSize),
-                            )
-                            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-                            AbyssText(stringResource(R.string.custom_actions_add), style = typography.label)
-                        }
-                    } else {
-                        AbyssCard(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier.padding(10.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                            AbyssTextField(
-                                value = keyInput,
-                                onValueChange = { keyInput = it },
-                                label = stringResource(R.string.custom_actions_key_label),
-                                placeholder = "a",
-                                singleLine = true,
-                                autoFocus = false,
-                            )
-                            AbyssTextField(
-                                value = shortcutInput,
-                                onValueChange = { updated ->
-                                    shortcutInput = updated.takeLast(1)
-                                },
-                                label = stringResource(R.string.custom_actions_shortcut_label),
-                                placeholder = stringResource(R.string.custom_actions_shortcut_placeholder),
-                                singleLine = true,
-                                autoFocus = false,
-                            )
-                            AbyssButton(
-                                onClick = { showModifierDropdown = !showModifierDropdown },
-                                variant = AbyssButtonVariant.Outlined,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                val enabledLabel = if (enabledModifiers.isEmpty()) {
-                                    stringResource(R.string.custom_actions_no_modifiers)
-                                } else {
-                                    CustomActionModifier.entries
-                                        .filter { it in enabledModifiers }
-                                        .joinToString(separator = "+") { it.label }
-                                }
-                                AbyssText(stringResource(R.string.custom_actions_modifiers, enabledLabel), style = typography.label)
-                            }
-
-                            AnimatedVisibility(visible = showModifierDropdown) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                ) {
-                                    CustomActionModifier.entries.forEach { modifier ->
-                                        val enabled = modifier in enabledModifiers
-                                        AbyssButton(
-                                            onClick = {
-                                                enabledModifiers = if (enabled) {
-                                                    enabledModifiers - modifier
-                                                } else {
-                                                    enabledModifiers + modifier
-                                                }
-                                            },
-                                            variant = if (enabled) AbyssButtonVariant.Filled else AbyssButtonVariant.Outlined,
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                                        ) {
-                                            AbyssText(
-                                                modifier.label,
-                                                style = typography.labelSmall,
-                                                color = if (enabled) colors.onAccent else colors.textPrimary,
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            AbyssTextField(
-                                value = valueInput,
-                                onValueChange = { updated ->
-                                    if (updated.contains('\n') || updated.contains('\r')) {
-                                        valueInput = updated
-                                        registerDraftItem()
-                                    } else {
-                                        valueInput = updated
-                                    }
-                                },
-                                label = stringResource(R.string.custom_actions_value_label),
-                                monospace = true,
-                                placeholder = ":q",
-                                singleLine = false,
-                                autoFocus = false,
-                                modifier = Modifier.heightIn(min = 72.dp),
-                            )
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                AbyssText(
-                                    text = if (valuePreview.isBlank()) stringResource(R.string.custom_actions_preview_empty) else stringResource(R.string.custom_actions_preview, valuePreview),
-                                    style = typography.labelSmall,
-                                    color = colors.textMuted,
-                                )
-                            }
-
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                AbyssButton(
-                                    onClick = ::registerDraftItem,
-                                    variant = AbyssButtonVariant.Outlined,
-                                    modifier = Modifier.weight(1f),
-                                ) {
-                                    AbyssText(stringResource(if (editingIndex != null) R.string.action_save else R.string.action_add), style = typography.label)
-                                }
-                                AbyssButton(
-                                    onClick = { cancelEdit() },
-                                    variant = AbyssButtonVariant.Ghost,
-                                    borderColor = colors.textMuted,
-                                    modifier = Modifier.weight(1f),
-                                ) {
-                                    AbyssText(stringResource(R.string.action_cancel), style = typography.label, color = colors.textMuted)
-                                }
-                            }
-                        }
-                    }
-                }
-
             }
         }
     }
 }
 
+/**
+ * The saved actions. A long press on a row's handle drags it to a new position; the new
+ * order is saved through [onItemsReordered] when the drag ends.
+ */
+@Composable
+private fun CustomActionList(
+    items: List<CustomKeyValueDraft>,
+    onItemsReordered: (List<CustomKeyValueDraft>) -> Unit,
+    onReorder: (items: List<CustomKeyValueDraft>, from: Int, to: Int) -> Unit,
+    onEdit: (Int, CustomKeyValueDraft) -> Unit,
+    onDelete: (Int) -> Unit,
+) {
+    val reorderStepPx = with(LocalDensity.current) { 64.dp.toPx() }
+    val dragState = remember(reorderStepPx) { DragReorderState<Long>(reorderStepPx) }
+    val currentItems by rememberUpdatedState(items)
+    var reorderDirty by remember { mutableStateOf(false) }
+
+    items.forEachIndexed { index, item ->
+        key(item.id) {
+            CustomActionSwipeRow(
+                keyText = item.key,
+                valueText = item.value,
+                shortcut = item.shortcut,
+                dragging = dragState.draggingKey == item.id,
+                dragOffsetPx = dragState.offsetFor(item.id),
+                onEdit = { onEdit(index, item) },
+                onDelete = { onDelete(index) },
+                onReorderStart = {
+                    dragState.start(item.id)
+                    reorderDirty = false
+                },
+                onReorderDrag = { deltaY ->
+                    dragState.drag(deltaY) { direction ->
+                        val from = currentItems.indexOfFirst { it.id == item.id }
+                        val updated = currentItems.moved(from, from + direction) ?: return@drag false
+                        onReorder(updated, from, from + direction)
+                        reorderDirty = true
+                        true
+                    }
+                },
+                onReorderEnd = {
+                    if (reorderDirty) onItemsReordered(currentItems)
+                    dragState.stop()
+                    reorderDirty = false
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CustomActionFormCard(
+    form: CustomActionForm,
+    onSubmit: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val colors = AbyssColors.current
+    val typography = AbyssTypography.current
+    val valuePreview = readableActionPreview(form.baseValue, form.modifiers)
+
+    AbyssCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            AbyssTextField(
+                value = form.key,
+                onValueChange = { form.key = it },
+                label = stringResource(R.string.custom_actions_key_label),
+                placeholder = "a",
+                singleLine = true,
+                autoFocus = false,
+            )
+            AbyssTextField(
+                value = form.shortcut,
+                onValueChange = { form.shortcut = it.takeLast(1) },
+                label = stringResource(R.string.custom_actions_shortcut_label),
+                placeholder = stringResource(R.string.custom_actions_shortcut_placeholder),
+                singleLine = true,
+                autoFocus = false,
+            )
+            ModifierPicker(form = form)
+            AbyssTextField(
+                value = form.value,
+                onValueChange = { updated ->
+                    form.value = updated
+                    // Enter on the keyboard submits the action.
+                    if (updated.contains('\n') || updated.contains('\r')) onSubmit()
+                },
+                label = stringResource(R.string.custom_actions_value_label),
+                monospace = true,
+                placeholder = ":q",
+                singleLine = false,
+                autoFocus = false,
+                modifier = Modifier.heightIn(min = 72.dp),
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                AbyssText(
+                    text = if (valuePreview.isBlank()) {
+                        stringResource(R.string.custom_actions_preview_empty)
+                    } else {
+                        stringResource(R.string.custom_actions_preview, valuePreview)
+                    },
+                    style = typography.labelSmall,
+                    color = colors.textMuted,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AbyssButton(
+                    onClick = onSubmit,
+                    variant = AbyssButtonVariant.Outlined,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    val label = if (form.editingIndex != null) R.string.action_save else R.string.action_add
+                    AbyssText(stringResource(label), style = typography.label)
+                }
+                AbyssButton(
+                    onClick = onCancel,
+                    variant = AbyssButtonVariant.Ghost,
+                    borderColor = colors.textMuted,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    AbyssText(stringResource(R.string.action_cancel), style = typography.label, color = colors.textMuted)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModifierPicker(form: CustomActionForm) {
+    val colors = AbyssColors.current
+    val typography = AbyssTypography.current
+
+    AbyssButton(
+        onClick = { form.showModifiers = !form.showModifiers },
+        variant = AbyssButtonVariant.Outlined,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        val enabledLabel = if (form.modifiers.isEmpty()) {
+            stringResource(R.string.custom_actions_no_modifiers)
+        } else {
+            CustomActionModifier.entries
+                .filter { it in form.modifiers }
+                .joinToString(separator = "+") { it.label }
+        }
+        AbyssText(stringResource(R.string.custom_actions_modifiers, enabledLabel), style = typography.label)
+    }
+
+    AnimatedVisibility(visible = form.showModifiers) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            CustomActionModifier.entries.forEach { modifier ->
+                val enabled = modifier in form.modifiers
+                AbyssButton(
+                    onClick = { form.toggleModifier(modifier) },
+                    variant = if (enabled) AbyssButtonVariant.Filled else AbyssButtonVariant.Outlined,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                ) {
+                    AbyssText(
+                        modifier.label,
+                        style = typography.labelSmall,
+                        color = if (enabled) colors.onAccent else colors.textPrimary,
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

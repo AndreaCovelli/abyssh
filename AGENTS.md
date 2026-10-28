@@ -93,9 +93,12 @@ Kotlin declares `external fun native*` methods in five bridge classes: `GhosttyB
 - SDK levels: compileSdk 37, targetSdk 36, minSdk 24. Change them only in a dedicated
   commit, and ask before raising minSdk.
 - Kotlin style is ktlint's `android_studio` style, set in the root `.editorconfig`.
-  Detekt thresholds come from `detekt.yml`. The oversized composables and classes
-  inherited from upstream carry targeted `@Suppress` annotations; keep new code within
-  the thresholds, and drop a suppression when splitting the function it covers.
+  Detekt thresholds come from `detekt.yml`. Only the JNI bridges (`GhosttyBridge`,
+  `NativeSshBridge`) suppress `TooManyFunctions`, because each method mirrors a native
+  export. Split anything else that crosses a size or complexity threshold into
+  collaborator classes or smaller composables rather than suppress it. A broad catch at a
+  native or transport boundary carries `@Suppress("TooGenericExceptionCaught")` with a
+  comment saying why.
 - Database changes: bump `version` in `data/db/AppDatabase.kt`, add an `AutoMigration`
   (with a spec for renames and deletes), build to generate the new schema JSON, and
   commit it. Version 11 is the baseline; there are no migrations from older versions.

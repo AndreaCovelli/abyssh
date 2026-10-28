@@ -6,27 +6,17 @@ import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -37,6 +27,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import android.content.ClipData
+import android.content.Context
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
@@ -53,8 +45,9 @@ import io.github.andreacovelli.abyssh.data.backup.BackupImportPlan
 import io.github.andreacovelli.abyssh.data.backup.ABYSSH_BACKUP_MIME_TYPE
 import io.github.andreacovelli.abyssh.data.backup.KeyImportAction
 import io.github.andreacovelli.abyssh.model.SshKey
+import io.github.andreacovelli.abyssh.ui.components.AbyssBottomSheet
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
-import io.github.andreacovelli.abyssh.ui.components.AbyssCloseButton
+import io.github.andreacovelli.abyssh.ui.components.AbyssSheetHeader
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssCard
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
@@ -77,358 +70,225 @@ private sealed interface SheetStep {
 
     /** Show import preview summary before confirming. */
     data class ImportPreview(val plan: BackupImportPlan) : SheetStep
-
 }
 
-@Suppress("LongMethod", "CyclomaticComplexMethod")
 @Composable
 internal fun SshBackupSheet(
     visible: Boolean,
     viewModel: SettingsBackupViewModel,
     onDismiss: () -> Unit,
 ) {
-    val colors = AbyssColors.current
-    val typography = AbyssTypography.current
     val context = LocalContext.current
     val resources = LocalResources.current
-
-    // VM state
-    val keys by viewModel.keys.collectAsStateWithLifecycle()
-    val hosts by viewModel.hosts.collectAsStateWithLifecycle()
-    val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
-    val error by viewModel.error.collectAsStateWithLifecycle()
-    val success by viewModel.success.collectAsStateWithLifecycle()
     val importPlan by viewModel.importPlan.collectAsStateWithLifecycle()
-    val exportPassphrase by viewModel.exportPassphrase.collectAsStateWithLifecycle()
-    val exportPassphraseConfirm by viewModel.exportPassphraseConfirm.collectAsStateWithLifecycle()
-    val importPassphrase by viewModel.importPassphrase.collectAsStateWithLifecycle()
 
-    // Sheet step – derived from VM state so they stay in sync
-    val step = when {
-        importPlan != null -> SheetStep.ImportPreview(importPlan!!)
-        else -> {
-            // Local-only steps managed inside the sheet
-            null
-        }
-    }
     var localStep by remember { mutableStateOf<SheetStep>(SheetStep.Overview) }
-    var selectedKeyDetails by remember { mutableStateOf<SshKey?>(null) }
-    val effectiveStep: SheetStep = step ?: localStep
+    // A pending import plan always shows its preview, whatever the local step.
+    val step: SheetStep = importPlan?.let { SheetStep.ImportPreview(it) } ?: localStep
+    var detailsKey by remember { mutableStateOf<SshKey?>(null) }
+    var showDetails by remember { mutableStateOf(false) }
 
-    // SAF launchers – stay at composable scope
+    // A cancelled file picker clears the passphrase it was going to use.
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument(ABYSSH_BACKUP_MIME_TYPE),
     ) { uri ->
-        if (uri != null) {
-            viewModel.performExport(uri)
-        } else {
-            // User cancelled SAF picker – clear export passphrase
-            viewModel.updateExportPassphrase("")
-            viewModel.updateExportPassphraseConfirm("")
-        }
+        if (uri != null) viewModel.performExport(uri) else viewModel.clearExportPassphrase()
         localStep = SheetStep.Overview
     }
-
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
-        if (uri != null) {
-            viewModel.performImport(uri)
-        } else {
-            // User cancelled SAF picker – clear import passphrase
-            viewModel.updateImportPassphrase("")
+        if (uri != null) viewModel.performImport(uri) else viewModel.clearImportPassphrase()
+        localStep = SheetStep.Overview
+    }
+
+    fun returnToOverview() {
+        when (step) {
+            SheetStep.Overview -> Unit
+            SheetStep.ExportPassphrase -> viewModel.clearExportPassphrase()
+            SheetStep.ImportPassphrase -> viewModel.clearImportPassphrase()
+            is SheetStep.ImportPreview -> viewModel.cancelImport()
         }
         localStep = SheetStep.Overview
     }
 
-    // ── Dismiss handler ────────────────────────────────────────────────────
-    fun handleDismiss() {
+    fun dismiss() {
         viewModel.dismissSheet()
         localStep = SheetStep.Overview
         onDismiss()
     }
 
-    fun handleBack() {
-        when (effectiveStep) {
-            SheetStep.Overview -> handleDismiss()
-            SheetStep.ExportPassphrase -> {
-                viewModel.updateExportPassphrase("")
-                viewModel.updateExportPassphraseConfirm("")
-                localStep = SheetStep.Overview
-            }
-            SheetStep.ImportPassphrase -> {
-                viewModel.updateImportPassphrase("")
-                localStep = SheetStep.Overview
-            }
-            is SheetStep.ImportPreview -> {
-                viewModel.cancelImport()
-                localStep = SheetStep.Overview
-            }
-        }
-    }
-
     BackHandler(enabled = visible) {
-        if (selectedKeyDetails != null) {
-            selectedKeyDetails = null
-            return@BackHandler
+        when {
+            showDetails -> showDetails = false
+            step == SheetStep.Overview -> dismiss()
+            else -> returnToOverview()
         }
-        handleBack()
     }
 
-    // ── Scrim + Sheet ──────────────────────────────────────────────────────
     Box(modifier = Modifier.fillMaxSize()) {
-        // Scrim overlay
-        AnimatedVisibility(
-            visible = visible,
-            enter = fadeIn(),
-            exit = fadeOut(),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(colors.background.copy(alpha = 0.72f))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { handleDismiss() },
-                    ),
+        AbyssBottomSheet(visible = visible, onDismiss = ::dismiss, heightFraction = 0.82f) {
+            AbyssSheetHeader(
+                title = stringResource(R.string.backup_title),
+                subtitle = stringResource(step.subtitleRes),
+                onClose = ::dismiss,
             )
-        }
-
-        // Sheet panel
-        AnimatedVisibility(
-            visible = visible,
-            enter = slideInVertically { it },
-            exit = slideOutVertically { it },
-            modifier = Modifier.align(Alignment.BottomCenter),
-        ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.82f)
-                    .background(colors.surfaceVariant)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {},
-                    )
-                    .windowInsetsPadding(WindowInsets.safeDrawing)
-                    .padding(16.dp),
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                // ── Header ────────────────────────────────────────────────
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        AbyssText(stringResource(R.string.backup_title), style = typography.headline)
-                        AbyssText(
-                            text = when (effectiveStep) {
-                                is SheetStep.Overview -> stringResource(R.string.backup_overview_subtitle)
-                                is SheetStep.ExportPassphrase -> stringResource(R.string.backup_export_subtitle)
-                                is SheetStep.ImportPassphrase -> stringResource(R.string.backup_import_subtitle)
-                                is SheetStep.ImportPreview -> stringResource(R.string.backup_preview_subtitle)
-                            },
-                            style = typography.body,
-                            color = colors.textSecondary,
-                        )
-                    }
-
-                    AbyssCloseButton(
-                        onClick = { handleDismiss() },
-                        contentDescription = stringResource(R.string.action_close),
-                    )
-                }
-
-                // ── Scrollable content ─────────────────────────────────────
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    when (effectiveStep) {
-                        is SheetStep.Overview -> OverviewContent(
-                            keys = keys,
-                            busy = isBusy,
-                            onExport = { localStep = SheetStep.ExportPassphrase },
-                            onImport = { localStep = SheetStep.ImportPassphrase },
-                            onOpenKey = { key -> selectedKeyDetails = key },
-                        )
-
-                        is SheetStep.ExportPassphrase -> ExportPassphraseContent(
-                            passphrase = exportPassphrase,
-                            passphraseConfirm = exportPassphraseConfirm,
-                            onPassphraseChange = viewModel::updateExportPassphrase,
-                            onPassphraseConfirmChange = viewModel::updateExportPassphraseConfirm,
-                            valid = viewModel.exportPassphraseValid(),
-                            busy = isBusy,
-                            onExport = {
-                                requireUserVerification(
-                                    context = context,
-                                    title = resources.getString(R.string.backup_export_auth_title),
-                                    subtitle = resources.getString(R.string.backup_export_auth_subtitle),
-                                ) { result ->
-                                    if (result == VerificationResult.Success || result == VerificationResult.Unavailable) {
-                                        exportLauncher.launch(defaultBackupFileName())
-                                    }
-                                    // On Failed, stay on the same step
-                                }
-                            },
-                            onCancel = {
-                                viewModel.updateExportPassphrase("")
-                                viewModel.updateExportPassphraseConfirm("")
-                                localStep = SheetStep.Overview
-                            },
-                        )
-
-                        is SheetStep.ImportPassphrase -> ImportPassphraseContent(
-                            passphrase = importPassphrase,
-                            onPassphraseChange = viewModel::updateImportPassphrase,
-                            valid = viewModel.importPassphraseValid(),
-                            busy = isBusy,
-                            onImport = {
-                                requireUserVerification(
-                                    context = context,
-                                    title = resources.getString(R.string.backup_import_auth_title),
-                                    subtitle = resources.getString(R.string.backup_import_auth_subtitle),
-                                ) { result ->
-                                    if (result == VerificationResult.Success || result == VerificationResult.Unavailable) {
-                                        importLauncher.launch(arrayOf(ABYSSH_BACKUP_MIME_TYPE, "*/*"))
-                                    }
-                                    // On Failed, stay on the same step
-                                }
-                            },
-                            onCancel = {
-                                viewModel.updateImportPassphrase("")
-                                localStep = SheetStep.Overview
-                            },
-                        )
-
-                        is SheetStep.ImportPreview -> ImportPreviewContent(
-                            plan = effectiveStep.plan,
-                            busy = isBusy,
-                            onConfirm = viewModel::confirmImport,
-                            onCancel = {
-                                viewModel.cancelImport()
-                                localStep = SheetStep.Overview
-                            },
-                        )
-
-                    }
-
-                    // ── Status messages ────────────────────────────────────
-                    if (isBusy) {
-                        AbyssCard(modifier = Modifier.fillMaxWidth()) {
-                            AbyssText(
-                                text = stringResource(R.string.backup_working),
-                                style = typography.body,
-                                color = colors.textMuted,
-                                modifier = Modifier.padding(12.dp),
-                            )
-                        }
-                    }
-
-                    error?.let { msg ->
-                        AbyssCard(modifier = Modifier.fillMaxWidth(), background = colors.error.copy(alpha = 0.12f)) {
-                            AbyssText(
-                                text = msg,
-                                style = typography.body,
-                                color = colors.error,
-                                modifier = Modifier.padding(12.dp),
-                            )
-                        }
-                    }
-
-                    success?.let { msg ->
-                        AbyssCard(modifier = Modifier.fillMaxWidth(), background = colors.accent.copy(alpha = 0.12f)) {
-                            AbyssText(
-                                text = msg,
-                                style = typography.body,
-                                color = colors.accent,
-                                modifier = Modifier.padding(12.dp),
-                            )
-                        }
-                    }
-                }
-
-                // ── Bottom action (only for overview) ──────────────────────
-                if (effectiveStep is SheetStep.Overview && (error != null || success != null)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        AbyssButton(
-                            onClick = {
-                                viewModel.clearMessages()
-                            },
-                            variant = AbyssButtonVariant.Outlined,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            AbyssText(stringResource(R.string.action_dismiss), style = typography.label)
-                        }
-                    }
-                }
+                BackupStepContent(
+                    step = step,
+                    viewModel = viewModel,
+                    onStep = { localStep = it },
+                    onCancel = ::returnToOverview,
+                    onOpenKey = { key ->
+                        detailsKey = key
+                        showDetails = true
+                    },
+                    onExport = {
+                        verifyUser(
+                            context = context,
+                            title = resources.getString(R.string.backup_export_auth_title),
+                            subtitle = resources.getString(R.string.backup_export_auth_subtitle),
+                        ) { exportLauncher.launch(defaultBackupFileName()) }
+                    },
+                    onImport = {
+                        verifyUser(
+                            context = context,
+                            title = resources.getString(R.string.backup_import_auth_title),
+                            subtitle = resources.getString(R.string.backup_import_auth_subtitle),
+                        ) { importLauncher.launch(arrayOf(ABYSSH_BACKUP_MIME_TYPE, "*/*")) }
+                    },
+                )
+                BackupStatusMessages(viewModel = viewModel)
             }
+            if (step is SheetStep.Overview) BackupDismissMessagesRow(viewModel = viewModel)
         }
 
-        AnimatedVisibility(
-            visible = visible && selectedKeyDetails != null,
-            enter = slideInVertically { it } + fadeIn(),
-            exit = slideOutVertically { it } + fadeOut(),
-            modifier = Modifier.fillMaxSize(),
+        // The last opened key stays in place while the details panel slides away.
+        AbyssBottomSheet(
+            visible = visible && showDetails,
+            onDismiss = { showDetails = false },
+            heightFraction = 0.55f,
+            scrimAlpha = 0.40f,
         ) {
-            val key = selectedKeyDetails ?: return@AnimatedVisibility
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(colors.background.copy(alpha = 0.40f))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { selectedKeyDetails = null },
-                    ),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .fillMaxHeight(0.55f)
-                        .background(colors.surfaceVariant)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {},
-                        )
-                        .windowInsetsPadding(WindowInsets.safeDrawing)
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        AbyssText(stringResource(R.string.key_details_title), style = typography.headline)
-                        AbyssCloseButton(
-                            onClick = { selectedKeyDetails = null },
-                            contentDescription = stringResource(R.string.action_close),
-                        )
-                    }
-
-                    KeyDetailsContent(
-                        key = key,
-                        onBack = { selectedKeyDetails = null },
-                    )
-                }
-            }
+            AbyssSheetHeader(title = stringResource(R.string.key_details_title), onClose = { showDetails = false })
+            detailsKey?.let { key -> KeyDetailsContent(key = key, onBack = { showDetails = false }) }
         }
+    }
+}
+
+private val SheetStep.subtitleRes: Int
+    get() = when (this) {
+        SheetStep.Overview -> R.string.backup_overview_subtitle
+        SheetStep.ExportPassphrase -> R.string.backup_export_subtitle
+        SheetStep.ImportPassphrase -> R.string.backup_import_subtitle
+        is SheetStep.ImportPreview -> R.string.backup_preview_subtitle
+    }
+
+/** Runs [onVerified] once the user passes device verification, or when the device has none. */
+private fun verifyUser(context: Context, title: String, subtitle: String, onVerified: () -> Unit) {
+    requireUserVerification(context = context, title = title, subtitle = subtitle) { result ->
+        // On Failed, stay on the same step.
+        if (result == VerificationResult.Success || result == VerificationResult.Unavailable) onVerified()
+    }
+}
+
+@Composable
+private fun BackupStepContent(
+    step: SheetStep,
+    viewModel: SettingsBackupViewModel,
+    onStep: (SheetStep) -> Unit,
+    onCancel: () -> Unit,
+    onOpenKey: (SshKey) -> Unit,
+    onExport: () -> Unit,
+    onImport: () -> Unit,
+) {
+    val keys by viewModel.keys.collectAsStateWithLifecycle()
+    val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
+    val exportPassphrase by viewModel.exportPassphrase.collectAsStateWithLifecycle()
+    val exportPassphraseConfirm by viewModel.exportPassphraseConfirm.collectAsStateWithLifecycle()
+    val importPassphrase by viewModel.importPassphrase.collectAsStateWithLifecycle()
+
+    when (step) {
+        SheetStep.Overview -> OverviewContent(
+            keys = keys,
+            busy = isBusy,
+            onExport = { onStep(SheetStep.ExportPassphrase) },
+            onImport = { onStep(SheetStep.ImportPassphrase) },
+            onOpenKey = onOpenKey,
+        )
+
+        SheetStep.ExportPassphrase -> ExportPassphraseContent(
+            passphrase = exportPassphrase,
+            passphraseConfirm = exportPassphraseConfirm,
+            onPassphraseChange = viewModel::updateExportPassphrase,
+            onPassphraseConfirmChange = viewModel::updateExportPassphraseConfirm,
+            valid = viewModel.exportPassphraseValid(),
+            busy = isBusy,
+            onExport = onExport,
+            onCancel = onCancel,
+        )
+
+        SheetStep.ImportPassphrase -> ImportPassphraseContent(
+            passphrase = importPassphrase,
+            onPassphraseChange = viewModel::updateImportPassphrase,
+            valid = viewModel.importPassphraseValid(),
+            busy = isBusy,
+            onImport = onImport,
+            onCancel = onCancel,
+        )
+
+        is SheetStep.ImportPreview -> ImportPreviewContent(
+            plan = step.plan,
+            busy = isBusy,
+            onConfirm = viewModel::confirmImport,
+            onCancel = onCancel,
+        )
+    }
+}
+
+@Composable
+private fun BackupStatusMessages(viewModel: SettingsBackupViewModel) {
+    val colors = AbyssColors.current
+    val isBusy by viewModel.isBusy.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
+    val success by viewModel.success.collectAsStateWithLifecycle()
+
+    if (isBusy) BackupStatusCard(stringResource(R.string.backup_working), colors.textMuted, background = colors.surface)
+    error?.let { BackupStatusCard(it, colors.error, background = colors.error.copy(alpha = 0.12f)) }
+    success?.let { BackupStatusCard(it, colors.accent, background = colors.accent.copy(alpha = 0.12f)) }
+}
+
+@Composable
+private fun BackupStatusCard(message: String, color: Color, background: Color) {
+    AbyssCard(modifier = Modifier.fillMaxWidth(), background = background) {
+        AbyssText(
+            text = message,
+            style = AbyssTypography.current.body,
+            color = color,
+            modifier = Modifier.padding(12.dp),
+        )
+    }
+}
+
+/** Shown on the overview while an error or success message is visible. */
+@Composable
+private fun BackupDismissMessagesRow(viewModel: SettingsBackupViewModel) {
+    val error by viewModel.error.collectAsStateWithLifecycle()
+    val success by viewModel.success.collectAsStateWithLifecycle()
+    if (error == null && success == null) return
+
+    AbyssButton(
+        onClick = viewModel::clearMessages,
+        variant = AbyssButtonVariant.Outlined,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        AbyssText(stringResource(R.string.action_dismiss), style = AbyssTypography.current.label)
     }
 }
 

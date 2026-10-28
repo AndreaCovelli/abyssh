@@ -1,0 +1,204 @@
+package io.github.andreacovelli.abyssh.service.terminal
+
+import android.util.Log
+import io.github.andreacovelli.abyssh.service.mosh.MoshBootstrapParser
+import io.github.andreacovelli.abyssh.service.mosh.MoshEndpointResolver
+import io.github.andreacovelli.abyssh.service.mosh.MoshEventType
+import io.github.andreacovelli.abyssh.service.mosh.MoshOutputEvent
+import io.github.andreacovelli.abyssh.service.mosh.MoshReconnectPolicy
+import io.github.andreacovelli.abyssh.service.mosh.MoshRuntimeState
+import io.github.andreacovelli.abyssh.service.mosh.MoshState
+import io.github.andreacovelli.abyssh.service.mosh.NativeMoshService
+import io.github.andreacovelli.abyssh.service.ssh.NativeSshService
+import java.io.Closeable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+
+private const val TAG = "TerminalSession"
+private const val BOOTSTRAP_READ_BYTES = 4096
+private const val BOOTSTRAP_POLL_MS = 50L
+private const val BOOTSTRAP_WINDOW_MS = 10_000L
+private const val BOOTSTRAP_EXTENSION_MS = 15_000L
+
+/** What the Mosh read loop reports back to the session. */
+internal class MoshEvents(
+    val onHostBytes: (ByteArray) -> Unit,
+    val onResize: (cols: Int, rows: Int) -> Unit,
+    val onRuntimeState: (MoshRuntimeState) -> Unit,
+    val onEventsDrained: () -> Unit,
+)
+
+/**
+ * A Mosh session: an SSH login that starts `mosh-server` and reads its key, then the UDP
+ * client that replaces the SSH connection. Every call must run on the session thread.
+ */
+internal class MoshTransport(private val ssh: NativeSshService, private val service: NativeMoshService) : Closeable {
+    val isLoaded: Boolean get() = service.isLoaded
+
+    fun sendInput(data: ByteArray) {
+        service.sendInput(data)
+    }
+
+    fun resize(cols: Int, rows: Int) {
+        Log.d(TAG, "MOSH: resizeRemote ${cols}x$rows")
+        service.resize(cols, rows)
+    }
+
+    override fun close() = service.close()
+
+    suspend fun open(spec: TabSpec, geometry: TerminalGeometry) {
+        Log.d(TAG, "MOSH: Phase 1 — SSH bootstrap start")
+        check(ssh.isAvailable()) { "Native SSH unavailable for mosh bootstrap" }
+        ssh.connect(spec)
+        val endpointHost =
+            try {
+                withContext(Dispatchers.IO) { MoshEndpointResolver.resolve(spec.host) }
+            } catch (error: IllegalStateException) {
+                ssh.close()
+                throw error
+            }
+        Log.d(TAG, "MOSH: Resolved endpoint host=$endpointHost from profile host=${spec.host}")
+        // Use exec channel to bypass shell init noise and MOTD.
+        // Falls back to shell if the remote server doesn't support exec.
+        val moshCommand = MoshReconnectPolicy.bootstrapCommand()
+        val execOpened = runCatching { ssh.openExec(moshCommand) }.getOrDefault(false)
+        if (!execOpened) {
+            Log.w(TAG, "MOSH: exec channel unavailable, falling back to shell")
+            ssh.openShell(geometry.cols, geometry.rows, geometry.ptyWidthPx, geometry.ptyHeightPx)
+            ssh.write("$moshCommand\n".toByteArray(Charsets.UTF_8))
+        }
+        Log.d(TAG, "MOSH: SSH connected, ${if (execOpened) "exec" else "shell"} channel opened")
+
+        // Read output until we find MOSH CONNECT, the channel hits EOF, or
+        // we time out. If the first window has no output and no EOF on exec,
+        // extend once to distinguish slow remote bootstrap from hard failure.
+        val output = StringBuilder()
+        var endpoint = readBootstrapWindow(endpointHost, output, execOpened, BOOTSTRAP_WINDOW_MS)
+        if (endpoint == null && execOpened && output.isEmpty() && !ssh.isChannelEof()) {
+            Log.w(TAG, "MOSH: bootstrap still running after 10s with no output; extending window by 15s")
+            endpoint = readBootstrapWindow(endpointHost, output, execOpened, BOOTSTRAP_EXTENSION_MS)
+        }
+        if (endpoint == null) bootstrapFailed(output.toString(), execOpened)
+        ssh.close()
+        startClient(endpoint, geometry)
+        Log.d(TAG, "MOSH: Phase 2 — mosh client ready")
+    }
+
+    /**
+     * Drives the client until it fails or the loop is cancelled, reporting through
+     * [events]. Returns the failure code when the session failed.
+     */
+    suspend fun read(events: MoshEvents): Int? {
+        Log.d(TAG, "MOSH: read loop started")
+        var loopCount = 0
+        var lastActivityMs = System.currentTimeMillis()
+        var failure: MoshRuntimeState? = null
+        while (failure == null && currentCoroutineContext().isActive) {
+            loopCount++
+            // Drive retransmissions, acks, heartbeats, and timeout checks, then the UDP socket.
+            if (!service.maintenanceTick()) Log.w(TAG, "MOSH: maintenanceTick returned false")
+            if (!service.pumpNetwork()) Log.w(TAG, "MOSH: pumpNetwork returned false")
+            if (drainEvents(events)) {
+                events.onEventsDrained()
+                lastActivityMs = System.currentTimeMillis()
+            }
+            val runtime = service.pollState()
+            runtime?.let(events.onRuntimeState)
+            if (runtime?.state == MoshState.Failed.code) {
+                failure = runtime
+                Log.e(TAG, "MOSH: session FAILED code=${runtime.lastFailureCode}")
+            } else {
+                // Adaptive cadence: Mosh's retransmit/heartbeat timers are coarse, so
+                // backing the pump off while idle is safe and avoids a 500 Hz spin.
+                delay(idleReadDelayMs(System.currentTimeMillis() - lastActivityMs))
+            }
+        }
+        Log.d(TAG, "MOSH: read loop exited after $loopCount iterations")
+        return failure?.lastFailureCode
+    }
+
+    /** Handles every queued output event; returns whether there were any. */
+    private fun drainEvents(events: MoshEvents): Boolean {
+        var hadEvent = false
+        generateSequence { service.pollOutput() }.forEach { event ->
+            hadEvent = true
+            handleEvent(event, events)
+        }
+        return hadEvent
+    }
+
+    private fun handleEvent(event: MoshOutputEvent, events: MoshEvents) {
+        when (event.eventType) {
+            MoshEventType.HostBytes.code -> if (event.payload.isNotEmpty()) events.onHostBytes(event.payload)
+            MoshEventType.Resize.code -> if (event.cols > 0 && event.rows > 0) events.onResize(event.cols, event.rows)
+            MoshEventType.EchoAck.code -> Unit
+            MoshEventType.StateChanged.code -> {
+                Log.d(TAG, "MOSH: STATE_CHANGED: ${String(event.payload)}")
+                service.pollState()?.let(events.onRuntimeState)
+            }
+            MoshEventType.Diagnostic.code -> Log.d(TAG, "MOSH: DIAG: ${String(event.payload)}")
+            else -> Log.d(TAG, "MOSH: unknown event type=${event.eventType}")
+        }
+    }
+
+    private suspend fun readBootstrapWindow(
+        endpointHost: String,
+        output: StringBuilder,
+        execOpened: Boolean,
+        timeoutMs: Long,
+    ): MoshBootstrapParser.MoshEndpoint? {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val chunk = ssh.read(BOOTSTRAP_READ_BYTES)
+            if (chunk != null && chunk.isNotEmpty()) {
+                output.append(String(chunk, Charsets.UTF_8))
+                val result = MoshBootstrapParser.parse(endpointHost, output.toString())
+                if (result is MoshBootstrapParser.ParseResult.Success) {
+                    Log.d(TAG, "MOSH: Parsed endpoint host=${result.endpoint.host} port=${result.endpoint.port}")
+                    return result.endpoint
+                }
+            } else if (execOpened && ssh.isChannelEof()) {
+                Log.d(TAG, "MOSH: exec channel EOF reached")
+                return null
+            } else {
+                delay(BOOTSTRAP_POLL_MS)
+            }
+        }
+        return null
+    }
+
+    private fun bootstrapFailed(rawOutput: String, execOpened: Boolean): Nothing {
+        val eofBeforeClose = !execOpened || ssh.isChannelEof()
+        ssh.close()
+        val reason = when {
+            rawOutput.isNotBlank() -> rawOutput.trim()
+            execOpened && !eofBeforeClose -> "Mosh bootstrap command still running after timeout (no output, no EOF)"
+            else -> "Mosh bootstrap produced no output"
+        }
+        Log.e(TAG, "MOSH: Bootstrap failed: $reason")
+        error(reason)
+    }
+
+    private fun startClient(endpoint: MoshBootstrapParser.MoshEndpoint, geometry: TerminalGeometry) {
+        val configJson =
+            JSONObject()
+                .apply {
+                    put("host", endpoint.host)
+                    put("port", endpoint.port)
+                    put("keyBase64_22", endpoint.key)
+                    put("networkTimeoutMs", MoshReconnectPolicy.CLIENT_NETWORK_TIMEOUT_MS)
+                    put("maxRetransmitCount", MoshReconnectPolicy.CLIENT_MAX_RETRANSMIT_COUNT)
+                    put("useNetworkCrypto", true)
+                }
+                .toString()
+        check(service.create(configJson)) { "Failed to create mosh client" }
+        Log.d(TAG, "MOSH: mosh client created, starting...")
+        check(service.start()) { "Failed to start mosh client" }
+        Log.d(TAG, "MOSH: mosh client started, resizing ${geometry.cols} x ${geometry.rows}")
+        service.resize(geometry.cols, geometry.rows)
+    }
+}
