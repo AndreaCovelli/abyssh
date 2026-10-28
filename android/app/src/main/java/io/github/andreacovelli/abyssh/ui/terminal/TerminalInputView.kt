@@ -1,5 +1,13 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
+import androidx.core.view.WindowInsetsCompat
+
+import androidx.core.view.WindowCompat
+
+import android.content.ContextWrapper
+
+import android.app.Activity
+
 import android.content.Context
 import android.os.SystemClock
 import android.text.Editable
@@ -220,9 +228,6 @@ class TerminalInputView(context: Context) : EditText(context) {
         return super.onKeyUp(keyCode, event)
     }
 
-    // SHOW_IMPLICIT is deprecated in API 37 but is still what the platform docs use to
-    // request the keyboard for a focused editor; keep it until there is a tested replacement.
-    @Suppress("DEPRECATION")
     fun showKeyboard(imm: InputMethodManager?) {
         if (imm == null) return
         inputMethodManager = imm
@@ -233,7 +238,13 @@ class TerminalInputView(context: Context) : EditText(context) {
         post {
             logInput("showKeyboard.restartInput")
             imm.restartInput(this)
-            imm.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+            // The insets controller replaces showSoftInput(SHOW_IMPLICIT), deprecated in API 37.
+            val window = context.findActivity()?.window
+            if (window != null) {
+                WindowCompat.getInsetsController(window, this).show(WindowInsetsCompat.Type.ime())
+            } else {
+                imm.showSoftInput(this, 0)
+            }
         }
     }
 
@@ -614,4 +625,13 @@ class TerminalInputView(context: Context) : EditText(context) {
             return super.sendKeyEvent(event)
         }
     }
+}
+
+private fun Context.findActivity(): Activity? {
+    var current: Context? = this
+    while (current is ContextWrapper) {
+        if (current is Activity) return current
+        current = current.baseContext
+    }
+    return null
 }

@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.addserver
 
+import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
+
 import io.github.andreacovelli.abyssh.model.toUiText
 
 import io.github.andreacovelli.abyssh.model.UiTextException
@@ -68,6 +70,7 @@ class AddServerViewModel(
     private val hostRepository = HostRepository(db.hostProfileDao())
     private val sshKeyRepository = SshKeyRepository(db.sshKeyDao())
     private val sessionRepository = TerminalSessionRepository.getInstance(application)
+    private val localNetwork = LocalNetworkAccess(application)
     private val hostKeyStore =
         HostKeyStore(
             application.applicationContext.getSharedPreferences(
@@ -247,6 +250,9 @@ class AddServerViewModel(
                 withContext(Dispatchers.IO) {
                     runCatching {
                         val port = current.port.toIntOrNull() ?: 22
+                        if (localNetwork.blocks(host)) {
+                            throw UiTextException(UiText.Resource(R.string.error_local_network_denied), "Local network access denied")
+                        }
                         val policy = HostKeyPolicy { host, port, algorithm, keyBytes ->
                             when (
                                 val result = hostKeyStore.check(host, port, algorithm, keyBytes)

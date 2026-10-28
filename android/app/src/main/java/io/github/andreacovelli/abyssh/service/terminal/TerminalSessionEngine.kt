@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
+
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineScope
@@ -21,6 +23,7 @@ class TerminalSessionEngine(
     private val scope: CoroutineScope,
     localShellService: NativeLocalShellService,
     hostKeyStore: HostKeyStore,
+    localNetwork: LocalNetworkAccess? = null,
     // Called when the shell ends on its own (exit, Ctrl+D), so the owner can close the tab.
     onShellExited: () -> Unit = {},
 ) {
@@ -48,6 +51,7 @@ class TerminalSessionEngine(
             emulator = emulator,
             transports = transports,
             multiplexers = RemoteMultiplexerProbe(hostKeys),
+            localNetwork = localNetwork,
             onShellExited = onShellExited,
         )
 

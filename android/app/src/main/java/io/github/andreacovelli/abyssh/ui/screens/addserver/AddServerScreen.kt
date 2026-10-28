@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.addserver
 
+import io.github.andreacovelli.abyssh.ui.components.rememberLocalNetworkPermissionGate
+
 import io.github.andreacovelli.abyssh.ui.components.asString
 
 import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
@@ -62,6 +64,7 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 @Composable
 fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifier = Modifier) {
     val form by vm.form.collectAsStateWithLifecycle()
+    val withLocalNetworkPermission = rememberLocalNetworkPermissionGate()
     val testState by vm.testState.collectAsStateWithLifecycle()
     val keys by vm.keys.collectAsStateWithLifecycle()
     val pendingReconnect by vm.pendingReconnect.collectAsStateWithLifecycle()
@@ -122,7 +125,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
         TestAndSaveButtons(
             form = form,
             testState = testState,
-            onTest = vm::testConnection,
+            onTest = { withLocalNetworkPermission(form.host.filterNot { it.isWhitespace() }) { vm.testConnection() } },
             onSave = { vm.save(onBack) },
         )
     }

@@ -24,7 +24,7 @@ android {
     defaultConfig {
         applicationId = "io.github.andreacovelli.abyssh"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 37
 
         val major = (System.getenv("VERSION_MAJOR")?.toIntOrNull() ?: 0)
         val minor = (System.getenv("VERSION_MINOR")?.toIntOrNull() ?: 2)
