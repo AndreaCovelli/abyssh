@@ -7,7 +7,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -60,7 +60,7 @@ class TerminalBarsTest {
         compose.onNodeWithContentDescription("Next match").performClick()
         compose.onNodeWithTag("terminal_search_counter").assertTextEquals("1 of 3")
         compose.onNodeWithContentDescription("Close search").performClick()
-        assertEquals(true, closed)
+        compose.runOnIdle { assertEquals(true, closed) }
     }
 
     @Test
@@ -90,6 +90,6 @@ class TerminalBarsTest {
         compose.onNodeWithTag("link_open").performClick()
         compose.onNodeWithTag("link_copy").performClick()
         compose.onNodeWithTag("link_dismiss").performClick()
-        assertEquals(listOf("open", "copy", "dismiss"), clicks)
+        compose.runOnIdle { assertEquals(listOf("open", "copy", "dismiss"), clicks) }
     }
 }
