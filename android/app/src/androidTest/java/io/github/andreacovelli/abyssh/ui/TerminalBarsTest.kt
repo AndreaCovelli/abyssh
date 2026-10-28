@@ -56,10 +56,10 @@ class TerminalBarsTest {
         compose.onNodeWithTag("terminal_search_counter").assertTextEquals("3 of 3")
         searchField().performImeAction()
         compose.onNodeWithTag("terminal_search_counter").assertTextEquals("2 of 3")
-        compose.onNodeWithContentDescription("next match").performClick()
-        compose.onNodeWithContentDescription("next match").performClick()
+        compose.onNodeWithContentDescription("Next match").performClick()
+        compose.onNodeWithContentDescription("Next match").performClick()
         compose.onNodeWithTag("terminal_search_counter").assertTextEquals("1 of 3")
-        compose.onNodeWithContentDescription("close search").performClick()
+        compose.onNodeWithContentDescription("Close search").performClick()
         assertEquals(true, closed)
     }
 
