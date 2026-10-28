@@ -257,12 +257,14 @@ class SettingsBackupViewModel(
         } ?: throw BackupFormatException("Could not open backup file")
     }
 
-    private fun clearExportPassphrase() {
+    /** Clear the export passphrase fields when the export step is left. */
+    fun clearExportPassphrase() {
         _exportPassphrase.value = ""
         _exportPassphraseConfirm.value = ""
     }
 
-    private fun clearImportPassphrase() {
+    /** Clear the import passphrase field when the import step is left. */
+    fun clearImportPassphrase() {
         _importPassphrase.value = ""
     }
 

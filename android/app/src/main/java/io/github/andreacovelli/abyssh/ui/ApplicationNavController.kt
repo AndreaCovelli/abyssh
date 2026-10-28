@@ -1,7 +1,9 @@
 package io.github.andreacovelli.abyssh.ui
 
-import io.github.andreacovelli.abyssh.R
+import android.app.Activity
 import android.app.Application
+import android.content.Context
+import io.github.andreacovelli.abyssh.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -16,6 +18,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavGraphBuilder
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -29,249 +33,195 @@ import io.github.andreacovelli.abyssh.ui.screens.serverlist.ServerListScreen
 import io.github.andreacovelli.abyssh.ui.screens.serverlist.ServerListViewModel
 import io.github.andreacovelli.abyssh.ui.screens.settings.SettingsBackupViewModel
 import io.github.andreacovelli.abyssh.ui.screens.settings.SettingsScreen
+import io.github.andreacovelli.abyssh.ui.screens.settings.SettingsViewModel
 import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalScreen
 import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalViewModel
 import io.github.andreacovelli.abyssh.ui.security.VerificationResult
 import io.github.andreacovelli.abyssh.ui.security.requireUserVerification
 
-@Suppress("LongMethod")
 @Composable
 fun ApplicationNavController() {
     val navController = rememberNavController()
+    val application = LocalContext.current.applicationContext as Application
+
+    NavHost(navController = navController, startDestination = "servers") {
+        composable("servers") { ServersRoute(navController, application) }
+        composable("settings") { SettingsRoute(navController, application) }
+        serverEditorRoutes(navController, application)
+        terminalRoutes(navController, application)
+    }
+
+    AppLockGate(application)
+}
+
+/** Runs [onVerified] after the user passes device verification. */
+private fun verifyThen(context: Context, title: String, subtitle: String, onVerified: () -> Unit) {
+    requireUserVerification(context = context, title = title, subtitle = subtitle) { result ->
+        if (result == VerificationResult.Success) onVerified()
+    }
+}
+
+@Composable
+private fun ServersRoute(navController: NavHostController, application: Application) {
     val context = LocalContext.current
     val resources = LocalResources.current
-    val application = context.applicationContext as Application
+    val vm: ServerListViewModel = viewModel(factory = ServerListViewModel.factory(application))
+    val settingsRepo = SettingsRepository.getInstance(application)
+    val requireAuthOnConnect by settingsRepo.requireAuthOnConnect.collectAsStateWithLifecycle()
+    val localShellEnabled by settingsRepo.localShellEnabled.collectAsStateWithLifecycle()
+    val hosts by vm.hosts.collectAsStateWithLifecycle()
+    val searchQuery by vm.search.collectAsStateWithLifecycle()
+
+    ServerListScreen(
+        hosts = hosts,
+        searchQuery = searchQuery,
+        onSearchChange = vm::updateSearchQuery,
+        onAddServer = { navController.navigate("servers/add") },
+        localShellEnabled = localShellEnabled,
+        onOpenLocalShell = localShell@{
+            if (!localShellEnabled) return@localShell
+            val open = { navController.navigate("terminal/local") }
+            if (!requireAuthOnConnect) {
+                open()
+            } else {
+                verifyThen(
+                    context = context,
+                    title = resources.getString(R.string.nav_verify_local_shell_title),
+                    subtitle = resources.getString(R.string.nav_verify_local_shell_subtitle),
+                    onVerified = open,
+                )
+            }
+        },
+        onEditServer = { id -> navController.navigate("servers/edit/$id") },
+        onCopyServer = { id -> navController.navigate("servers/copy/$id") },
+        onConnectServer = { id ->
+            val hostRequiresAuth = hosts.firstOrNull { it.id == id }?.requireAuthOnConnect == true
+            val connect = {
+                vm.prepareConnect(id)
+                navController.navigate("terminal/$id")
+            }
+            if (!requireAuthOnConnect && !hostRequiresAuth) {
+                connect()
+            } else {
+                verifyThen(
+                    context = context,
+                    title = resources.getString(R.string.terminal_verify_title),
+                    subtitle = resources.getString(R.string.terminal_verify_subtitle),
+                    onVerified = connect,
+                )
+            }
+        },
+        onDeleteServer = vm::deleteServer,
+        onOpenSettings = { navController.navigate("settings") },
+    )
+}
+
+@Composable
+private fun SettingsRoute(navController: NavHostController, application: Application) {
+    SettingsScreen(
+        vm = viewModel(factory = SettingsViewModel.factory(application)),
+        backupViewModel = viewModel<SettingsBackupViewModel>(factory = SettingsBackupViewModel.factory(application)),
+        keysViewModel = viewModel<KeysViewModel>(factory = KeysViewModel.factory(application)),
+        onBack = {
+            if (navController.currentBackStackEntry?.destination?.route == "settings") {
+                navController.popBackStack()
+            }
+        },
+    )
+}
+
+/** Add, edit, and copy routes, which all open the server editor. */
+private fun NavGraphBuilder.serverEditorRoutes(navController: NavHostController, application: Application) {
+    val idArgument = listOf(navArgument("id") { type = NavType.LongType })
+    composable("servers/add") {
+        val vm: AddServerViewModel = viewModel(factory = AddServerViewModel.factory(application, null))
+        AddServerScreen(vm = vm, onBack = { navController.popBackStack() })
+    }
+    composable(route = "servers/edit/{id}", arguments = idArgument) { backStackEntry ->
+        val id = backStackEntry.arguments?.getLong("id")
+        val vm: AddServerViewModel = viewModel(factory = AddServerViewModel.factory(application, id))
+        AddServerScreen(vm = vm, onBack = { navController.popBackStack() })
+    }
+    composable(route = "servers/copy/{id}", arguments = idArgument) { backStackEntry ->
+        val id = backStackEntry.arguments?.getLong("id")
+        val vm: AddServerViewModel =
+            viewModel(factory = AddServerViewModel.factory(application, id, copy = true))
+        AddServerScreen(vm = vm, onBack = { navController.popBackStack() })
+    }
+}
+
+private fun NavGraphBuilder.terminalRoutes(navController: NavHostController, application: Application) {
+    composable("terminal/local") {
+        val settingsRepo = SettingsRepository.getInstance(application)
+        val localShellEnabled by settingsRepo.localShellEnabled.collectAsStateWithLifecycle()
+        if (localShellEnabled) {
+            val vm: TerminalViewModel = viewModel(factory = TerminalViewModel.factory(application))
+            TerminalScreen(
+                vm = vm,
+                hostId = null,
+                openLocalShell = true,
+                onOpenSettings = { navController.navigate("settings") },
+                onBack = { navController.popBackStack() },
+            )
+        } else {
+            // The local shell was turned off while this route was on the back stack.
+            LaunchedEffect(Unit) {
+                val popped = navController.popBackStack("servers", inclusive = false)
+                if (!popped) {
+                    navController.navigate("servers") { launchSingleTop = true }
+                }
+            }
+        }
+    }
+    composable(
+        route = "terminal/{id}",
+        arguments = listOf(navArgument("id") { type = NavType.LongType }),
+    ) { backStackEntry ->
+        val id = backStackEntry.arguments?.getLong("id")
+        val vm: TerminalViewModel = viewModel(factory = TerminalViewModel.factory(application))
+        TerminalScreen(
+            vm = vm,
+            hostId = id,
+            onOpenSettings = { navController.navigate("settings") },
+            onBack = { navController.popBackStack() },
+        )
+    }
+}
+
+/**
+ * Asks for device verification when app lock is on and the app has not been unlocked
+ * since it last went to the background. A failed prompt is not repeated until app lock
+ * is toggled or the app is backgrounded again.
+ */
+@Composable
+private fun AppLockGate(application: Application) {
+    val context = LocalContext.current
+    val resources = LocalResources.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var appUnlocked by rememberSaveable { mutableStateOf(false) }
     var unlockPromptRequested by rememberSaveable { mutableStateOf(false) }
     var appLockBlockedUntilToggle by rememberSaveable { mutableStateOf(false) }
 
+    fun reset() {
+        appUnlocked = false
+        unlockPromptRequested = false
+        appLockBlockedUntilToggle = false
+    }
+
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { source, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                val isConfigChange =
-                    (source as? android.app.Activity)?.isChangingConfigurations == true
-                if (!isConfigChange) {
-                    appUnlocked = false
-                    unlockPromptRequested = false
-                    appLockBlockedUntilToggle = false
-                }
-            }
+            val isConfigChange = (source as? Activity)?.isChangingConfigurations == true
+            if (event == Lifecycle.Event.ON_STOP && !isConfigChange) reset()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    NavHost(navController = navController, startDestination = "servers") {
-        composable("servers") {
-            val vm: ServerListViewModel =
-                viewModel(factory = ServerListViewModel.factory(application))
-            val settingsRepo = SettingsRepository.getInstance(application)
-            val requireAuthOnConnect by
-                settingsRepo.requireAuthOnConnect.collectAsStateWithLifecycle()
-            val localShellEnabled by settingsRepo.localShellEnabled.collectAsStateWithLifecycle()
-            val hosts by vm.hosts.collectAsStateWithLifecycle()
-            val searchQuery by vm.search.collectAsStateWithLifecycle()
-            ServerListScreen(
-                hosts = hosts,
-                searchQuery = searchQuery,
-                onSearchChange = vm::updateSearchQuery,
-                onAddServer = { navController.navigate("servers/add") },
-                localShellEnabled = localShellEnabled,
-                onOpenLocalShell = localShell@{
-                        if (!localShellEnabled) return@localShell
-                        if (!requireAuthOnConnect) {
-                            navController.navigate("terminal/local")
-                        } else {
-                            requireUserVerification(
-                                context = context,
-                                title = resources.getString(R.string.nav_verify_local_shell_title),
-                                subtitle = resources.getString(R.string.nav_verify_local_shell_subtitle),
-                            ) { result ->
-                                if (result == VerificationResult.Success) {
-                                    navController.navigate("terminal/local")
-                                }
-                            }
-                        }
-                    },
-                onEditServer = { id -> navController.navigate("servers/edit/$id") },
-                onCopyServer = { id -> navController.navigate("servers/copy/$id") },
-                onConnectServer = { id ->
-                    val host = hosts.firstOrNull { it.id == id }
-                    val hostRequiresAuth = host?.requireAuthOnConnect == true
-                    val mustVerify = requireAuthOnConnect || hostRequiresAuth
-                    val connect = {
-                        vm.prepareConnect(id)
-                        navController.navigate("terminal/$id")
-                    }
-                    if (!mustVerify) {
-                        connect()
-                    } else {
-                        requireUserVerification(
-                            context = context,
-                            title = resources.getString(R.string.terminal_verify_title),
-                            subtitle = resources.getString(R.string.terminal_verify_subtitle),
-                        ) { result ->
-                            if (result == VerificationResult.Success) {
-                                connect()
-                            }
-                        }
-                    }
-                },
-                onDeleteServer = vm::deleteServer,
-                onOpenSettings = { navController.navigate("settings") },
-            )
-        }
-        composable("settings") {
-            val settingsRepo = SettingsRepository.getInstance(application)
-            val backupViewModel: SettingsBackupViewModel =
-                viewModel(factory = SettingsBackupViewModel.factory(application))
-            val keysViewModel: KeysViewModel =
-                viewModel(factory = KeysViewModel.factory(application))
-            val themeName by settingsRepo.themeName.collectAsStateWithLifecycle()
-            val fontName by settingsRepo.fontName.collectAsStateWithLifecycle()
-            val appLockEnabled by settingsRepo.appLockEnabled.collectAsStateWithLifecycle()
-            val requireAuthOnConnect by
-                settingsRepo.requireAuthOnConnect.collectAsStateWithLifecycle()
-            val accessoryLayoutIds by settingsRepo.accessoryLayoutIds.collectAsStateWithLifecycle()
-            val accessoryBarSingleRow by
-                settingsRepo.accessoryBarSingleRow.collectAsStateWithLifecycle()
-            val customKeyGroups by
-                settingsRepo.terminalCustomKeyGroups.collectAsStateWithLifecycle()
-            val showCustomActionsFab by
-                settingsRepo.showCustomActionsFab.collectAsStateWithLifecycle()
-            val builtinShortcuts by settingsRepo.builtinShortcuts.collectAsStateWithLifecycle()
-            val tabMode by settingsRepo.terminalTabMode.collectAsStateWithLifecycle()
-            val localShellEnabled by settingsRepo.localShellEnabled.collectAsStateWithLifecycle()
-            val keepScreenAwake by settingsRepo.keepScreenAwake.collectAsStateWithLifecycle()
-            val hideScreenContents by settingsRepo.hideScreenContents.collectAsStateWithLifecycle()
-            val disableAutocorrect by settingsRepo.disableAutocorrect.collectAsStateWithLifecycle()
-            val remoteClipboardWriteEnabled by
-                settingsRepo.remoteClipboardWriteEnabled.collectAsStateWithLifecycle()
-            val ctrlVPastes by settingsRepo.ctrlVPastes.collectAsStateWithLifecycle()
-            val themeMode by settingsRepo.themeMode.collectAsStateWithLifecycle()
-            val terminalFontSize by settingsRepo.terminalFontSize.collectAsStateWithLifecycle()
-            val lightThemeName by settingsRepo.lightThemeName.collectAsStateWithLifecycle()
-            SettingsScreen(
-                currentTheme = themeName,
-                currentFont = fontName,
-                appLockEnabled = appLockEnabled,
-                requireAuthOnConnect = requireAuthOnConnect,
-                localShellEnabled = localShellEnabled,
-                keepScreenAwake = keepScreenAwake,
-                hideScreenContents = hideScreenContents,
-                disableAutocorrect = disableAutocorrect,
-                remoteClipboardWriteEnabled = remoteClipboardWriteEnabled,
-                ctrlVPastes = ctrlVPastes,
-                currentAccessoryLayoutIds = accessoryLayoutIds,
-                accessoryBarSingleRow = accessoryBarSingleRow,
-                currentTerminalCustomKeyGroups = customKeyGroups,
-                showCustomActionsFab = showCustomActionsFab,
-                onShowCustomActionsFabChanged = settingsRepo::setShowCustomActionsFab,
-                builtinShortcuts = builtinShortcuts,
-                onBuiltinShortcutsChanged = settingsRepo::setBuiltinShortcuts,
-                currentTabMode = tabMode,
-                onTabModeChanged = settingsRepo::setTerminalTabMode,
-                themeMode = themeMode,
-                lightThemeName = lightThemeName,
-                onThemeSelected = settingsRepo::setTheme,
-                onThemeModeChanged = settingsRepo::setThemeMode,
-                onLightThemeSelected = settingsRepo::setLightTheme,
-                onFontSelected = settingsRepo::setFont,
-                onAppLockEnabledChanged = settingsRepo::setAppLockEnabled,
-                onRequireAuthOnConnectChanged = settingsRepo::setRequireAuthOnConnect,
-                onLocalShellEnabledChanged = settingsRepo::setLocalShellEnabled,
-                onKeepScreenAwakeChanged = settingsRepo::setKeepScreenAwake,
-                onHideScreenContentsChanged = settingsRepo::setHideScreenContents,
-                onDisableAutocorrectChanged = settingsRepo::setDisableAutocorrect,
-                onRemoteClipboardWriteEnabledChanged = settingsRepo::setRemoteClipboardWriteEnabled,
-                onCtrlVPastesChanged = settingsRepo::setCtrlVPastes,
-                onAccessoryLayoutChanged = settingsRepo::setAccessoryLayoutIds,
-                onAccessoryBarSingleRowChanged = settingsRepo::setAccessoryBarSingleRow,
-                currentTerminalFontSize = terminalFontSize,
-                onTerminalFontSizeChanged = settingsRepo::setTerminalFontSize,
-                onTerminalCustomActionsChanged = settingsRepo::setTerminalCustomKeyGroups,
-                backupViewModel = backupViewModel,
-                keysViewModel = keysViewModel,
-                onBack = {
-                    val currentRoute = navController.currentBackStackEntry?.destination?.route
-                    if (currentRoute == "settings") {
-                        navController.popBackStack()
-                    }
-                },
-            )
-        }
-        composable("servers/add") {
-            val vm: AddServerViewModel =
-                viewModel(factory = AddServerViewModel.factory(application, null))
-            AddServerScreen(vm = vm, onBack = { navController.popBackStack() })
-        }
-        composable(
-            route = "servers/edit/{id}",
-            arguments = listOf(navArgument("id") { type = NavType.LongType }),
-        ) { backStackEntry ->
-            val id = backStackEntry.arguments?.getLong("id")
-            val vm: AddServerViewModel =
-                viewModel(factory = AddServerViewModel.factory(application, id))
-            AddServerScreen(vm = vm, onBack = { navController.popBackStack() })
-        }
-        composable(
-            route = "servers/copy/{id}",
-            arguments = listOf(navArgument("id") { type = NavType.LongType }),
-        ) { backStackEntry ->
-            val id = backStackEntry.arguments?.getLong("id")
-            val vm: AddServerViewModel =
-                viewModel(factory = AddServerViewModel.factory(application, id, copy = true))
-            AddServerScreen(vm = vm, onBack = { navController.popBackStack() })
-        }
-        composable("terminal/local") {
-            val settingsRepo = SettingsRepository.getInstance(application)
-            val localShellEnabled by settingsRepo.localShellEnabled.collectAsStateWithLifecycle()
-            if (localShellEnabled) {
-                val vm: TerminalViewModel =
-                    viewModel(factory = TerminalViewModel.factory(application))
-                TerminalScreen(
-                    vm = vm,
-                    hostId = null,
-                    openLocalShell = true,
-                    onOpenSettings = { navController.navigate("settings") },
-                    onBack = { navController.popBackStack() },
-                )
-            } else {
-                LaunchedEffect(Unit) {
-                    val popped = navController.popBackStack("servers", inclusive = false)
-                    if (!popped) {
-                        navController.navigate("servers") { launchSingleTop = true }
-                    }
-                }
-            }
-        }
-        composable(
-            route = "terminal/{id}",
-            arguments = listOf(navArgument("id") { type = NavType.LongType }),
-        ) { backStackEntry ->
-            val id = backStackEntry.arguments?.getLong("id")
-            val vm: TerminalViewModel = viewModel(factory = TerminalViewModel.factory(application))
-            TerminalScreen(
-                vm = vm,
-                hostId = id,
-                onOpenSettings = { navController.navigate("settings") },
-                onBack = { navController.popBackStack() },
-            )
-        }
-    }
+    val appLockEnabled by SettingsRepository.getInstance(application).appLockEnabled.collectAsStateWithLifecycle()
+    if (!appLockEnabled) reset()
 
-    val settingsRepo = SettingsRepository.getInstance(application)
-    val appLockEnabled by settingsRepo.appLockEnabled.collectAsStateWithLifecycle()
-    if (!appLockEnabled) {
-        appUnlocked = false
-        unlockPromptRequested = false
-        appLockBlockedUntilToggle = false
-    }
     LaunchedEffect(appLockEnabled, appUnlocked, unlockPromptRequested, appLockBlockedUntilToggle) {
-        if (
-            appLockEnabled && !appUnlocked && !unlockPromptRequested && !appLockBlockedUntilToggle
-        ) {
+        if (appLockEnabled && !appUnlocked && !unlockPromptRequested && !appLockBlockedUntilToggle) {
             unlockPromptRequested = true
             requireUserVerification(
                 context = context,
