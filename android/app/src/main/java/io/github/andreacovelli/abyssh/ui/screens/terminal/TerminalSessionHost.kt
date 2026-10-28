@@ -17,4 +17,5 @@ internal class TerminalSessionHost(
     val tabStrip: (@Composable () -> Unit)?,
     val onNewConnection: () -> Unit,
     val onOpenSettings: () -> Unit,
+    val onEndSession: () -> Unit,
 )

@@ -89,6 +89,7 @@ internal fun TerminalRecoveryActions(
     onConnectWithoutMultiplexer: () -> Unit,
     onBack: () -> Unit,
     onReconnect: () -> Unit,
+    onEndSession: (() -> Unit)? = null,
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
@@ -127,6 +128,17 @@ internal fun TerminalRecoveryActions(
                 variant = AbyssButtonVariant.Filled,
             ) {
                 AbyssText(stringResource(R.string.action_retry), style = typography.label, color = colors.onAccent)
+            }
+            if (onEndSession != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                AbyssButton(
+                    onClick = onEndSession,
+                    modifier = Modifier.fillMaxWidth(),
+                    variant = AbyssButtonVariant.Outlined,
+                    borderColor = colors.warning,
+                ) {
+                    AbyssText(stringResource(R.string.terminal_end_session), style = typography.label, color = colors.warning)
+                }
             }
         }
     }

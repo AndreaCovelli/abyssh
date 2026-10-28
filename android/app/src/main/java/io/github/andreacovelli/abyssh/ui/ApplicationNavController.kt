@@ -3,6 +3,7 @@ package io.github.andreacovelli.abyssh.ui
 import android.app.Activity
 import android.app.Application
 import android.content.Context
+import android.content.res.Resources
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -66,6 +67,20 @@ private fun verifyThen(context: Context, title: String, subtitle: String, onVeri
     }
 }
 
+/** Runs [onVerified], after device verification when [required]. */
+private fun verifyHostThen(context: Context, resources: Resources, required: Boolean, onVerified: () -> Unit) {
+    if (!required) {
+        onVerified()
+        return
+    }
+    verifyThen(
+        context = context,
+        title = resources.getString(R.string.terminal_verify_title),
+        subtitle = resources.getString(R.string.terminal_verify_subtitle),
+        onVerified = onVerified,
+    )
+}
+
 @Composable
 private fun ServersRoute(navController: NavHostController, application: Application) {
     val context = LocalContext.current
@@ -100,16 +115,11 @@ private fun ServersRoute(navController: NavHostController, application: Applicat
                 vm.prepareConnect(host.id)
                 navController.navigate("terminal/${host.id}")
             }
-            if (!requireAuthOnConnect && !host.requireAuthOnConnect) {
-                connect()
-            } else {
-                verifyThen(
-                    context = context,
-                    title = resources.getString(R.string.terminal_verify_title),
-                    subtitle = resources.getString(R.string.terminal_verify_subtitle),
-                    onVerified = connect,
-                )
-            }
+            verifyHostThen(context, resources, requireAuthOnConnect || host.requireAuthOnConnect, connect)
+        },
+        onNewSession = { host ->
+            val open = { navController.navigate("terminal/${host.id}?newSession=true") }
+            verifyHostThen(context, resources, requireAuthOnConnect || host.requireAuthOnConnect, open)
         },
         onOpenSettings = { navController.navigate("settings") },
     )
@@ -195,14 +205,22 @@ private fun NavGraphBuilder.terminalRoutes(navController: NavHostController, app
         }
     }
     composable(
-        route = "terminal/{id}",
-        arguments = listOf(navArgument("id") { type = NavType.LongType }),
+        route = "terminal/{id}?newSession={newSession}",
+        arguments = listOf(
+            navArgument("id") { type = NavType.LongType },
+            navArgument("newSession") {
+                type = NavType.BoolType
+                defaultValue = false
+            },
+        ),
     ) { backStackEntry ->
         val id = backStackEntry.arguments?.getLong("id")
+        val newSession = backStackEntry.arguments?.getBoolean("newSession") == true
         val vm: TerminalViewModel = viewModel(factory = TerminalViewModel.factory(application))
         TerminalScreen(
             vm = vm,
             hostId = id,
+            newSession = newSession,
             onOpenSettings = { navController.navigate("settings") },
             onBack = { navController.popBackStack() },
         )

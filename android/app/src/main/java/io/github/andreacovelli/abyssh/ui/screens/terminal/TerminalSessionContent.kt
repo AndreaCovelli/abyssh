@@ -419,6 +419,7 @@ private fun TerminalFooter(
             },
             abysshKeyActive = host.abysshKeys.isPrefixActive,
             onOpenFiles = { files.open() },
+            onEndSession = host.onEndSession,
             useSingleRow = host.settings.singleRowAccessoryBar,
             modifier = Modifier.padding(bottom = 2.dp),
         )

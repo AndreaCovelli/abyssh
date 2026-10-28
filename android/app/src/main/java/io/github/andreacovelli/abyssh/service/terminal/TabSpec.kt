@@ -25,6 +25,10 @@ data class TabSpec(
     val multiplexerSessionName: String? = null,
     val multiplexerCreateIfMissing: Boolean = true,
 ) {
+    /**
+     * The same for every tab to one host: a saved host, the local shell, or an unsaved
+     * target. Tabs that share it are numbered apart; see [sessionLabel].
+     */
     val sessionKey: String
         get() =
             when (transport) {
@@ -32,15 +36,17 @@ data class TabSpec(
                 else -> hostId?.let { "host:$it" } ?: "${transport.name}:$username@$host:$port"
             }
 
-    val notificationLabel: UiText
-        get() {
-            if (transport == Transport.LocalShell) {
-                return displayName.takeIf { it.isNotBlank() }?.let(UiText::Raw)
-                    ?: UiText.Resource(R.string.session_notification_local_shell)
-            }
-            val target = "$username@$host:$port"
-            return UiText.Raw(if (displayName.isNotBlank()) "$displayName  ·  $target" else target)
+    /** The notification text for a tab: its name, then [number] when its host has several tabs. */
+    fun notificationLabel(number: Int? = null): UiText {
+        val suffix = number?.let { " · $it" }.orEmpty()
+        if (transport == Transport.LocalShell) {
+            val name = displayName.takeIf { it.isNotBlank() }?.let(UiText::Raw)
+                ?: UiText.Resource(R.string.session_notification_local_shell)
+            return if (number == null) name else UiText.Joined(listOf(name, UiText.Raw("$number")), " · ")
         }
+        val target = "$username@$host:$port"
+        return UiText.Raw(if (displayName.isNotBlank()) "$displayName$suffix  ·  $target" else "$target$suffix")
+    }
 
     val tabLabel: String
         get() =

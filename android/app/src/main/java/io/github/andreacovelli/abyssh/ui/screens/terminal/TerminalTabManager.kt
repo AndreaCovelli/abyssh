@@ -64,6 +64,7 @@ import io.github.andreacovelli.abyssh.service.terminal.SessionStatus
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
+import io.github.andreacovelli.abyssh.service.terminal.sessionLabel
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
@@ -265,6 +266,7 @@ private fun TabManagerList(
         itemsIndexed(tabs, key = { _, tab -> tab.id }) { idx, tab ->
             TabManagerRow(
                 tab = tab,
+                label = tab.sessionLabel(tabs),
                 isActive = tab.id == activeTabId,
                 isFocused = idx == focusedTabIndex,
                 onSelect = { onSelectTab(tab.id) },
@@ -278,6 +280,7 @@ private fun TabManagerList(
 @Composable
 private fun TabManagerRow(
     tab: TabSession,
+    label: String,
     isActive: Boolean,
     isFocused: Boolean,
     onSelect: () -> Unit,
@@ -285,7 +288,6 @@ private fun TabManagerRow(
     onClose: () -> Unit,
 ) {
     val colors = AbyssColors.current
-    val label = terminalTabDisplayLabel(tab)
     val rowState by remember(tab) {
         tab.sessionState
             .map { TabRowState(it.status, it.title?.takeIf(String::isNotBlank), it.pwd?.takeIf(String::isNotBlank)) }

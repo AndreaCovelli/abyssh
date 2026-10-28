@@ -66,7 +66,6 @@ import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssCard
-import io.github.andreacovelli.abyssh.ui.components.AbyssDialog
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
 import io.github.andreacovelli.abyssh.ui.components.AbyssBadge
@@ -82,6 +81,7 @@ fun ServerListScreen(
     onEditServer: (Long) -> Unit,
     onCopyServer: (Long) -> Unit,
     onConnectServer: (HostProfile) -> Unit,
+    onNewSession: (HostProfile) -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -135,6 +135,7 @@ fun ServerListScreen(
                     HostCard(
                         host = host,
                         isConnected = isConnected,
+                        sessionCount = openSessions.tabsFor(host.id),
                         isSelected = selectedHostId == host.id,
                         onSelect = { selectedHostId = it },
                         onDelete = {
@@ -151,6 +152,11 @@ fun ServerListScreen(
                         onConnect = {
                             withNotificationPermission {
                                 withLocalNetworkPermission(host.host) { onConnectServer(host) }
+                            }
+                        },
+                        onNewSession = {
+                            withNotificationPermission {
+                                withLocalNetworkPermission(host.host) { onNewSession(host) }
                             }
                         },
                         onDisconnect = { pendingDisconnectHostId = host.id },
@@ -184,11 +190,11 @@ fun ServerListScreen(
             )
         }
         hosts.firstOrNull { it.id == pendingDisconnectHostId }?.let { host ->
-            val sessionCount = openSessions.tabsFor(host.id)
-            DisconnectDialog(
-                name = host.name,
-                body = pluralStringResource(R.plurals.server_list_disconnect_body, sessionCount, sessionCount),
-                onConfirm = {
+            HostDisconnectDialog(
+                host = host,
+                sessions = openSessions.sessionsFor(host.id),
+                onEnd = vm::closeSession,
+                onEndAll = {
                     selectedHostId = null
                     vm.disconnectHost(host.id)
                 },
@@ -278,19 +284,27 @@ private fun HeaderButton(label: String, onClick: () -> Unit) {
     }
 }
 
+/** Ends every session on a host with one session, or lets the user pick when it has several. */
 @Composable
-private fun DisconnectDialog(name: String, body: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AbyssDialog(
-        title = stringResource(R.string.server_list_disconnect_title, name),
-        confirmLabel = stringResource(R.string.server_list_disconnect_confirm),
-        dismissLabel = stringResource(R.string.action_cancel),
-        onConfirm = {
-            onConfirm()
-            onDismiss()
-        },
-        onDismiss = onDismiss,
-    ) {
-        AbyssText(body, style = AbyssTypography.current.body, color = AbyssColors.current.warning)
+private fun HostDisconnectDialog(
+    host: HostProfile,
+    sessions: List<OpenSession>,
+    onEnd: (String) -> Unit,
+    onEndAll: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Every session closed elsewhere while the dialog was up: nothing is left to end.
+    LaunchedEffect(sessions.isEmpty()) {
+        if (sessions.isEmpty()) onDismiss()
+    }
+    when {
+        sessions.size > 1 -> HostSessionsDialog(host.name, sessions, onEnd, onEndAll, onDismiss)
+        sessions.size == 1 -> DisconnectDialog(
+            name = host.name,
+            body = pluralStringResource(R.plurals.server_list_disconnect_body, 1, 1),
+            onConfirm = onEndAll,
+            onDismiss = onDismiss,
+        )
     }
 }
 
@@ -389,12 +403,14 @@ private fun LocalShellCard(
 private fun HostCard(
     host: HostProfile,
     isConnected: Boolean,
+    sessionCount: Int,
     isSelected: Boolean,
     onSelect: (Long?) -> Unit,
     onDelete: () -> Unit,
     onCopy: () -> Unit,
     onEdit: () -> Unit,
     onConnect: () -> Unit,
+    onNewSession: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
     Column(
@@ -416,6 +432,7 @@ private fun HostCard(
             HostCardContent(
                 host = host,
                 isConnected = isConnected,
+                sessionCount = sessionCount,
                 isSelected = isSelected,
                 onLongPress = { onSelect(host.id) },
                 onEdit = {
@@ -425,6 +442,10 @@ private fun HostCard(
                 onConnect = {
                     onSelect(null)
                     onConnect()
+                },
+                onNewSession = {
+                    onSelect(null)
+                    onNewSession()
                 },
                 onDisconnect = onDisconnect,
             )
@@ -524,10 +545,12 @@ private fun SwipeToDisconnect(
 private fun HostCardContent(
     host: HostProfile,
     isConnected: Boolean,
+    sessionCount: Int,
     isSelected: Boolean,
     onLongPress: () -> Unit,
     onEdit: () -> Unit,
     onConnect: () -> Unit,
+    onNewSession: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
     val colors = AbyssColors.current
@@ -547,7 +570,20 @@ private fun HostCardContent(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AbyssStatusDot(active = isConnected)
                 Spacer(modifier = Modifier.width(10.dp))
-                AbyssText(host.name, style = typography.title)
+                AbyssText(
+                    host.name,
+                    style = typography.title,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (sessionCount > 0) {
+                    AbyssText(
+                        pluralStringResource(R.plurals.server_list_session_count, sessionCount, sessionCount),
+                        style = typography.labelSmall,
+                        color = colors.textSecondary,
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(2.dp))
             Row(
@@ -573,6 +609,7 @@ private fun HostCardContent(
                 isConnected = isConnected,
                 onEdit = onEdit,
                 onConnect = onConnect,
+                onNewSession = onNewSession,
                 onDisconnect = onDisconnect,
             )
         }
@@ -585,6 +622,7 @@ private fun HostCardButtons(
     isConnected: Boolean,
     onEdit: () -> Unit,
     onConnect: () -> Unit,
+    onNewSession: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
     val colors = AbyssColors.current
@@ -600,6 +638,22 @@ private fun HostCardButtons(
             contentPadding = padding,
         ) {
             AbyssText(stringResource(R.string.action_edit), style = typography.label, color = colors.textMuted)
+        }
+        if (isConnected) {
+            AbyssButton(
+                onClick = onNewSession,
+                variant = AbyssButtonVariant.Outlined,
+                borderColor = colors.accentSecondary,
+                testTag = "host_new_session_${host.id}",
+                contentDescription = stringResource(R.string.server_list_new_session_on, host.name),
+                contentPadding = padding,
+            ) {
+                AbyssText(
+                    stringResource(R.string.server_list_new_session),
+                    style = typography.label,
+                    color = colors.accentSecondary,
+                )
+            }
         }
         AbyssButton(
             onClick = if (isConnected) onDisconnect else onConnect,

@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
+import io.github.andreacovelli.abyssh.service.terminal.sessionLabel
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
@@ -71,7 +72,7 @@ fun CommandPalette(
     multiplexerPanel: @Composable () -> Unit = {},
 ) {
     val colors = AbyssColors.current
-    val entries = remember(tabs) { tabs.map { it to terminalTabDisplayLabel(it) } }
+    val entries = remember(tabs) { tabs.map { it to it.sessionLabel(tabs) } }
     val maxIndex = (entries.size - 1).coerceAtLeast(0)
     LaunchedEffect(entries.size) { onFocusedTabIndexChange(focusedTabIndex.coerceIn(0, maxIndex)) }
     LaunchedEffect(activeTabId, entries) {

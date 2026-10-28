@@ -98,7 +98,7 @@ class TerminalSessionRepository private constructor(application: Application) {
     init {
         scope.launch {
             combine(liveTabs, activeTab) { live, active ->
-                if (live.isEmpty()) null else sessionNotificationLabel(_tabs.value.map { it.spec }, active?.spec)
+                sessionNotification(_tabs.value, active, anyLive = live.isNotEmpty())
             }.collect(foreground::update)
         }
     }
@@ -136,7 +136,7 @@ class TerminalSessionRepository private constructor(application: Application) {
                 localNetwork = localNetwork,
                 onShellExited = { scope.launch { closeTab(id) } },
             )
-        val tab = TabSession(id, spec, engine)
+        val tab = TabSession(id, spec, engine, number = nextTabNumber(_tabs.value, spec))
         _tabs.value += tab
         _activeTabId.value = id
         reconnectTab(tab)
@@ -148,13 +148,10 @@ class TerminalSessionRepository private constructor(application: Application) {
     }
 
     fun closeTab(id: String) {
-        val tab = _tabs.value.firstOrNull { it.id == id } ?: return
-        val remaining = _tabs.value.filterNot { it.id == id }
-        _tabs.value = remaining
-        if (_activeTabId.value == id) {
-            val nextSameHost = remaining.firstOrNull { it.spec.hostId == tab.spec.hostId }
-            _activeTabId.value = nextSameHost?.id ?: remaining.firstOrNull()?.id
-        }
+        val tabs = _tabs.value
+        val tab = tabs.firstOrNull { it.id == id } ?: return
+        _activeTabId.value = tabAfterClose(tabs, id, _activeTabId.value)
+        _tabs.value = tabs - tab
         tab.engine.dispose()
     }
 
@@ -173,8 +170,8 @@ class TerminalSessionRepository private constructor(application: Application) {
     }
 
     fun reconnectTab(tab: TabSession) {
-        val key = if (tab.spec.transport == Transport.LocalShell) "local-shell:${tab.id}" else tab.spec.sessionKey
-        tab.engine.connect(tab.spec, key)
+        // One key per tab, so parallel sessions to a host never share reconnect state.
+        tab.engine.connect(tab.spec, "${tab.spec.sessionKey}:${tab.id}")
     }
 
     /**
