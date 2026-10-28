@@ -197,7 +197,7 @@ class NativeSshService(
         }
     }
 
-    fun openShell(cols: Int, rows: Int, widthPx: Int, heightPx: Int, term: String = RemoteTerm.GHOSTTY) {
+    fun openShell(cols: Int, rows: Int, widthPx: Int, heightPx: Int, term: String = RemoteTerm.SSH) {
         check(handle != 0L) { "Not connected" }
         if (!bridge.nativeOpenShell(handle, cols, rows, widthPx, heightPx, term)) {
             error(
@@ -217,7 +217,7 @@ class NativeSshService(
         rows: Int,
         widthPx: Int,
         heightPx: Int,
-        term: String = RemoteTerm.GHOSTTY,
+        term: String = RemoteTerm.SSH,
     ) {
         check(handle != 0L) { "Not connected" }
         if (!bridge.nativeOpenExecPty(handle, command, cols, rows, widthPx, heightPx, term)) {

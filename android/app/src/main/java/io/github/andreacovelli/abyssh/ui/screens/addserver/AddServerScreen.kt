@@ -1,5 +1,11 @@
 package io.github.andreacovelli.abyssh.ui.screens.addserver
 
+import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
 import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.pluralStringResource
@@ -101,7 +107,6 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            AbyssText("$ ", style = typography.headline, color = colors.textMuted)
             AbyssText(
                 when {
                     form.id != null -> stringResource(R.string.server_edit_title)
@@ -112,7 +117,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
             )
         }
 
-        SectionHeader(stringResource(R.string.server_section_connection))
+        AbyssSectionHeader(stringResource(R.string.server_section_connection))
         AbyssTextField(
             value = form.name,
             onValueChange = vm::updateName,
@@ -126,6 +131,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
             value = form.host,
             onValueChange = vm::updateHost,
             label = stringResource(R.string.server_host_label),
+            monospace = true,
             placeholder = "192.168.1.10",
             singleLine = true,
             keyboardOptions =
@@ -145,6 +151,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
                 value = form.port,
                 onValueChange = vm::updatePort,
                 label = stringResource(R.string.server_port_label),
+                monospace = true,
                 singleLine = true,
                 keyboardOptions =
                     KeyboardOptions(
@@ -159,6 +166,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
                 value = form.username,
                 onValueChange = vm::updateUsername,
                 label = stringResource(R.string.server_username_label),
+                monospace = true,
                 placeholder = "root",
                 singleLine = true,
                 keyboardOptions =
@@ -174,14 +182,14 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
 
         SectionDivider()
 
-        SectionHeader(stringResource(R.string.server_section_transport))
+        AbyssSectionHeader(stringResource(R.string.server_section_transport))
         AbyssSegmentedControl(
             options = listOf(Transport.SSH, Transport.TailscaleSSH, Transport.Mosh),
             labels =
                 mapOf(
-                    Transport.SSH to "ssh",
-                    Transport.TailscaleSSH to "tailscale",
-                    Transport.Mosh to "mosh",
+                    Transport.SSH to "SSH",
+                    Transport.TailscaleSSH to "Tailscale",
+                    Transport.Mosh to "Mosh",
                 ),
             selected = form.transport,
             onSelect = vm::updateTransport,
@@ -196,7 +204,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
 
         SectionDivider()
 
-        SectionHeader(stringResource(R.string.server_section_authentication))
+        AbyssSectionHeader(stringResource(R.string.server_section_authentication))
         val authOptions =
             when (form.transport) {
                 Transport.TailscaleSSH ->
@@ -293,7 +301,6 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
             AbyssButton(
                 onClick = { showAdditionalSettings = !showAdditionalSettings },
                 variant = AbyssButtonVariant.Outlined,
-                bracketed = true,
             ) {
                 AbyssText(stringResource(R.string.server_additional_settings), style = typography.label)
             }
@@ -329,7 +336,6 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
             onClick = vm::testConnection,
             enabled = canTest,
             variant = AbyssButtonVariant.Outlined,
-            bracketed = true,
             modifier = Modifier.fillMaxWidth(),
         ) {
             val label =
@@ -347,12 +353,9 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
         AbyssButton(
             onClick = { vm.save(onBack) },
             enabled = form.canSave(),
-            variant = AbyssButtonVariant.Outlined,
-            bracketed = true,
-            borderColor = colors.accent,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            AbyssText(stringResource(R.string.action_save), style = typography.label, color = colors.accent)
+            AbyssText(stringResource(R.string.action_save), style = typography.label)
         }
     }
 }
@@ -360,18 +363,6 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
 @Composable
 private fun SectionDivider() {
     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(AbyssColors.current.border))
-}
-
-@Composable
-private fun SectionHeader(label: String) {
-    val colors = AbyssColors.current
-    val typography = AbyssTypography.current
-    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        AbyssText("── ", style = typography.labelSmall, color = colors.textMuted)
-        AbyssText(label, style = typography.labelSmall, color = colors.textMuted)
-        AbyssText(" ", style = typography.labelSmall, color = colors.textMuted)
-        Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
-    }
 }
 
 @Composable
@@ -389,7 +380,13 @@ private fun KeyAuthSection(
 
     if (selectedKey != null) {
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            AbyssText("● ", style = typography.body, color = colors.accent)
+            Icon(
+                painterResource(R.drawable.ic_check),
+                contentDescription = null,
+                tint = colors.accent,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
             AbyssText(selectedKey.name, style = typography.body, color = colors.textPrimary)
         }
         Row(
@@ -399,7 +396,6 @@ private fun KeyAuthSection(
             AbyssButton(
                 onClick = onCopyPublicKey,
                 variant = AbyssButtonVariant.Outlined,
-                bracketed = true,
                 borderColor = colors.accent,
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                 modifier = Modifier.weight(1f),
@@ -409,7 +405,6 @@ private fun KeyAuthSection(
             AbyssButton(
                 onClick = onGenerate,
                 variant = AbyssButtonVariant.Outlined,
-                bracketed = true,
                 modifier = Modifier.weight(1f),
             ) {
                 AbyssText(stringResource(R.string.key_new), style = typography.label)
@@ -424,7 +419,6 @@ private fun KeyAuthSection(
         AbyssButton(
             onClick = onGenerate,
             variant = AbyssButtonVariant.Outlined,
-            bracketed = true,
             modifier = Modifier.fillMaxWidth(),
         ) {
             AbyssText(stringResource(R.string.key_generate), style = typography.label)
@@ -435,7 +429,6 @@ private fun KeyAuthSection(
         AbyssButton(
             onClick = { pickerExpanded = !pickerExpanded },
             variant = AbyssButtonVariant.Ghost,
-            bracketed = true,
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
         ) {
@@ -460,11 +453,25 @@ private fun KeyAuthSection(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                     ) {
-                        AbyssText(
-                            text = (if (isSelected) "● " else "  ") + key.name,
-                            style = typography.body,
-                            color = if (isSelected) colors.accent else colors.textPrimary,
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        ) {
+                            Box(modifier = Modifier.size(18.dp)) {
+                                if (isSelected) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_check),
+                                        contentDescription = null,
+                                        tint = colors.accent,
+                                    )
+                                }
+                            }
+                            AbyssText(
+                                text = key.name,
+                                style = typography.body,
+                                color = if (isSelected) colors.accent else colors.textPrimary,
+                            )
+                        }
                         AbyssText(
                             key.algorithm,
                             style = typography.bodySmall,
@@ -490,7 +497,7 @@ private enum class MultiplexerOption(val type: MultiplexerType?) {
 private fun MultiplexerSection(selected: MultiplexerType?, onSelect: (MultiplexerType?) -> Unit) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
-    SectionHeader(stringResource(R.string.server_section_persistence))
+    AbyssSectionHeader(stringResource(R.string.server_section_persistence))
     val options = MultiplexerOption.entries.toList()
     val selectedOption = options.firstOrNull { it.type == selected } ?: MultiplexerOption.Off
     AbyssSegmentedControl(
@@ -517,6 +524,7 @@ private fun PostConnectActionSection(command: String, onCommandChange: (String) 
         value = command,
         onValueChange = onCommandChange,
         label = "",
+        monospace = true,
         placeholder = stringResource(R.string.server_auto_run_placeholder),
         showLabel = false,
         singleLine = true,
@@ -528,7 +536,6 @@ private fun PostConnectActionSection(command: String, onCommandChange: (String) 
             onClick = { onCommandChange("") },
             enabled = command.isNotBlank(),
             variant = AbyssButtonVariant.Ghost,
-            bracketed = true,
             borderColor = colors.textMuted,
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
         ) {

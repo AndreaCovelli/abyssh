@@ -1,6 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.theme
 
 import android.app.Activity
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
@@ -23,13 +25,15 @@ fun AbyssTheme(
 
     val fontOption = remember(fontName) { AbyssFontOption.fromId(fontName) }
     val typography = remember(fontOption) { abyssTypographyFor(fontOption) }
+    val colorScheme = remember(palette) { palette.toColorScheme() }
+    val materialTypography = remember(typography) { typography.toMaterialTypography() }
 
     // Drive status- and navigation-bar icon brightness from the active theme's
     // background. Without this, the system clock/wifi/battery icons stay white
     // and become unreadable on every light theme.
     val view = LocalView.current
     if (!view.isInEditMode) {
-        val isLightBackground = palette.background.luminance() >= 0.5f
+        val isLightBackground = palette.background.perceivedLuminance() >= 0.5f
         SideEffect {
             val window = (view.context as? Activity)?.window ?: return@SideEffect
             val controller = WindowCompat.getInsetsController(window, view)
@@ -42,9 +46,9 @@ fun AbyssTheme(
         LocalChuColors provides palette,
         LocalChuFont provides fontOption,
         LocalChuTypography provides typography,
-        content = content,
-    )
+    ) {
+        MaterialTheme(colorScheme = colorScheme, typography = materialTypography) {
+            CompositionLocalProvider(LocalContentColor provides palette.textPrimary, content = content)
+        }
+    }
 }
-
-private fun androidx.compose.ui.graphics.Color.luminance(): Float =
-    0.299f * red + 0.587f * green + 0.114f * blue

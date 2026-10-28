@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
+import androidx.compose.foundation.layout.widthIn
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -20,7 +22,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,24 +34,23 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import io.github.andreacovelli.abyssh.ui.components.AbyssButton
-import io.github.andreacovelli.abyssh.ui.components.AbyssButtonSurface
-import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
+import io.github.andreacovelli.abyssh.R
+import io.github.andreacovelli.abyssh.ui.components.AbyssKey
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
-import io.github.andreacovelli.abyssh.ui.theme.AbyssSymbolsFontFamily
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -70,6 +74,8 @@ fun KeyboardAccessoryBar(
 ) {
     val buttonHeight = 30.dp
     val buttonPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 3.dp, bottom = 3.dp)
+    // A shared minimum width keeps one-glyph keys (arrows, icons) as wide as Esc or Tab.
+    val keyModifier = Modifier.widthIn(min = 40.dp)
     var expandedGroupId by remember { mutableStateOf<String?>(null) }
     val onChildAction: (AccessoryAction) -> Unit = { action ->
         onAction(action)
@@ -112,6 +118,7 @@ fun KeyboardAccessoryBar(
                         },
                         buttonHeight = buttonHeight,
                         buttonPadding = buttonPadding,
+                        modifier = keyModifier,
                     )
                 }
                 FilesButton(
@@ -120,11 +127,13 @@ fun KeyboardAccessoryBar(
                     onOpenFiles = onOpenFiles,
                     buttonHeight = buttonHeight,
                     buttonPadding = buttonPadding,
+                    modifier = keyModifier,
                 )
                 SettingsButton(
                     onSettings = onSettings,
                     buttonHeight = buttonHeight,
                     buttonPadding = buttonPadding,
+                    modifier = keyModifier,
                 )
             }
             return
@@ -149,6 +158,7 @@ fun KeyboardAccessoryBar(
                     },
                     buttonHeight = buttonHeight,
                     buttonPadding = buttonPadding,
+                    modifier = keyModifier,
                 )
             }
             FilesButton(
@@ -157,11 +167,13 @@ fun KeyboardAccessoryBar(
                 onOpenFiles = onOpenFiles,
                 buttonHeight = buttonHeight,
                 buttonPadding = buttonPadding,
+                modifier = keyModifier,
             )
             SettingsButton(
                 onSettings = onSettings,
                 buttonHeight = buttonHeight,
                 buttonPadding = buttonPadding,
+                modifier = keyModifier,
             )
         }
     }
@@ -186,7 +198,8 @@ private fun GroupPopover(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = horizontalPadding, vertical = 4.dp)
-                .background(colors.surface)
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.surfaceVariant)
                 .padding(horizontal = 6.dp, vertical = 6.dp)
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -214,6 +227,7 @@ private fun AccessoryEntry(
     onToggleGroup: (String) -> Unit,
     buttonHeight: Dp,
     buttonPadding: PaddingValues,
+    modifier: Modifier = Modifier,
 ) {
     when (entry) {
         is ResolvedAccessoryEntry.Single ->
@@ -223,6 +237,7 @@ private fun AccessoryEntry(
                 onAction = onAction,
                 buttonHeight = buttonHeight,
                 buttonPadding = buttonPadding,
+                modifier = modifier,
             )
         is ResolvedAccessoryEntry.Group ->
             GroupButton(
@@ -231,6 +246,7 @@ private fun AccessoryEntry(
                 onToggle = { onToggleGroup(entry.group.id) },
                 buttonHeight = buttonHeight,
                 buttonPadding = buttonPadding,
+                modifier = modifier,
             )
     }
 }
@@ -242,20 +258,15 @@ private fun GroupButton(
     onToggle: () -> Unit,
     buttonHeight: Dp,
     buttonPadding: PaddingValues,
+    modifier: Modifier = Modifier,
 ) {
-    val colors = AbyssColors.current
-    val typography = AbyssTypography.current
-    AbyssButton(
+    AbyssKey(
         onClick = onToggle,
-        variant = if (expanded) AbyssButtonVariant.Filled else AbyssButtonVariant.Outlined,
-        modifier = Modifier.height(buttonHeight),
+        active = expanded,
+        modifier = modifier.height(buttonHeight),
         contentPadding = buttonPadding,
     ) {
-        AbyssText(
-            group.label,
-            style = typography.label,
-            color = if (expanded) colors.onAccent else colors.textPrimary,
-        )
+        AbyssText(group.label, style = AbyssTypography.current.label)
     }
 }
 
@@ -266,35 +277,26 @@ private fun AccessoryButton(
     onAction: (AccessoryAction) -> Unit,
     buttonHeight: Dp,
     buttonPadding: PaddingValues,
+    modifier: Modifier = Modifier,
 ) {
-    val typography = AbyssTypography.current
     val toggleModifier = (item.action as? AccessoryAction.ToggleModifier)?.modifier
-    if (toggleModifier != null) {
-        ToggleButton(
-            label = item.label,
-            enabled = modifierState.isEnabled(toggleModifier),
-            onClick = { onAction(item.action) },
-            modifier = Modifier.height(buttonHeight),
-            contentPadding = buttonPadding,
+    val specialKey = (item.action as? AccessoryAction.SendSpecialKey)?.key
+    if (specialKey != null && specialKey.isRepeatable) {
+        RepeatableAccessoryButton(
+            item = item,
+            onAction = onAction,
+            buttonHeight = buttonHeight,
+            buttonPadding = buttonPadding,
+            modifier = modifier,
         )
     } else {
-        val specialKey = (item.action as? AccessoryAction.SendSpecialKey)?.key
-        if (specialKey != null && specialKey.isRepeatable) {
-            RepeatableAccessoryButton(
-                item = item,
-                onAction = onAction,
-                buttonHeight = buttonHeight,
-                buttonPadding = buttonPadding,
-            )
-        } else {
-            AbyssButton(
-                onClick = { onAction(item.action) },
-                variant = AbyssButtonVariant.Outlined,
-                modifier = Modifier.height(buttonHeight),
-                contentPadding = buttonPadding,
-            ) {
-                AbyssText(item.label, style = typography.label)
-            }
+        AbyssKey(
+            onClick = { onAction(item.action) },
+            active = toggleModifier != null && modifierState.isEnabled(toggleModifier),
+            modifier = modifier.height(buttonHeight),
+            contentPadding = buttonPadding,
+        ) {
+            AbyssText(item.label, style = AbyssTypography.current.label)
         }
     }
 }
@@ -306,42 +308,27 @@ private fun FilesButton(
     onOpenFiles: (() -> Unit)?,
     buttonHeight: Dp,
     buttonPadding: PaddingValues,
+    modifier: Modifier = Modifier,
 ) {
-    val colors = AbyssColors.current
-    val typography = AbyssTypography.current
     if (onAbysshKey != null) {
-        AbyssButton(
+        AbyssKey(
             onClick = onAbysshKey,
-            variant = if (abysshKeyActive) AbyssButtonVariant.Filled else AbyssButtonVariant.Outlined,
-            modifier = Modifier.height(buttonHeight),
+            active = abysshKeyActive,
+            modifier = modifier.height(buttonHeight),
             contentPadding = buttonPadding,
         ) {
-            AbyssText(
-                "⌘",
-                style = typography.label,
-                color = if (abysshKeyActive) colors.onAccent else colors.textPrimary,
-            )
+            AbyssText("⌘", style = AbyssTypography.current.label)
         }
     }
     if (onOpenFiles == null) return
-    AbyssButton(
+    AccessoryIconKey(
+        icon = R.drawable.ic_folder,
+        contentDescription = stringResource(R.string.accessory_open_files),
         onClick = onOpenFiles,
-        variant = AbyssButtonVariant.Outlined,
-        modifier = Modifier.height(buttonHeight),
-        contentPadding = buttonPadding,
-    ) {
-        AbyssText(
-            text = "",
-            style = TextStyle(
-                fontFamily = AbyssSymbolsFontFamily,
-                fontWeight = typography.label.fontWeight,
-                fontStyle = typography.label.fontStyle,
-                fontSize = 16.sp,
-                lineHeight = 16.sp,
-            ),
-            color = colors.textPrimary,
-        )
-    }
+        buttonHeight = buttonHeight,
+        buttonPadding = buttonPadding,
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -349,16 +336,38 @@ private fun SettingsButton(
     onSettings: (() -> Unit)?,
     buttonHeight: Dp,
     buttonPadding: PaddingValues,
+    modifier: Modifier = Modifier,
 ) {
-    val typography = AbyssTypography.current
     if (onSettings == null) return
-    AbyssButton(
+    AccessoryIconKey(
+        icon = R.drawable.ic_settings,
+        contentDescription = stringResource(R.string.accessory_settings),
         onClick = onSettings,
-        variant = AbyssButtonVariant.Outlined,
-        modifier = Modifier.height(buttonHeight),
+        buttonHeight = buttonHeight,
+        buttonPadding = buttonPadding,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun AccessoryIconKey(
+    @DrawableRes icon: Int,
+    contentDescription: String,
+    onClick: () -> Unit,
+    buttonHeight: Dp,
+    buttonPadding: PaddingValues,
+    modifier: Modifier = Modifier,
+) {
+    AbyssKey(
+        onClick = onClick,
+        modifier = modifier.height(buttonHeight),
         contentPadding = buttonPadding,
     ) {
-        AbyssText("⚙", style = typography.label)
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = contentDescription,
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 
@@ -368,6 +377,7 @@ private fun RepeatableAccessoryButton(
     onAction: (AccessoryAction) -> Unit,
     buttonHeight: Dp,
     buttonPadding: PaddingValues,
+    modifier: Modifier = Modifier,
 ) {
     val typography = AbyssTypography.current
     val haptics = LocalHapticFeedback.current
@@ -375,7 +385,7 @@ private fun RepeatableAccessoryButton(
     val currentOnAction by rememberUpdatedState(onAction)
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .height(buttonHeight)
             .pointerInput(item.action) {
                 awaitEachGesture {
@@ -411,39 +421,14 @@ private fun RepeatableAccessoryButton(
                     true
                 }
             },
+        propagateMinConstraints = true,
     ) {
-        AbyssButtonSurface(
+        AbyssKey(
             modifier = Modifier.height(buttonHeight),
             pressed = pressed,
-            variant = AbyssButtonVariant.Outlined,
             contentPadding = buttonPadding,
         ) {
             AbyssText(item.label, style = typography.label)
         }
-    }
-}
-
-@Composable
-private fun ToggleButton(
-    label: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier,
-    contentPadding: PaddingValues,
-) {
-    val colors = AbyssColors.current
-    val typography = AbyssTypography.current
-    val activeLabel = if (enabled) "• $label" else label
-    AbyssButton(
-        onClick = onClick,
-        modifier = modifier,
-        contentPadding = contentPadding,
-        variant = if (enabled) AbyssButtonVariant.Filled else AbyssButtonVariant.Outlined,
-    ) {
-        AbyssText(
-            activeLabel,
-            style = typography.label,
-            color = if (enabled) colors.onAccent else colors.textSecondary,
-        )
     }
 }

@@ -91,7 +91,6 @@ fun KeysContent(vm: KeysViewModel, modifier: Modifier = Modifier) {
             AbyssButton(
                 onClick = { showGenerateDialog = true },
                 variant = AbyssButtonVariant.Outlined,
-                bracketed = true,
                 modifier = Modifier.weight(1f),
             ) {
                 AbyssText(stringResource(R.string.keys_generate_button), style = typography.label, color = colors.accent)
@@ -99,7 +98,6 @@ fun KeysContent(vm: KeysViewModel, modifier: Modifier = Modifier) {
             AbyssButton(
                 onClick = { showImportDialog = true },
                 variant = AbyssButtonVariant.Outlined,
-                bracketed = true,
                 modifier = Modifier.weight(1f),
             ) {
                 AbyssText(stringResource(R.string.keys_import_title), style = typography.label, color = colors.accent)
@@ -182,7 +180,7 @@ private fun KeyCard(item: KeyListItem, onRename: () -> Unit, onDelete: () -> Uni
             Spacer(modifier = Modifier.height(6.dp))
             AbyssText(
                 text = key.publicKeyOpenSsh,
-                style = typography.bodySmall,
+                style = typography.codeSmall,
                 color = colors.textMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -192,7 +190,6 @@ private fun KeyCard(item: KeyListItem, onRename: () -> Unit, onDelete: () -> Uni
                 AbyssButton(
                     onClick = onRename,
                     variant = AbyssButtonVariant.Ghost,
-                    bracketed = true,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 ) {
                     AbyssText(stringResource(R.string.action_rename), style = typography.label, color = colors.textSecondary)
@@ -202,7 +199,6 @@ private fun KeyCard(item: KeyListItem, onRename: () -> Unit, onDelete: () -> Uni
                         copyToClipboard(context, "SSH Public Key", key.publicKeyOpenSsh, R.string.public_key_copied)
                     },
                     variant = AbyssButtonVariant.Ghost,
-                    bracketed = true,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 ) {
                     AbyssText(stringResource(R.string.action_copy), style = typography.label, color = colors.textSecondary)
@@ -210,7 +206,6 @@ private fun KeyCard(item: KeyListItem, onRename: () -> Unit, onDelete: () -> Uni
                 AbyssButton(
                     onClick = onDelete,
                     variant = AbyssButtonVariant.Ghost,
-                    bracketed = true,
                     borderColor = colors.error,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 ) {
@@ -284,7 +279,6 @@ private fun ImportKeyDialog(onConfirm: (String, String) -> Unit, onDismiss: () -
                 AbyssButton(
                     onClick = { fileLauncher.launch(arrayOf("*/*")) },
                     variant = AbyssButtonVariant.Ghost,
-                    bracketed = true,
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 ) {
                     AbyssText(stringResource(R.string.keys_choose_file), style = typography.labelSmall, color = colors.accent)
@@ -295,6 +289,7 @@ private fun ImportKeyDialog(onConfirm: (String, String) -> Unit, onDismiss: () -
                 value = privateKey,
                 onValueChange = { privateKey = it },
                 label = stringResource(R.string.keys_private_key),
+                monospace = true,
                 placeholder = "-----BEGIN OPENSSH PRIVATE KEY-----",
                 singleLine = false,
                 maxLines = 8,

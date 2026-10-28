@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
@@ -83,7 +86,6 @@ fun MultiplexerSessionPanel(
             AbyssButton(
                 onClick = onRefresh,
                 variant = AbyssButtonVariant.Ghost,
-                bracketed = true,
                 borderColor = colors.textMuted,
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
             ) {
@@ -95,7 +97,6 @@ fun MultiplexerSessionPanel(
                     onDismiss()
                 },
                 variant = AbyssButtonVariant.Ghost,
-                bracketed = true,
                 borderColor = colors.textMuted,
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
             ) {
@@ -117,9 +118,11 @@ private fun MultiplexerSessionRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
             .border(
                 1.dp,
                 colors.border.copy(alpha = if (session.attached) 0.65f else 0.35f),
+                MaterialTheme.shapes.medium,
             )
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -128,11 +131,12 @@ private fun MultiplexerSessionRow(
         Box(
             modifier = Modifier
                 .size(8.dp)
+                .clip(CircleShape)
                 .background(if (session.attached) colors.success else Color.Transparent),
         )
         AbyssText(
             session.name,
-            style = typography.body,
+            style = typography.code,
             color = colors.textPrimary,
             modifier = Modifier.weight(1f),
         )
@@ -143,7 +147,6 @@ private fun MultiplexerSessionRow(
             onClick = onAttach,
             modifier = Modifier.defaultMinSize(minHeight = 48.dp, minWidth = 48.dp),
             variant = AbyssButtonVariant.Ghost,
-            bracketed = true,
             borderColor = colors.textMuted,
             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
         ) {

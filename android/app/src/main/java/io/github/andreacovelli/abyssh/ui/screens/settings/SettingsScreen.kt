@@ -1,5 +1,9 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
+import androidx.compose.material3.HorizontalDivider
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
@@ -122,7 +126,6 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        AbyssText("$ ", style = typography.headline, color = colors.textMuted)
                         AbyssText(stringResource(R.string.server_list_settings), style = typography.headline)
                     }
                     AbyssCloseButton(
@@ -133,28 +136,10 @@ fun SettingsScreen(
             }
 
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    SettingsCategory.entries.forEach { category ->
-                        val isSelected = category == selectedCategory
-                        AbyssButton(
-                            onClick = { selectedCategory = category },
-                            variant = AbyssButtonVariant.Outlined,
-                            borderColor = if (isSelected) colors.accent else colors.border,
-                            backgroundColor =
-                                if (isSelected) colors.accent.copy(alpha = 0.12f) else null,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            AbyssText(
-                                stringResource(category.label),
-                                style = typography.label,
-                                color = if (isSelected) colors.accent else colors.textSecondary,
-                            )
-                        }
-                    }
-                }
+                SettingsCategoryTabs(
+                    selected = selectedCategory,
+                    onSelect = { selectedCategory = it },
+                )
             }
 
             item {
@@ -276,12 +261,7 @@ private fun GeneralSettings(
     Spacer(modifier = Modifier.height(16.dp))
     FontSelectorSection(currentFont = currentFont, onFontSelected = onFontSelected)
     Spacer(modifier = Modifier.height(16.dp))
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        AbyssText("── ", style = typography.labelSmall, color = colors.textMuted)
-        AbyssText(stringResource(R.string.settings_section_security), style = typography.labelSmall, color = colors.textMuted)
-        AbyssText(" ", style = typography.labelSmall, color = colors.textMuted)
-        Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
-    }
+    AbyssSectionHeader(stringResource(R.string.settings_section_security))
     Spacer(modifier = Modifier.height(12.dp))
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -324,7 +304,6 @@ private fun GeneralSettings(
         AbyssButton(
             onClick = onOpenBackup,
             variant = AbyssButtonVariant.Outlined,
-            bracketed = true,
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
         ) {
             AbyssText(stringResource(R.string.action_manage), style = typography.label)
@@ -332,4 +311,29 @@ private fun GeneralSettings(
     }
     Spacer(modifier = Modifier.height(4.dp))
     AbyssText(stringResource(R.string.settings_backup_hint), style = typography.bodySmall, color = colors.textMuted)
+}
+
+@Composable
+private fun SettingsCategoryTabs(
+    selected: SettingsCategory,
+    onSelect: (SettingsCategory) -> Unit,
+) {
+    val colors = AbyssColors.current
+    val typography = AbyssTypography.current
+    PrimaryTabRow(
+        selectedTabIndex = selected.ordinal,
+        containerColor = colors.background,
+        contentColor = colors.accent,
+        divider = { HorizontalDivider(color = colors.border) },
+    ) {
+        SettingsCategory.entries.forEach { category ->
+            Tab(
+                selected = category == selected,
+                onClick = { onSelect(category) },
+                selectedContentColor = colors.accent,
+                unselectedContentColor = colors.textSecondary,
+                text = { AbyssText(stringResource(category.label), style = typography.label) },
+            )
+        }
+    }
 }

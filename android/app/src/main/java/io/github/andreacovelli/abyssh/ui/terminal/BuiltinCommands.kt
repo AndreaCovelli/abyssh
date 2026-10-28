@@ -19,12 +19,12 @@ enum class BuiltinCommand(
     val description: String,
     val defaultKey: Char,
 ) {
-    Tabs("tabs", "tabs", "show tab manager", 't'),
-    NewTab("new_tab", "new tab", "open a new tab", 'n'),
-    Actions("actions", "actions", "toggle floating custom actions button", 'a'),
-    Settings("settings", "settings", "open settings", 's'),
-    Close("close", "close", "close the active tab", 'q'),
-    Search("search", "search", "search the terminal output", 'f');
+    Tabs("tabs", "Tabs", "Show tab manager", 't'),
+    NewTab("new_tab", "New tab", "Open a new tab", 'n'),
+    Actions("actions", "Actions", "Toggle floating custom actions button", 'a'),
+    Settings("settings", "Settings", "Open settings", 's'),
+    Close("close", "Close", "Close the active tab", 'q'),
+    Search("search", "Search", "Search the terminal output", 'f');
 
     companion object {
         fun fromId(id: String): BuiltinCommand? = entries.find { it.id == id }

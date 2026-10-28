@@ -913,41 +913,13 @@ class TerminalSessionEngine(
             privateKeyPem = params.privateKeyPem,
             keyPassphrase = params.keyPassphrase,
         )
-        val term = resolveRemoteTerm(RemoteTerm.cacheKey(params.host, params.port, username))
+        val term = RemoteTerm.SSH
         val startupCommand = params.multiplexerStartupCommand()?.trim().orEmpty()
         if (startupCommand.isNotEmpty()) {
             nativeSsh.openExecPty(startupCommand, cols, rows, ptyWidthPx(), ptyHeightPx(), term)
         } else {
             nativeSsh.openShell(cols, rows, ptyWidthPx(), ptyHeightPx(), term)
         }
-    }
-
-    // Runs the terminfo probe on its own channel; opening the shell afterwards
-    // replaces that channel on the same connection.
-    private suspend fun resolveRemoteTerm(cacheKey: String): String {
-        RemoteTerm.cached(cacheKey)?.let { return it }
-        if (!runCatching { nativeSsh.openExec(RemoteTerm.PROBE_COMMAND) }.getOrDefault(false)) {
-            return RemoteTerm.GHOSTTY
-        }
-        val output = StringBuilder()
-        var finished = false
-        val deadline = System.currentTimeMillis() + TERM_PROBE_TIMEOUT_MS
-        while (!finished && System.currentTimeMillis() < deadline) {
-            val chunk = runCatching { nativeSsh.read(4096) }.getOrNull()
-            if (chunk != null && chunk.isNotEmpty()) {
-                output.append(String(chunk, Charsets.UTF_8))
-            } else if (nativeSsh.isChannelEof()) {
-                finished = true
-            } else {
-                delay(TERM_PROBE_POLL_MS)
-            }
-        }
-        // A probe that hangs (a forced command, say) would hang on every
-        // reconnect too, so its default answer is cached like any other.
-        val term = RemoteTerm.fromProbeOutput(output.toString(), finished) ?: RemoteTerm.GHOSTTY
-        Log.d("TerminalSession", "TERM probe chose $term finished=$finished")
-        RemoteTerm.remember(cacheKey, term)
-        return term
     }
 
     private suspend fun establishMoshConnection(params: ConnectionParams, username: String) {
@@ -1322,8 +1294,6 @@ class TerminalSessionEngine(
         private const val NEAR_IDLE_DELAY_MS = 8L
         private const val IDLE_DELAY_MS = 24L
         private const val MAX_READ_DELAY_MS = 64L
-        private const val TERM_PROBE_TIMEOUT_MS = 3_000L
-        private const val TERM_PROBE_POLL_MS = 25L
     }
 
     // Read-loop poll interval as a function of how long the session has been idle:

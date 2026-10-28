@@ -1,5 +1,10 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.layout.size
+import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
+import io.github.andreacovelli.abyssh.ui.components.AbyssExpandIcon
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.AnimatedVisibility
@@ -21,7 +26,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,7 +36,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
@@ -46,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssSwitch
+import io.github.andreacovelli.abyssh.ui.components.AbyssSegmentedControl
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
@@ -71,12 +75,7 @@ internal fun ThemeSelectorSection(
         availableThemes.associateWith { themeName -> GhosttyThemeRegistry.getTheme(context, themeName) }
     }
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        AbyssText("── ", style = typography.labelSmall, color = colors.textMuted)
-        AbyssText(stringResource(R.string.settings_section_theme), style = typography.labelSmall, color = colors.textMuted)
-        AbyssText(" ", style = typography.labelSmall, color = colors.textMuted)
-        Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
-    }
+    AbyssSectionHeader(stringResource(R.string.settings_section_theme))
     Spacer(modifier = Modifier.height(12.dp))
 
     ThemeModePills(themeMode = themeMode, onThemeModeChanged = onThemeModeChanged)
@@ -116,35 +115,12 @@ private fun ThemeModePills(
     themeMode: ThemeMode,
     onThemeModeChanged: (ThemeMode) -> Unit,
 ) {
-    val colors = AbyssColors.current
-    val typography = AbyssTypography.current
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(colors.surface),
-    ) {
-        ThemeMode.entries.forEach { mode ->
-            val isSelected = mode == themeMode
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .background(
-                        color = if (isSelected) colors.accent else Color.Transparent,
-                    )
-                    .clickable { onThemeModeChanged(mode) }
-                    .padding(vertical = 10.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                AbyssText(
-                    mode.label,
-                    style = typography.label,
-                    color = if (isSelected) colors.background else colors.textSecondary,
-                )
-            }
-        }
-    }
+    AbyssSegmentedControl(
+        options = ThemeMode.entries,
+        labels = ThemeMode.entries.associateWith { it.label },
+        selected = themeMode,
+        onSelect = onThemeModeChanged,
+    )
 }
 
 @Composable
@@ -231,7 +207,6 @@ private fun ThemePickerButton(
     AbyssButton(
         onClick = onToggle,
         variant = AbyssButtonVariant.Outlined,
-        bracketed = true,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -239,7 +214,7 @@ private fun ThemePickerButton(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AbyssText(currentTheme, style = typography.label)
-            AbyssText(if (expanded) "▲" else "▼", style = typography.labelSmall, color = colors.textMuted)
+            AbyssExpandIcon(expanded)
         }
     }
 }
@@ -319,7 +294,14 @@ private fun ThemePickerRow(
                     color = if (isSelected) colors.accent else colors.textPrimary,
                 )
             }
-            if (isSelected) AbyssText("●", style = typography.label, color = colors.accent)
+            if (isSelected) {
+                Icon(
+                    painterResource(R.drawable.ic_check),
+                    contentDescription = null,
+                    tint = colors.accent,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
         }
     }
 }
@@ -353,7 +335,7 @@ private fun ThemePreview(theme: GhosttyTheme, name: String) {
 @Composable
 private fun ThemePreviewBody(theme: GhosttyTheme) {
     val typography = AbyssTypography.current
-    val mono = typography.body.copy(fontSize = 9.sp, lineHeight = 12.sp)
+    val mono = typography.code.copy(fontSize = 9.sp, lineHeight = 12.sp)
 
     Column(
         modifier = Modifier.fillMaxWidth().background(theme.background).padding(10.dp),

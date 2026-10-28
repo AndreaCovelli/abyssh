@@ -1,22 +1,16 @@
 package io.github.andreacovelli.abyssh.ui.components
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
+import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
@@ -27,55 +21,39 @@ fun AbyssDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    dismissLabel: String = "Cancel",
+    dismissLabel: String = stringResource(R.string.action_cancel),
     properties: DialogProperties = DialogProperties(),
     content: @Composable () -> Unit,
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
-    val shape = RectangleShape
 
-    Dialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = modifier,
         properties = properties,
-    ) {
-        Column(
-            modifier = modifier
-                .fillMaxWidth()
-                .background(colors.surfaceVariant, shape)
-                .border(BorderStroke(1.dp, colors.border), shape)
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            AbyssText(text = title, style = typography.title)
-            // Scroll the body so the buttons stay on screen with long content or the keyboard up.
+        containerColor = colors.surface,
+        titleContentColor = colors.textPrimary,
+        textContentColor = colors.textPrimary,
+        title = { AbyssText(text = title, style = typography.headline) },
+        // Scroll the body so the buttons stay on screen with long content or the keyboard up.
+        text = {
             Column(
-                modifier = Modifier
-                    .weight(1f, fill = false)
-                    .verticalScroll(rememberScrollState()),
+                modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 content()
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-            ) {
-                AbyssButton(
-                    onClick = onDismiss,
-                    variant = AbyssButtonVariant.Ghost,
-                    bracketed = true,
-                    borderColor = colors.textMuted,
-                ) {
-                    AbyssText(dismissLabel, style = typography.label, color = colors.textMuted)
-                }
-                AbyssButton(
-                    onClick = onConfirm,
-                    bracketed = true,
-                ) {
-                    AbyssText(confirmLabel, style = typography.label, color = colors.onAccent)
-                }
+        },
+        dismissButton = {
+            AbyssButton(onClick = onDismiss, variant = AbyssButtonVariant.Ghost) {
+                AbyssText(dismissLabel, style = typography.label)
             }
-        }
-    }
+        },
+        confirmButton = {
+            AbyssButton(onClick = onConfirm, variant = AbyssButtonVariant.Ghost) {
+                AbyssText(confirmLabel, style = typography.label)
+            }
+        },
+    )
 }

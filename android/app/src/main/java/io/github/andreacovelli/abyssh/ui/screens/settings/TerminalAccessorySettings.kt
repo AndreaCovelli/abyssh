@@ -1,5 +1,10 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.layout.size
+import io.github.andreacovelli.abyssh.ui.components.AbyssExpandIcon
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -117,12 +122,7 @@ internal fun TerminalSettings(
     }
     val density = LocalDensity.current
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        AbyssText("── ", style = typography.labelSmall, color = colors.textMuted)
-        AbyssText(stringResource(R.string.settings_section_terminal), style = typography.labelSmall, color = colors.textMuted)
-        AbyssText(" ", style = typography.labelSmall, color = colors.textMuted)
-        Box(modifier = Modifier.height(1.dp).background(colors.textMuted).fillMaxWidth())
-    }
+    AbyssSectionHeader(stringResource(R.string.settings_section_terminal))
     Spacer(modifier = Modifier.height(12.dp))
 
     Column(
@@ -156,11 +156,12 @@ internal fun TerminalSettings(
                                 )
                             },
                             variant = AbyssButtonVariant.Outlined,
-                            bracketed = true,
                             enabled = currentTerminalFontSize.roundToInt() > SettingsRepository.MIN_TERMINAL_FONT_SIZE.toInt(),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            contentPadding = PaddingValues(0.dp),
+                            modifier = Modifier.size(40.dp),
+                            contentDescription = stringResource(R.string.settings_font_size_decrease),
                         ) {
-                            AbyssText("-", style = typography.label)
+                            Icon(painterResource(R.drawable.ic_remove), contentDescription = null)
                         }
                         AbyssTextField(
                             value = "${currentTerminalFontSize.toInt()}",
@@ -179,7 +180,7 @@ internal fun TerminalSettings(
                             label = "",
                             showLabel = false,
                             singleLine = true,
-                            modifier = Modifier.width(64.dp),
+                            modifier = Modifier.width(72.dp),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             autoFocus = false,
                             textAlign = TextAlign.Center,
@@ -193,11 +194,12 @@ internal fun TerminalSettings(
                                 )
                             },
                             variant = AbyssButtonVariant.Outlined,
-                            bracketed = true,
                             enabled = currentTerminalFontSize.roundToInt() < SettingsRepository.MAX_TERMINAL_FONT_SIZE.toInt(),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            contentPadding = PaddingValues(0.dp),
+                            modifier = Modifier.size(40.dp),
+                            contentDescription = stringResource(R.string.settings_font_size_increase),
                         ) {
-                            AbyssText("+", style = typography.label)
+                            Icon(painterResource(R.drawable.ic_add), contentDescription = null)
                         }
                     }
                 }
@@ -220,7 +222,6 @@ internal fun TerminalSettings(
                         AbyssButton(
                             onClick = { tabModeExpanded = !tabModeExpanded },
                             variant = AbyssButtonVariant.Outlined,
-                            bracketed = true,
                             modifier = Modifier.onGloballyPositioned { coordinates ->
                                 tabModeAnchorBounds = coordinates.boundsInWindow()
                             },
@@ -235,11 +236,7 @@ internal fun TerminalSettings(
                                     style = typography.label,
                                     color = colors.textPrimary,
                                 )
-                                AbyssText(
-                                    if (tabModeExpanded) "▲" else "▼",
-                                    style = typography.labelSmall,
-                                    color = colors.textMuted,
-                                )
+                                AbyssExpandIcon(tabModeExpanded)
                             }
                         }
                     }
@@ -283,11 +280,15 @@ internal fun TerminalSettings(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                AbyssText(
-                                    if (isSelected) "✓" else " ",
-                                    style = typography.label,
-                                    color = if (isSelected) colors.textPrimary else colors.textMuted,
-                                )
+                                Box(Modifier.size(18.dp)) {
+                                    if (isSelected) {
+                                        Icon(
+                                            painterResource(R.drawable.ic_check),
+                                            contentDescription = null,
+                                            tint = colors.textPrimary,
+                                        )
+                                    }
+                                }
                                 AbyssText(
                                     tabModeLabel(mode),
                                     style = typography.label,
@@ -325,7 +326,6 @@ internal fun TerminalSettings(
                     AbyssButton(
                         onClick = onEditAccessoryLayout,
                         variant = AbyssButtonVariant.Outlined,
-                        bracketed = true,
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                     ) {
                         AbyssText(stringResource(R.string.action_customize), style = typography.label)
@@ -404,7 +404,6 @@ internal fun TerminalSettings(
                     AbyssButton(
                         onClick = onEditCustomActions,
                         variant = AbyssButtonVariant.Outlined,
-                        bracketed = true,
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                     ) {
                         AbyssText(stringResource(R.string.action_customize), style = typography.label)
@@ -467,7 +466,6 @@ internal fun TerminalSettings(
                     AbyssButton(
                         onClick = onEditAbysshCommands,
                         variant = AbyssButtonVariant.Outlined,
-                        bracketed = true,
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                     ) {
                         AbyssText(stringResource(R.string.action_customize), style = typography.label)
@@ -789,7 +787,6 @@ internal fun AbysshCommandsEditorSheet(
                     AbyssButton(
                         onClick = { draft = BuiltinShortcutStore.defaults },
                         variant = AbyssButtonVariant.Outlined,
-                        bracketed = true,
                         modifier = Modifier.weight(1f),
                     ) {
                         AbyssText(stringResource(R.string.action_reset), style = typography.label)
@@ -797,7 +794,6 @@ internal fun AbysshCommandsEditorSheet(
 
                     AbyssButton(
                         onClick = { onSave(draft) },
-                        bracketed = true,
                         modifier = Modifier.weight(1f),
                     ) {
                         AbyssText(stringResource(R.string.action_save), style = typography.label, color = colors.onAccent)
@@ -1037,7 +1033,6 @@ internal fun AccessoryLayoutEditorSheet(
                     AbyssButton(
                         onClick = { draftSelectedIds = TerminalAccessoryLayoutStore.defaultLayoutIds() },
                         variant = AbyssButtonVariant.Outlined,
-                        bracketed = true,
                         modifier = Modifier.weight(1f),
                     ) {
                         AbyssText(stringResource(R.string.action_reset), style = typography.label)
@@ -1045,7 +1040,6 @@ internal fun AccessoryLayoutEditorSheet(
 
                     AbyssButton(
                         onClick = { onSave(draftSelectedIds) },
-                        bracketed = true,
                         modifier = Modifier.weight(1f),
                     ) {
                         AbyssText(stringResource(R.string.action_save), style = typography.label, color = colors.onAccent)
@@ -1080,11 +1074,11 @@ private fun PreviewKeyChip(
                 color = if (dragging) colors.accent else colors.textPrimary,
             )
             if (entry is ResolvedAccessoryEntry.Group) {
-                AbyssText(
-                    text = "▾",
-                    style = typography.labelSmall,
-                    color = if (dragging) colors.accent else colors.textMuted,
-                    modifier = Modifier.padding(start = 4.dp),
+                Icon(
+                    painterResource(R.drawable.ic_expand_more),
+                    contentDescription = null,
+                    tint = if (dragging) colors.accent else colors.textMuted,
+                    modifier = Modifier.padding(start = 2.dp).size(16.dp),
                 )
             }
         }
@@ -1121,13 +1115,15 @@ private fun AccessoryChooserRow(
             modifier = Modifier
                 .width(34.dp)
                 .height(34.dp)
+                .clip(RoundedCornerShape(8.dp))
                 .background(if (selected) colors.accent.copy(alpha = 0.18f) else colors.surface),
             contentAlignment = Alignment.Center,
         ) {
-            AbyssText(
-                text = if (selected) "●" else "+",
-                style = typography.label,
-                color = if (selected) colors.accent else colors.textMuted,
+            Icon(
+                painter = painterResource(if (selected) R.drawable.ic_check else R.drawable.ic_add),
+                contentDescription = null,
+                tint = if (selected) colors.accent else colors.textMuted,
+                modifier = Modifier.size(20.dp),
             )
         }
 

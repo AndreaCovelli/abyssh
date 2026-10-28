@@ -1,5 +1,15 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.ui.res.painterResource
+import io.github.andreacovelli.abyssh.ui.components.AbyssIconButton
 import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
@@ -134,6 +144,8 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private const val NO_HELD_KEY = -1
+
 private fun TerminalViewModel.dispatchTextWithModifierState(
     text: String,
     modifierState: ModifierState,
@@ -184,8 +196,9 @@ private fun NewTabHostPicker(
         Column(
             modifier =
                 Modifier.width(320.dp)
-                    .background(colors.background)
-                    .border(1.dp, colors.border)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(colors.surface)
+                    .border(1.dp, colors.border, RoundedCornerShape(16.dp))
                     .padding(4.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
@@ -193,7 +206,6 @@ private fun NewTabHostPicker(
                 onClick = onCurrentHost,
                 modifier = Modifier.fillMaxWidth(),
                 variant = AbyssButtonVariant.Ghost,
-                bracketed = true,
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
             ) {
                 AbyssText(
@@ -219,7 +231,6 @@ private fun NewTabHostPicker(
                             onClick = { onHostSelected(host.id) },
                             modifier = Modifier.fillMaxWidth(),
                             variant = AbyssButtonVariant.Ghost,
-                            bracketed = true,
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                         ) {
                             Column(modifier = Modifier.fillMaxWidth()) {
@@ -230,7 +241,7 @@ private fun NewTabHostPicker(
                                 )
                                 AbyssText(
                                     "${host.username}@${host.host}:${host.port}",
-                                    style = typography.labelSmall,
+                                    style = typography.codeSmall,
                                     color = colors.textMuted,
                                 )
                             }
@@ -285,24 +296,21 @@ private fun TerminalCustomActionsFab(
                                 onClearFilter()
                             },
                             variant = AbyssButtonVariant.Outlined,
-                            bracketed = true,
+                            backgroundColor = colors.surface,
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         ) {
                             AbyssText(action.label, style = typography.label)
                         }
                     }
-                    AbyssButton(
+                    AbyssIconButton(
+                        icon = R.drawable.ic_arrow_back,
+                        contentDescription = stringResource(R.string.action_back),
                         onClick = {
                             expanded = false
                             onClearFilter()
                         },
-                        variant = AbyssButtonVariant.Ghost,
-                        bracketed = true,
-                        borderColor = colors.textMuted,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    ) {
-                        AbyssText("<", style = typography.label, color = colors.textMuted)
-                    }
+                        tonal = true,
+                    )
                 } else if (selectedGroup == null) {
                     groups.forEach { group ->
                         AbyssButton(
@@ -316,7 +324,7 @@ private fun TerminalCustomActionsFab(
                                 }
                             },
                             variant = AbyssButtonVariant.Outlined,
-                            bracketed = true,
+                            backgroundColor = colors.surface,
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         ) {
                             AbyssText(group.keyLabel, style = typography.label)
@@ -331,28 +339,23 @@ private fun TerminalCustomActionsFab(
                                 selectedGroupKey = null
                             },
                             variant = AbyssButtonVariant.Outlined,
-                            bracketed = true,
+                            backgroundColor = colors.surface,
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                         ) {
                             AbyssText(action.label, style = typography.label)
                         }
                     }
-                    AbyssButton(
+                    AbyssIconButton(
+                        icon = R.drawable.ic_arrow_back,
+                        contentDescription = stringResource(R.string.action_back),
                         onClick = { selectedGroupKey = null },
-                        variant = AbyssButtonVariant.Ghost,
-                        bracketed = true,
-                        borderColor = colors.textMuted,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    ) {
-                        AbyssText("<", style = typography.label, color = colors.textMuted)
-                    }
+                        tonal = true,
+                    )
                 }
             }
         }
 
-        // TUI-style action toggle — square bracketed button instead of a
-        // circular Material FAB. Reads like a macro/quick-key trigger.
-        AbyssButton(
+        SmallFloatingActionButton(
             onClick = {
                 expanded = !expanded
                 if (!expanded) {
@@ -360,15 +363,14 @@ private fun TerminalCustomActionsFab(
                     onClearFilter()
                 }
             },
-            variant = if (expanded) AbyssButtonVariant.Ghost else AbyssButtonVariant.Filled,
-            bracketed = true,
-            borderColor = if (expanded) colors.textMuted else null,
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            containerColor = if (expanded) colors.surface else colors.accent,
+            contentColor = if (expanded) colors.textSecondary else colors.onAccent,
         ) {
-            AbyssText(
-                if (expanded) "x" else "+",
-                style = typography.label,
-                color = if (expanded) colors.textMuted else colors.onAccent,
+            Icon(
+                painter = painterResource(if (expanded) R.drawable.ic_close else R.drawable.ic_add),
+                contentDescription = stringResource(
+                    if (expanded) R.string.action_close else R.string.settings_custom_actions,
+                ),
             )
         }
     }
@@ -522,6 +524,9 @@ fun TerminalScreen(
                 onSelectAmongActions = { actions -> fabFilteredActions = actions },
             )
         }
+    // The terminal input view is created once and keeps its callbacks, so it reads
+    // the bindings through this holder rather than capturing the first instance.
+    val currentAbysshKeys by rememberUpdatedState(abysshKeys)
     val multiplexerState by vm.multiplexerState.collectAsStateWithLifecycle()
 
     LaunchedEffect(terminalFontSizeSp) {
@@ -569,6 +574,8 @@ fun TerminalScreen(
                 else -> emptyList()
             }
         }
+    // Read by the terminal input view, which keeps the callbacks it was created with.
+    val currentTabsForHost by rememberUpdatedState(tabsForHost)
     val activeHostCount =
         remember(tabs) {
             tabs.map { it.spec.hostId ?: it.spec.sessionKey }
@@ -865,7 +872,6 @@ fun TerminalScreen(
                                     onClick = openAnotherSessionForCurrentHost,
                                     modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
                                     variant = AbyssButtonVariant.Outlined,
-                                    bracketed = true,
                                 ) {
                                     AbyssText(
                                         stringResource(R.string.terminal_new_connection),
@@ -1065,6 +1071,10 @@ fun TerminalScreen(
                     // Set while a Ctrl+C that copied is held, so its repeat and release
                     // stay out of the terminal after the selection is gone.
                     val copyShortcutHeld = remember { booleanArrayOf(false) }
+
+                    // The key that completed a ⌘ shortcut, so its repeat and release
+                    // stay out of the terminal. NO_HELD_KEY when none is held.
+                    val abysshShortcutKeyHeld = remember { intArrayOf(NO_HELD_KEY) }
 
                     // Tapping the menu can move focus off the hidden input view, which
                     // leaves keys like Backspace with nowhere to go; take it back.
@@ -1270,7 +1280,6 @@ fun TerminalScreen(
                                         onClick = openAnotherSessionForCurrentHost,
                                         modifier = Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
                                         variant = AbyssButtonVariant.Outlined,
-                                        bracketed = true,
                                     ) {
                                         AbyssText(
                                             stringResource(R.string.terminal_new_connection),
@@ -1510,7 +1519,7 @@ fun TerminalScreen(
                                     if (pwdText != null) {
                                         AbyssText(
                                             text = pwdText,
-                                            style = typography.labelSmall,
+                                            style = typography.codeSmall,
                                             color = colors.textPrimary.copy(alpha = 0.7f),
                                         )
                                     }
@@ -1571,8 +1580,10 @@ fun TerminalScreen(
                                         modifier =
                                             Modifier.offset { IntOffset(menuX, menuY) }
                                                 .onGloballyPositioned { menuSize = it.size }
-                                                .background(colors.background)
-                                                .border(1.dp, colors.border)
+                                                .shadow(3.dp, MaterialTheme.shapes.medium)
+                                                .clip(MaterialTheme.shapes.medium)
+                                                .background(colors.surface)
+                                                .border(1.dp, colors.border, MaterialTheme.shapes.medium)
                                                 .padding(horizontal = 4.dp, vertical = 2.dp),
                                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                                         verticalAlignment = Alignment.CenterVertically,
@@ -1581,7 +1592,6 @@ fun TerminalScreen(
                                             AbyssButton(
                                                 onClick = ::copySelection,
                                                 variant = AbyssButtonVariant.Ghost,
-                                                bracketed = true,
                                                 borderColor = colors.textMuted,
                                                 contentPadding =
                                                     PaddingValues(
@@ -1603,7 +1613,6 @@ fun TerminalScreen(
                                                     requestInputFocus()
                                                 },
                                                 variant = AbyssButtonVariant.Ghost,
-                                                bracketed = true,
                                                 borderColor = colors.textMuted,
                                                 contentPadding =
                                                     PaddingValues(
@@ -1628,7 +1637,7 @@ fun TerminalScreen(
                                         TerminalInputView(viewContext)
                                             .apply {
                                                 onTerminalText = { text ->
-                                                    if (abysshKeys.handleText(text)) {
+                                                    if (currentAbysshKeys.handleText(text)) {
                                                         // Consumed by the abyssh key prefix.
                                                     } else if (
                                                         isCopyShortcut(text, modifierState, hasSelectedText())
@@ -1646,10 +1655,35 @@ fun TerminalScreen(
                                                         )
                                                     }
                                                 }
-                                                onTerminalKey = { key, codepoint, mods, action, charCode ->
+                                                onTerminalKey = onKey@{ key, codepoint, mods, action, charCode ->
+                                                    if (
+                                                        action != GhosttyKeyAction.Press &&
+                                                        abysshShortcutKeyHeld[0] == key
+                                                    ) {
+                                                        if (action == GhosttyKeyAction.Release) {
+                                                            abysshShortcutKeyHeld[0] = NO_HELD_KEY
+                                                        }
+                                                        return@onKey
+                                                    }
                                                     var shouldForwardToTerminal = true
                                                     val overlayOpen = showTabSheet || showGlobalTabManager
-                                                    val overlayTabs = if (showGlobalTabManager) tabs else tabsForHost
+                                                    val overlayTabs =
+                                                        if (showGlobalTabManager) tabs else currentTabsForHost
+                                                    // Keyboards without autocorrect send letters as key
+                                                    // events rather than text, so the ⌘ prefix is checked
+                                                    // here as well as in onTerminalText.
+                                                    val typed = if (charCode != 0) charCode else codepoint
+                                                    if (
+                                                        action == GhosttyKeyAction.Press &&
+                                                        !(overlayOpen && overlayTabs.isNotEmpty()) &&
+                                                        typed > ' '.code &&
+                                                        currentAbysshKeys.handleText(
+                                                            StringBuilder().appendCodePoint(typed).toString(),
+                                                        )
+                                                    ) {
+                                                        abysshShortcutKeyHeld[0] = key
+                                                        return@onKey
+                                                    }
                                                     if (
                                                         overlayOpen &&
                                                             overlayTabs.isEmpty() &&
@@ -1663,7 +1697,7 @@ fun TerminalScreen(
                                                         var consumedByTabSwitcher = true
                                                         val isPress =
                                                             action == GhosttyKeyAction.Press
-                                                        if (isPress && abysshKeys.isPrefixActive) {
+                                                        if (isPress && currentAbysshKeys.isPrefixActive) {
                                                             when (
                                                                 codepoint.toChar().lowercaseChar()
                                                             ) {
@@ -1684,7 +1718,7 @@ fun TerminalScreen(
                                                                 }
                                                                 else -> {}
                                                             }
-                                                            abysshKeys.reset()
+                                                            currentAbysshKeys.reset()
                                                             shouldForwardToTerminal = false
                                                             consumedByTabSwitcher = true
                                                         }
@@ -1834,8 +1868,9 @@ fun TerminalScreen(
                                         modifier =
                                             Modifier.fillMaxWidth()
                                                 .padding(horizontal = 10.dp, vertical = 4.dp)
+                                                .clip(MaterialTheme.shapes.medium)
                                                 .background(colors.surface)
-                                                .border(1.dp, colors.border)
+                                                .border(1.dp, colors.border, MaterialTheme.shapes.medium)
                                                 .padding(horizontal = 10.dp, vertical = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
@@ -2138,7 +2173,6 @@ private fun TerminalRecoveryActions(
                 onClick = onConnectWithoutMultiplexer,
                 modifier = Modifier.fillMaxWidth(),
                 variant = AbyssButtonVariant.Outlined,
-                bracketed = true,
             ) {
                 AbyssText(stringResource(R.string.terminal_connect_without_multiplexer), style = typography.label)
             }
@@ -2147,7 +2181,6 @@ private fun TerminalRecoveryActions(
                 onClick = onBack,
                 modifier = Modifier.fillMaxWidth(),
                 variant = AbyssButtonVariant.Ghost,
-                bracketed = true,
                 borderColor = colors.textMuted,
             ) {
                 AbyssText(dismissMultiplexerLabel, style = typography.label, color = colors.textMuted)
@@ -2187,19 +2220,21 @@ private fun UploadProgressDialog(progress: UploadProgress) {
     ) {
         Column(
             modifier =
-                Modifier.background(colors.surfaceVariant)
-                    .border(1.dp, colors.border)
+                Modifier.clip(MaterialTheme.shapes.extraLarge)
+                    .background(colors.surfaceVariant)
+                    .border(1.dp, colors.border, MaterialTheme.shapes.extraLarge)
                     .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            AbyssText(
-                "\u2500\u2500\u25B2\u2500\u2500",
-                style = typography.title,
-                color = colors.accent,
+            Icon(
+                painterResource(R.drawable.ic_upload),
+                contentDescription = null,
+                tint = colors.accent,
+                modifier = Modifier.size(28.dp),
             )
 
-            AbyssText(text = progress.fileName, style = typography.body, color = colors.textPrimary)
+            AbyssText(text = progress.fileName, style = typography.code, color = colors.textPrimary)
 
             if (progress.totalFiles > 1) {
                 AbyssText(
@@ -2213,8 +2248,8 @@ private fun UploadProgressDialog(progress: UploadProgress) {
                 modifier =
                     Modifier.width(barWidthDp)
                         .height(barHeightDp)
-                        .background(colors.surface)
-                        .border(1.dp, colors.border),
+                        .clip(CircleShape)
+                        .background(colors.surface),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 Box(

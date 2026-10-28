@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,7 +27,7 @@ fun PaletteHint(key: String, label: String) {
     ) {
         Box(
             modifier = Modifier
-                .border(1.dp, colors.border)
+                .border(1.dp, colors.border, MaterialTheme.shapes.extraSmall)
                 .padding(horizontal = 5.dp, vertical = 1.dp),
         ) {
             AbyssText(key, style = typography.labelSmall, color = colors.textSecondary)

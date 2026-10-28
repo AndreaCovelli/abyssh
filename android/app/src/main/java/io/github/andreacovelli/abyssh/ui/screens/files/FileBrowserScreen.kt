@@ -1,16 +1,21 @@
 package io.github.andreacovelli.abyssh.ui.screens.files
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
+import io.github.andreacovelli.abyssh.ui.components.AbyssIconButton
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
@@ -32,12 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
-import io.github.andreacovelli.abyssh.ui.components.AbyssButton
-import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
@@ -91,15 +91,12 @@ fun FileBrowserScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AbyssButton(
-                onClick = onBackToTerminal,
-                variant = AbyssButtonVariant.Ghost,
-                bracketed = false,
+            AbyssIconButton(
+                icon = R.drawable.ic_terminal,
                 contentDescription = stringResource(R.string.files_back_to_terminal),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-            ) {
-                TerminalIcon(color = colors.success, modifier = Modifier.size(20.dp))
-            }
+                onClick = onBackToTerminal,
+                tint = colors.success,
+            )
             AbyssTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
@@ -110,15 +107,11 @@ fun FileBrowserScreen(
                 autoFocus = false,
                 modifier = Modifier.weight(1f),
             )
-            AbyssButton(
-                onClick = onRefresh,
-                variant = AbyssButtonVariant.Ghost,
-                bracketed = false,
+            AbyssIconButton(
+                icon = R.drawable.ic_refresh,
                 contentDescription = stringResource(R.string.action_refresh),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-            ) {
-                RefreshIcon(color = colors.textSecondary, modifier = Modifier.size(18.dp))
-            }
+                onClick = onRefresh,
+            )
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -146,7 +139,8 @@ fun FileBrowserScreen(
                                         modifier =
                                             Modifier.fillMaxWidth()
                                                 .defaultMinSize(minHeight = 44.dp)
-                                                .border(1.dp, colors.border.copy(alpha = 0.5f))
+                                                .clip(MaterialTheme.shapes.medium)
+                                                .border(1.dp, colors.border.copy(alpha = 0.5f), MaterialTheme.shapes.medium)
                                                 .combinedClickable(
                                                     onClick = {
                                                         optionsEntryPath = null
@@ -175,7 +169,7 @@ fun FileBrowserScreen(
                                         )
                                         Spacer(modifier = Modifier.width(10.dp))
                                         Column(modifier = Modifier.weight(1f)) {
-                                            AbyssText(entry.name, style = typography.body)
+                                            AbyssText(entry.name, style = typography.code)
                                             val meta =
                                                 listOfNotNull(
                                                         entry.sizeBytes?.let { formatFileSize(it) },
@@ -190,95 +184,52 @@ fun FileBrowserScreen(
                                                 )
                                             }
                                         }
-                                        AbyssButton(
-                                            onClick = { onCopyPath(entry.path) },
-                                            variant = AbyssButtonVariant.Ghost,
-                                            bracketed = false,
+                                        AbyssIconButton(
+                                            icon = R.drawable.ic_content_copy,
                                             contentDescription = stringResource(R.string.files_copy_path),
-                                            contentPadding =
-                                                PaddingValues(horizontal = 4.dp, vertical = 4.dp),
-                                        ) {
-                                            CopyIcon(
-                                                color = colors.textMuted,
-                                                modifier = Modifier.size(16.dp),
-                                            )
-                                        }
+                                            onClick = { onCopyPath(entry.path) },
+                                            tint = colors.textMuted,
+                                            iconSize = 18.dp,
+                                        )
                                     }
-                                    if (optionsEntryPath == entry.path) {
-                                        Box(
-                                            modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
-                                            contentAlignment = Alignment.CenterEnd,
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+                                        contentAlignment = Alignment.CenterEnd,
+                                    ) {
+                                        DropdownMenu(
+                                            expanded = optionsEntryPath == entry.path,
+                                            onDismissRequest = { optionsEntryPath = null },
+                                            containerColor = colors.surface,
                                         ) {
-                                            Column(
-                                                modifier =
-                                                    Modifier.background(
-                                                            colors.background,
-                                                            RectangleShape,
-                                                        )
-                                                        .border(1.dp, colors.border, RectangleShape)
-                                                        .padding(4.dp),
-                                                verticalArrangement = Arrangement.spacedBy(2.dp),
-                                            ) {
-                                                if (entry.type != FileEntryType.Directory) {
-                                                    AbyssButton(
-                                                        onClick = {
-                                                            onOpenFile(entry)
-                                                            optionsEntryPath = null
-                                                        },
-                                                        variant = AbyssButtonVariant.Ghost,
-                                                        bracketed = true,
-                                                        contentPadding =
-                                                            PaddingValues(
-                                                                horizontal = 10.dp,
-                                                                vertical = 6.dp,
-                                                            ),
-                                                    ) {
-                                                        AbyssText(
-                                                            stringResource(R.string.action_open),
-                                                            style = typography.label,
-                                                            color = colors.textMuted,
-                                                        )
-                                                    }
-                                                    AbyssButton(
-                                                        onClick = {
-                                                            onDownloadFile(entry)
-                                                            optionsEntryPath = null
-                                                        },
-                                                        variant = AbyssButtonVariant.Ghost,
-                                                        bracketed = true,
-                                                        contentPadding =
-                                                            PaddingValues(
-                                                                horizontal = 10.dp,
-                                                                vertical = 6.dp,
-                                                            ),
-                                                    ) {
-                                                        AbyssText(
-                                                            stringResource(R.string.action_download),
-                                                            style = typography.label,
-                                                            color = colors.textMuted,
-                                                        )
-                                                    }
-                                                }
-                                                AbyssButton(
+                                            if (entry.type != FileEntryType.Directory) {
+                                                DropdownMenuItem(
+                                                    text = { AbyssText(stringResource(R.string.action_open), style = typography.label) },
                                                     onClick = {
-                                                        onDeleteFile(entry)
+                                                        onOpenFile(entry)
                                                         optionsEntryPath = null
                                                     },
-                                                    variant = AbyssButtonVariant.Ghost,
-                                                    bracketed = true,
-                                                    contentPadding =
-                                                        PaddingValues(
-                                                            horizontal = 10.dp,
-                                                            vertical = 6.dp,
-                                                        ),
-                                                ) {
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { AbyssText(stringResource(R.string.action_download), style = typography.label) },
+                                                    onClick = {
+                                                        onDownloadFile(entry)
+                                                        optionsEntryPath = null
+                                                    },
+                                                )
+                                            }
+                                            DropdownMenuItem(
+                                                text = {
                                                     AbyssText(
                                                         stringResource(R.string.action_delete),
                                                         style = typography.label,
                                                         color = colors.error,
                                                     )
-                                                }
-                                            }
+                                                },
+                                                onClick = {
+                                                    onDeleteFile(entry)
+                                                    optionsEntryPath = null
+                                                },
+                                            )
                                         }
                                     }
                                 }
@@ -298,7 +249,9 @@ fun FileBrowserScreen(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AbyssButton(
+                AbyssIconButton(
+                    icon = R.drawable.ic_arrow_back,
+                    contentDescription = stringResource(R.string.files_go_up),
                     onClick = {
                         if (
                             state.currentPath == "/" || state.currentPath == state.resolvedHomePath
@@ -308,81 +261,59 @@ fun FileBrowserScreen(
                             onGoUp()
                         }
                     },
-                    variant = AbyssButtonVariant.Ghost,
-                    bracketed = true,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                ) {
-                    AbyssText("\u2190", style = typography.label, color = colors.textSecondary)
-                }
+                )
 
                 Box {
-                    AbyssButton(
+                    AbyssIconButton(
+                        icon = R.drawable.ic_swap_vert,
+                        contentDescription = stringResource(R.string.files_sort),
                         onClick = { showSortDropdown = true },
-                        variant = AbyssButtonVariant.Ghost,
-                        bracketed = true,
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                    DropdownMenu(
+                        expanded = showSortDropdown,
+                        onDismissRequest = { showSortDropdown = false },
+                        containerColor = colors.surface,
                     ) {
-                        AbyssText("\u21C5", style = typography.label, color = colors.textSecondary)
-                    }
-                    if (showSortDropdown) {
-                        Popup(
-                            onDismissRequest = { showSortDropdown = false },
-                            properties = PopupProperties(focusable = true),
-                        ) {
-                            Column(
-                                modifier =
-                                    Modifier.background(colors.background, RectangleShape)
-                                        .border(1.dp, colors.border, RectangleShape)
-                                        .padding(4.dp),
-                                verticalArrangement = Arrangement.spacedBy(2.dp),
-                            ) {
-                                FileSort.entries.forEach { sort ->
-                                    val isSelected = sort == state.sort
-                                    AbyssButton(
-                                        onClick = {
-                                            onSelectSort(sort)
-                                            showSortDropdown = false
-                                        },
-                                        variant =
-                                            if (isSelected) {
-                                                AbyssButtonVariant.Filled
-                                            } else {
-                                                AbyssButtonVariant.Ghost
-                                            },
-                                        bracketed = true,
-                                        contentPadding =
-                                            PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                                    ) {
-                                        AbyssText(
-                                            sort.name.lowercase(),
-                                            style = typography.label,
-                                            color =
-                                                if (isSelected) {
-                                                    colors.onAccent
-                                                } else {
-                                                    colors.textMuted
-                                                },
+                        FileSort.entries.forEach { sort ->
+                            val isSelected = sort == state.sort
+                            DropdownMenuItem(
+                                text = {
+                                    AbyssText(
+                                        sort.name,
+                                        style = typography.label,
+                                        color = if (isSelected) colors.accent else colors.textPrimary,
+                                    )
+                                },
+                                onClick = {
+                                    onSelectSort(sort)
+                                    showSortDropdown = false
+                                },
+                                trailingIcon = if (isSelected) {
+                                    {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_check),
+                                            contentDescription = null,
+                                            tint = colors.accent,
                                         )
                                     }
-                                }
-                            }
+                                } else {
+                                    null
+                                },
+                            )
                         }
                     }
                 }
 
-                AbyssButton(
+                AbyssIconButton(
+                    icon = R.drawable.ic_arrow_upward,
+                    contentDescription = stringResource(R.string.files_upload),
                     onClick = onImportFile,
-                    variant = AbyssButtonVariant.Ghost,
-                    bracketed = true,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                ) {
-                    AbyssText("\u2191", style = typography.label, color = colors.textSecondary)
-                }
+                )
             }
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            AbyssText(state.currentPath, style = typography.labelSmall, color = colors.textMuted)
+            AbyssText(state.currentPath, style = typography.codeSmall, color = colors.textMuted)
         }
     }
 }

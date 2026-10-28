@@ -19,6 +19,9 @@ data class AbyssTypeScale(
     val bodySmall: TextStyle,
     val label: TextStyle,
     val labelSmall: TextStyle,
+    /** Monospace text for host addresses, keys, commands, paths, and other literal values. */
+    val code: TextStyle,
+    val codeSmall: TextStyle,
 )
 
 enum class AbyssFontOption(
@@ -46,6 +49,13 @@ val AbyssSymbolsFontFamily: FontFamily = FontFamily(
     Font(R.font.symbols_nerd_font_mono_regular, FontWeight.Normal),
 )
 
+/** Inter, used for the app's own text. The terminal keeps the chosen monospace font. */
+val AbyssUiFontFamily: FontFamily = FontFamily(
+    Font(R.font.inter_regular, FontWeight.Normal),
+    Font(R.font.inter_medium, FontWeight.Medium),
+    Font(R.font.inter_semibold, FontWeight.SemiBold),
+)
+
 private fun monoFamily(option: AbyssFontOption): FontFamily = FontFamily(
     Font(option.regularFontResId, FontWeight.Normal),
     Font(option.regularFontResId, FontWeight.Medium),
@@ -54,42 +64,55 @@ private fun monoFamily(option: AbyssFontOption): FontFamily = FontFamily(
 
 fun abyssTypographyFor(option: AbyssFontOption): AbyssTypeScale {
     val mono = monoFamily(option)
+    val ui = AbyssUiFontFamily
     return AbyssTypeScale(
         headline = TextStyle(
-            fontFamily = mono,
+            fontFamily = ui,
             fontWeight = FontWeight.SemiBold,
             fontSize = 22.sp,
             lineHeight = 28.sp,
         ),
         title = TextStyle(
-            fontFamily = mono,
+            fontFamily = ui,
             fontWeight = FontWeight.Medium,
             fontSize = 16.sp,
             lineHeight = 22.sp,
         ),
         body = TextStyle(
-            fontFamily = mono,
+            fontFamily = ui,
             fontWeight = FontWeight.Normal,
             fontSize = 14.sp,
             lineHeight = 20.sp,
         ),
         bodySmall = TextStyle(
-            fontFamily = mono,
+            fontFamily = ui,
             fontWeight = FontWeight.Normal,
             fontSize = 12.sp,
             lineHeight = 18.sp,
         ),
         label = TextStyle(
-            fontFamily = mono,
+            fontFamily = ui,
             fontWeight = FontWeight.Medium,
             fontSize = 13.sp,
             lineHeight = 18.sp,
         ),
         labelSmall = TextStyle(
-            fontFamily = mono,
+            fontFamily = ui,
             fontWeight = FontWeight.Medium,
             fontSize = 11.sp,
             lineHeight = 16.sp,
+        ),
+        code = TextStyle(
+            fontFamily = mono,
+            fontWeight = FontWeight.Normal,
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+        ),
+        codeSmall = TextStyle(
+            fontFamily = mono,
+            fontWeight = FontWeight.Normal,
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
         ),
     )
 }

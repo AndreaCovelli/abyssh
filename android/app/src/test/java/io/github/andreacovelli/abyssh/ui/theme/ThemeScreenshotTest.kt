@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
@@ -22,9 +21,12 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssCard
 import io.github.andreacovelli.abyssh.ui.components.AbyssCloseButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssSwitch
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
-import io.github.andreacovelli.abyssh.ui.screens.files.CopyIcon
-import io.github.andreacovelli.abyssh.ui.screens.files.RefreshIcon
-import io.github.andreacovelli.abyssh.ui.screens.files.TerminalIcon
+import io.github.andreacovelli.abyssh.R
+import io.github.andreacovelli.abyssh.ui.components.AbyssBadge
+import io.github.andreacovelli.abyssh.ui.components.AbyssIconButton
+import io.github.andreacovelli.abyssh.ui.components.AbyssKey
+import io.github.andreacovelli.abyssh.ui.components.AbyssSegmentedControl
+import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
 import androidx.compose.ui.Alignment
 import org.junit.Rule
 import org.junit.Test
@@ -89,8 +91,34 @@ class ThemeScreenshotTest {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         AbyssButton(onClick = {}) { AbyssText("Connect") }
                         AbyssButton(onClick = {}, variant = AbyssButtonVariant.Outlined) {
-                            AbyssText("Disconnect")
+                            AbyssText("Edit")
                         }
+                        AbyssButton(onClick = {}, variant = AbyssButtonVariant.Ghost) {
+                            AbyssText("Cancel")
+                        }
+                    }
+                    AbyssButton(onClick = {}, enabled = false) { AbyssText("Disabled") }
+                    AbyssTextField(
+                        value = "example.com",
+                        onValueChange = {},
+                        label = "Host",
+                        singleLine = true,
+                        autoFocus = false,
+                    )
+                    AbyssSegmentedControl(
+                        options = listOf("ssh", "mosh", "local"),
+                        labels = mapOf("ssh" to "SSH", "mosh" to "Mosh", "local" to "Local"),
+                        selected = "ssh",
+                        onSelect = {},
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AbyssKey(onClick = {}) { AbyssText("Esc", style = AbyssTypography.current.label) }
+                        AbyssKey(onClick = {}, active = true) { AbyssText("Ctrl", style = AbyssTypography.current.label) }
+                        AbyssKey(onClick = {}) { AbyssText("Tab", style = AbyssTypography.current.label) }
+                        AbyssBadge(text = "local", color = AbyssColors.current.accentSecondary)
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         AbyssSwitch(checked = true, onCheckedChange = {})
@@ -113,9 +141,9 @@ class ThemeScreenshotTest {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         val colors = AbyssColors.current
-                        TerminalIcon(color = colors.success, modifier = Modifier.size(20.dp))
-                        RefreshIcon(color = colors.textSecondary, modifier = Modifier.size(18.dp))
-                        CopyIcon(color = colors.textMuted, modifier = Modifier.size(16.dp))
+                        AbyssIconButton(R.drawable.ic_terminal, "terminal", onClick = {}, tint = colors.success)
+                        AbyssIconButton(R.drawable.ic_refresh, "refresh", onClick = {})
+                        AbyssIconButton(R.drawable.ic_arrow_back, "back", onClick = {}, tonal = true)
                         AbyssCloseButton(onClick = {}, contentDescription = "close")
                     }
                     }

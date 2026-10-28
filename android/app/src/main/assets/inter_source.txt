@@ -1,0 +1,12 @@
+Inter 4.1 (Regular, Medium, SemiBold)
+Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
+
+Source:
+https://github.com/rsms/inter/releases/tag/v4.1
+
+Subset with fontTools pyftsubset to U+0000-024F, U+0300-036F, U+2000-206F,
+U+20A0-20CF, U+2122, U+2190-21FF, U+2212, U+2215, and U+FFFD, keeping the tnum and
+case layout features. Stored as res/font/inter_regular.ttf, inter_medium.ttf, and
+inter_semibold.ttf.
+
+Licensed under the SIL Open Font License 1.1. See inter_ofl.txt.

@@ -1,5 +1,12 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.sp
+import io.github.andreacovelli.abyssh.ui.components.AbyssIconButton
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
@@ -7,7 +14,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -36,8 +42,6 @@ import io.github.andreacovelli.abyssh.service.terminal.SessionStatus
 import kotlinx.coroutines.flow.map
 import kotlin.math.roundToInt
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
-import io.github.andreacovelli.abyssh.ui.components.AbyssButton
-import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
@@ -173,33 +177,50 @@ fun TerminalTabStrip(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             if (tabs.isNotEmpty()) {
-                AbyssButton(
-                    onClick = onOpenManager,
-                    modifier = Modifier.defaultMinSize(minHeight = 32.dp, minWidth = 32.dp),
-                    variant = AbyssButtonVariant.Ghost,
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                    contentDescription = stringResource(R.string.tab_strip_all_tabs),
-                ) {
-                    AbyssText(
-                        if (tabs.size > 99) "≡" else "${tabs.size}",
-                        style = typography.labelSmall,
-                        color = colors.textMuted,
-                    )
-                }
+                TabCountButton(count = tabs.size, onClick = onOpenManager)
             }
 
             Box {
-                AbyssButton(
-                    onClick = onAddTab,
-                    modifier = Modifier.defaultMinSize(minHeight = 32.dp, minWidth = 32.dp),
-                    variant = AbyssButtonVariant.Ghost,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                AbyssIconButton(
+                    icon = R.drawable.ic_add,
                     contentDescription = stringResource(R.string.tab_strip_new_connection),
-                ) {
-                    AbyssText("+", style = typography.label, color = colors.accent)
-                }
+                    onClick = onAddTab,
+                    tint = colors.accent,
+                    buttonSize = 32.dp,
+                    iconSize = 22.dp,
+                )
                 newTabPicker()
             }
         }
     }
 }
+
+/** Rounded square with the open tab count, like a browser's tab switcher. */
+@Composable
+private fun TabCountButton(count: Int, onClick: () -> Unit) {
+    val colors = AbyssColors.current
+    val description = stringResource(R.string.tab_strip_all_tabs)
+    Box(
+        modifier = Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(20.dp)
+                .border(1.5.dp, colors.textSecondary, RoundedCornerShape(5.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            AbyssText(
+                if (count > MAX_TAB_COUNT_SHOWN) "∞" else "$count",
+                style = AbyssTypography.current.labelSmall.copy(fontSize = 10.sp, lineHeight = 10.sp),
+                color = colors.textSecondary,
+            )
+        }
+    }
+}
+
+private const val MAX_TAB_COUNT_SHOWN = 99
