@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
+
 import android.util.Log
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.UiText
@@ -52,6 +54,7 @@ internal class SessionConnection(
     private val emulator: TerminalEmulator,
     private val transports: SessionTransports,
     private val multiplexers: RemoteMultiplexerProbe,
+    private val localNetwork: LocalNetworkAccess?,
     private val onShellExited: () -> Unit,
 ) {
     private val moshStaleness = MoshConnectionStalenessTracker()
@@ -149,6 +152,9 @@ internal class SessionConnection(
             !bridge.isLoaded() -> UiText.Resource(R.string.error_native_terminal_unavailable, bridge.nativeStatus())
             transports.unavailableReason(spec.transport) != null -> transports.unavailableReason(spec.transport)
             spec.transport != Transport.LocalShell && spec.username.isBlank() -> UiText.Resource(R.string.error_username_required)
+            // Checked before the multiplexer probe, which already connects to the host.
+            spec.transport != Transport.LocalShell && localNetwork?.blocks(spec.host) == true ->
+                UiText.Resource(R.string.error_local_network_denied)
             else -> multiplexers.availability(spec).errorMessage(spec.multiplexer)
         }
     }

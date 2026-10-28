@@ -364,6 +364,7 @@
     <string name="error_native_terminal_backend">Native terminal backend unavailable: %1$s</string>
     <string name="error_native_ssh_unavailable">Native SSH unavailable. Check the ABI and NDK build.</string>
     <string name="error_native_mosh_unavailable">Native Mosh unavailable. Check the ABI and NDK build.</string>
+    <string name="error_local_network_denied">This host is on your local network. Allow Abyssh to find and connect to devices on your local network in its app settings, then try again</string>
     <string name="error_username_required">Username required</string>
     <string name="error_connection_lost">Connection lost: %1$s</string>
     <string name="error_connection_interrupted">Connection interrupted</string>

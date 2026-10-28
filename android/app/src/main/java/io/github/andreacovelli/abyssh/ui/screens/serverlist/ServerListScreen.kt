@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.serverlist
 
+import io.github.andreacovelli.abyssh.ui.components.rememberLocalNetworkPermissionGate
+
 import io.github.andreacovelli.abyssh.ui.components.AbyssStatusDot
 import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
 import androidx.compose.foundation.layout.width
@@ -88,6 +90,7 @@ fun ServerListScreen(
     val connectedHostIds by vm.connectedHostIds.collectAsStateWithLifecycle()
     val openSessions by vm.openSessions.collectAsStateWithLifecycle()
     val withNotificationPermission = rememberNotificationPermissionGate()
+    val withLocalNetworkPermission = rememberLocalNetworkPermissionGate()
     val context = LocalContext.current
     val resources = LocalResources.current
 
@@ -145,7 +148,11 @@ fun ServerListScreen(
                         },
                         onEdit = { onEditServer(host.id) },
                         onCopy = { onCopyServer(host.id) },
-                        onConnect = { withNotificationPermission { onConnectServer(host) } },
+                        onConnect = {
+                            withNotificationPermission {
+                                withLocalNetworkPermission(host.host) { onConnectServer(host) }
+                            }
+                        },
                         onDisconnect = { pendingDisconnectHostId = host.id },
                     )
                 }
