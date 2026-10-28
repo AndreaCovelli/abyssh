@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
 import android.graphics.Bitmap
+import androidx.core.graphics.createBitmap
 import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -292,7 +293,7 @@ data class TerminalSnapshot(
                 val pixelBytes = wrapped.slice().order(ByteOrder.nativeOrder())
                 pixelBytes.limit(dataLen)
 
-                val bitmap = Bitmap.createBitmap(imgW, imgH, Bitmap.Config.ARGB_8888)
+                val bitmap = createBitmap(imgW, imgH)
                 bitmap.copyPixelsFromBuffer(pixelBytes)
                 wrapped.position(wrapped.position() + dataLen)
 

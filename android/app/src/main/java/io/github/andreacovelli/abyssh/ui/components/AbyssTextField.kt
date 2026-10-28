@@ -23,11 +23,11 @@ fun AbyssTextField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
+    modifier: Modifier = Modifier,
     placeholder: String = "",
     singleLine: Boolean = false,
     maxLines: Int = Int.MAX_VALUE,
     showLabel: Boolean = true,
-    modifier: Modifier = Modifier,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     keyboardOptions: KeyboardOptions = KeyboardOptions(
         capitalization = KeyboardCapitalization.None,

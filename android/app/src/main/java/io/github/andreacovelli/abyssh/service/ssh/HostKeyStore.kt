@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.service.ssh
 
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import android.util.Base64
 import java.security.MessageDigest
 
@@ -18,7 +19,7 @@ class HostKeyStore(
 
     fun saveKey(host: String, port: Int, algorithm: String, keyBytes: ByteArray) {
         val encoded = Base64.encodeToString(keyBytes, Base64.NO_WRAP)
-        prefs.edit().putString(key(host, port, algorithm), encoded).apply()
+        prefs.edit { putString(key(host, port, algorithm), encoded) }
     }
 
     fun check(

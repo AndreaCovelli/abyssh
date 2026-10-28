@@ -53,7 +53,7 @@ private fun IconButtonContent(
     @DrawableRes icon: Int,
     contentDescription: String,
     onClick: () -> Unit,
-    buttonModifier: Modifier,
+    modifier: Modifier,
     enabled: Boolean,
     tint: Color,
     iconSize: Dp,
@@ -70,7 +70,7 @@ private fun IconButtonContent(
         val colors = AbyssColors.current
         FilledTonalIconButton(
             onClick = onClick,
-            modifier = buttonModifier,
+            modifier = modifier,
             enabled = enabled,
             colors = IconButtonDefaults.filledTonalIconButtonColors(
                 containerColor = colors.surface,
@@ -81,7 +81,7 @@ private fun IconButtonContent(
     } else {
         IconButton(
             onClick = onClick,
-            modifier = buttonModifier,
+            modifier = modifier,
             enabled = enabled,
             colors = IconButtonDefaults.iconButtonColors(
                 contentColor = tint,

@@ -2,6 +2,7 @@ package io.github.andreacovelli.abyssh.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalTabMode
 import io.github.andreacovelli.abyssh.ui.terminal.BuiltinShortcutStore
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalAccessoryLayoutStore
@@ -86,106 +87,106 @@ class SettingsRepository(context: Context) {
     val terminalFontSize: StateFlow<Float> = _terminalFontSize.asStateFlow()
 
     fun setTheme(name: String) {
-        prefs.edit().putString(KEY_THEME, name).apply()
+        prefs.edit { putString(KEY_THEME, name) }
         _themeName.value = name
     }
 
     fun setFont(name: String) {
         val normalized = AbyssFontOption.fromId(name).id
-        prefs.edit().putString(KEY_FONT, normalized).apply()
+        prefs.edit { putString(KEY_FONT, normalized) }
         _fontName.value = normalized
     }
 
     fun setAccessoryLayoutIds(ids: List<String>) {
         val normalized = TerminalAccessoryLayoutStore.normalizeIds(ids)
-        prefs.edit().putString(KEY_ACCESSORY_LAYOUT, normalized.joinToString(separator = ",")).apply()
+        prefs.edit { putString(KEY_ACCESSORY_LAYOUT, normalized.joinToString(separator = ",")) }
         _accessoryLayoutIds.value = normalized
     }
 
     fun setTerminalCustomKeyGroups(groups: List<TerminalCustomKeyGroup>) {
         val normalized = TerminalCustomActionStore.normalize(groups)
         val serialized = TerminalCustomActionStore.serialize(normalized)
-        prefs.edit().putString(KEY_TERMINAL_CUSTOM_ACTIONS, serialized).apply()
+        prefs.edit { putString(KEY_TERMINAL_CUSTOM_ACTIONS, serialized) }
         _terminalCustomKeyGroups.value = normalized
     }
 
     fun setShowCustomActionsFab(visible: Boolean) {
-        prefs.edit().putBoolean(KEY_SHOW_CUSTOM_ACTIONS_FAB, visible).apply()
+        prefs.edit { putBoolean(KEY_SHOW_CUSTOM_ACTIONS_FAB, visible) }
         _showCustomActionsFab.value = visible
     }
 
     fun setBuiltinShortcuts(shortcuts: Map<String, String>) {
         val normalized = BuiltinShortcutStore.normalize(shortcuts)
-        prefs.edit().putString(KEY_BUILTIN_SHORTCUTS, BuiltinShortcutStore.serialize(normalized)).apply()
+        prefs.edit { putString(KEY_BUILTIN_SHORTCUTS, BuiltinShortcutStore.serialize(normalized)) }
         _builtinShortcuts.value = normalized
     }
 
     fun setAccessoryBarSingleRow(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_ACCESSORY_BAR_SINGLE_ROW, enabled).apply()
+        prefs.edit { putBoolean(KEY_ACCESSORY_BAR_SINGLE_ROW, enabled) }
         _accessoryBarSingleRow.value = enabled
     }
 
     fun setTerminalTabMode(mode: TerminalTabMode) {
-        prefs.edit().putString(KEY_TAB_MODE, mode.name).apply()
+        prefs.edit { putString(KEY_TAB_MODE, mode.name) }
         _terminalTabMode.value = mode
     }
 
     fun setAppLockEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_APP_LOCK_ENABLED, enabled).apply()
+        prefs.edit { putBoolean(KEY_APP_LOCK_ENABLED, enabled) }
         _appLockEnabled.value = enabled
     }
 
     fun setRequireAuthOnConnect(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_REQUIRE_AUTH_ON_CONNECT, enabled).apply()
+        prefs.edit { putBoolean(KEY_REQUIRE_AUTH_ON_CONNECT, enabled) }
         _requireAuthOnConnect.value = enabled
     }
 
     fun setLocalShellEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_LOCAL_SHELL_ENABLED, enabled).apply()
+        prefs.edit { putBoolean(KEY_LOCAL_SHELL_ENABLED, enabled) }
         _localShellEnabled.value = enabled
     }
 
     fun setKeepScreenAwake(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_KEEP_SCREEN_AWAKE, enabled).apply()
+        prefs.edit { putBoolean(KEY_KEEP_SCREEN_AWAKE, enabled) }
         _keepScreenAwake.value = enabled
     }
 
     fun setHideScreenContents(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_HIDE_SCREEN_CONTENTS, enabled).apply()
+        prefs.edit { putBoolean(KEY_HIDE_SCREEN_CONTENTS, enabled) }
         _hideScreenContents.value = enabled
     }
 
     fun setDisableAutocorrect(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_DISABLE_AUTOCORRECT, enabled).apply()
+        prefs.edit { putBoolean(KEY_DISABLE_AUTOCORRECT, enabled) }
         _disableAutocorrect.value = enabled
     }
 
     fun setRemoteClipboardWriteEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_REMOTE_CLIPBOARD_WRITE_ENABLED, enabled).apply()
+        prefs.edit { putBoolean(KEY_REMOTE_CLIPBOARD_WRITE_ENABLED, enabled) }
         _remoteClipboardWriteEnabled.value = enabled
     }
 
     fun setCtrlVPastes(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_CTRL_V_PASTES, enabled).apply()
+        prefs.edit { putBoolean(KEY_CTRL_V_PASTES, enabled) }
         _ctrlVPastes.value = enabled
     }
 
     fun setThemeMode(mode: ThemeMode) {
-        prefs.edit().putString(KEY_THEME_MODE, mode.name).apply()
+        prefs.edit { putString(KEY_THEME_MODE, mode.name) }
         _themeMode.value = mode
     }
 
     fun setLightTheme(name: String) {
-        prefs.edit().putString(KEY_LIGHT_THEME, name).apply()
+        prefs.edit { putString(KEY_LIGHT_THEME, name) }
         _lightThemeName.value = name
     }
 
     fun setTerminalFontSize(sizeSp: Float) {
         val clamped = sizeSp.coerceIn(MIN_TERMINAL_FONT_SIZE, MAX_TERMINAL_FONT_SIZE)
-        prefs.edit()
-            .putFloat(KEY_TERMINAL_FONT_SIZE, clamped)
-            .putBoolean(KEY_TERMINAL_FONT_SIZE_CUSTOMIZED, true)
-            .apply()
+        prefs.edit {
+            putFloat(KEY_TERMINAL_FONT_SIZE, clamped)
+            putBoolean(KEY_TERMINAL_FONT_SIZE_CUSTOMIZED, true)
+        }
         _terminalFontSize.value = clamped
     }
 

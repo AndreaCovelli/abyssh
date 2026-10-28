@@ -63,6 +63,7 @@ fun KeyboardAccessoryBar(
     entries: List<ResolvedAccessoryEntry>,
     modifierState: ModifierState,
     onAction: (AccessoryAction) -> Unit,
+    modifier: Modifier = Modifier,
     onSettings: (() -> Unit)? = null,
     onAbysshKey: (() -> Unit)? = null,
     abysshKeyActive: Boolean = false,
@@ -70,7 +71,6 @@ fun KeyboardAccessoryBar(
     useSingleRow: Boolean = false,
     horizontalPadding: Dp = 8.dp,
     verticalPadding: Dp = 6.dp,
-    modifier: Modifier = Modifier,
 ) {
     val buttonHeight = 30.dp
     val buttonPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 3.dp, bottom = 3.dp)
