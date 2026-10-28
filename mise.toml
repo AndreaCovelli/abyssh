@@ -39,7 +39,9 @@ run = "./gradlew testDebugUnitTest"
 [tasks."test:device"]
 description = "Run instrumented tests on a connected device or emulator"
 dir = "android"
-run = "./gradlew connectedDebugAndroidTest"
+# Keep the app installed afterwards: Gradle otherwise uninstalls it, which deletes the
+# hosts, keys, and settings saved on the device.
+run = "./gradlew connectedDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true"
 
 [tasks.format]
 description = "Format Kotlin sources and Gradle scripts with ktlint"

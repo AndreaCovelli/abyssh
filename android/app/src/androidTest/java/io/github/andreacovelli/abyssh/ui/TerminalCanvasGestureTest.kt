@@ -6,7 +6,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.click
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
@@ -69,25 +69,28 @@ class TerminalCanvasGestureTest {
     fun tapOnUrlReportsTheLinkAndElsewhereClicks() {
         show(snapshot(appTracksMouse = false, "https://example.com/x", "plain text"))
         compose.onNodeWithTag("canvas").performTouchInput { click(cell(3, 0)) }
-        compose.waitForIdle()
-        assertEquals(listOf<String?>("https://example.com/x"), linkTaps)
-        assertTrue(clicks.isEmpty())
+        compose.runOnIdle {
+            assertEquals(listOf<String?>("https://example.com/x"), linkTaps)
+            assertTrue(clicks.isEmpty())
+        }
 
         // Wait out the double-tap window so this is a tap of its own.
         compose.mainClock.advanceTimeBy(1_000)
         compose.onNodeWithTag("canvas").performTouchInput { click(cell(2, 1)) }
-        compose.waitForIdle()
-        assertEquals(1, linkTaps.size)
-        assertEquals(1, clicks.size)
+        compose.runOnIdle {
+            assertEquals(1, linkTaps.size)
+            assertEquals(1, clicks.size)
+        }
     }
 
     @Test
     fun tapGoesToTheAppWhenItTracksTheMouse() {
         show(snapshot(appTracksMouse = true, "https://example.com/x"))
         compose.onNodeWithTag("canvas").performTouchInput { click(cell(3, 0)) }
-        compose.waitForIdle()
-        assertTrue(linkTaps.isEmpty())
-        assertEquals(1, clicks.size)
+        compose.runOnIdle {
+            assertTrue(linkTaps.isEmpty())
+            assertEquals(1, clicks.size)
+        }
     }
 
     @OptIn(ExperimentalTestApi::class)
