@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import io.github.andreacovelli.abyssh.R
+import io.github.andreacovelli.abyssh.model.UiText
+
 import io.github.andreacovelli.abyssh.model.AuthMethod
 import io.github.andreacovelli.abyssh.model.HostProfile
 import io.github.andreacovelli.abyssh.model.MultiplexerType
@@ -29,13 +32,14 @@ data class TabSpec(
                 else -> hostId?.let { "host:$it" } ?: "${transport.name}:$username@$host:$port"
             }
 
-    val notificationLabel: String
+    val notificationLabel: UiText
         get() {
             if (transport == Transport.LocalShell) {
-                return displayName.takeIf { it.isNotBlank() } ?: "local shell"
+                return displayName.takeIf { it.isNotBlank() }?.let(UiText::Raw)
+                    ?: UiText.Resource(R.string.session_notification_local_shell)
             }
             val target = "$username@$host:$port"
-            return if (displayName.isNotBlank()) "$displayName  ·  $target" else target
+            return UiText.Raw(if (displayName.isNotBlank()) "$displayName  ·  $target" else target)
         }
 
     val tabLabel: String

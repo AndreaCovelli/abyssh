@@ -66,15 +66,15 @@ fun KeysContent(vm: KeysViewModel, modifier: Modifier = Modifier) {
                     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                 }
                 is KeysEvent.ImportFailed ->
-                    Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, event.message.resolve(resources), Toast.LENGTH_SHORT).show()
                 is KeysEvent.GenerateFailed ->
-                    Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, event.message.resolve(resources), Toast.LENGTH_SHORT).show()
                 KeysEvent.Renamed -> {
                     renameTarget = null
                     Toast.makeText(context, resources.getString(R.string.keys_renamed), Toast.LENGTH_SHORT).show()
                 }
                 is KeysEvent.RenameFailed ->
-                    Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, event.message.resolve(resources), Toast.LENGTH_SHORT).show()
                 KeysEvent.Deleted -> {
                     deleteTarget = null
                     Toast.makeText(context, resources.getString(R.string.keys_deleted), Toast.LENGTH_SHORT).show()

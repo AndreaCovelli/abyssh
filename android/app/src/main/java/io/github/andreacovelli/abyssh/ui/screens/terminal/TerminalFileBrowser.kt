@@ -1,5 +1,11 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.model.toUiText
+
+import io.github.andreacovelli.abyssh.model.UiText
+
+import io.github.andreacovelli.abyssh.R
+
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionRepository
 import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
 import io.github.andreacovelli.abyssh.ui.screens.files.FileBrowserEntry
@@ -204,7 +210,7 @@ class TerminalFileBrowser internal constructor(
             } catch (err: Exception) {
                 if (isActive && stateByTab.value[tabId]?.currentPath == targetPath) {
                     updateState(tabId) {
-                        it.copy(isLoading = false, error = err.message ?: "Failed to list directory")
+                        it.copy(isLoading = false, error = err.toUiText(UiText.Resource(R.string.files_list_failed)))
                     }
                 }
             }

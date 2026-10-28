@@ -3,8 +3,11 @@ package io.github.andreacovelli.abyssh.service.terminal
 import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
+import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.model.Transport
+import io.github.andreacovelli.abyssh.model.UiText
+import io.github.andreacovelli.abyssh.model.UiTextException
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerRegistry
 import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSession
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
@@ -224,7 +227,10 @@ class TerminalSessionRepository private constructor(application: Application) {
         if (tab.sessionState.value.status == SessionStatus.Connected) return
         withTimeoutOrNull(timeoutMs) {
             tab.sessionState.first { it.status == SessionStatus.Connected }
-        } ?: error("Timed out waiting for the session to reconnect")
+        } ?: throw UiTextException(
+            UiText.Resource(R.string.error_reconnect_timeout),
+            "Timed out waiting for the session to reconnect",
+        )
     }
 
     /** Answers the host key prompt: a multiplexer check's first, then the active tab's. */

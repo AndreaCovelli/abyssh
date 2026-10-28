@@ -1,6 +1,8 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.Transport
+import io.github.andreacovelli.abyssh.model.UiText
 import io.github.andreacovelli.abyssh.service.mosh.NativeMoshService
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyPolicy
 import io.github.andreacovelli.abyssh.service.ssh.NativeSshService
@@ -42,9 +44,9 @@ internal class SessionTransports(hostKeyPolicy: HostKeyPolicy, val localShell: N
     private var transport: Transport = Transport.SSH
 
     /** Why [transport]'s native library can't run, or null when it can. */
-    fun unavailableReason(transport: Transport): String? = when {
-        transport == Transport.Mosh && !mosh.isLoaded -> "Native mosh unavailable. Check ABI/NDK build."
-        transport.runsRemoteCommands && !ssh.isAvailable() -> "Native SSH unavailable. Check ABI/NDK build."
+    fun unavailableReason(transport: Transport): UiText? = when {
+        transport == Transport.Mosh && !mosh.isLoaded -> UiText.Resource(R.string.error_native_mosh_unavailable)
+        transport.runsRemoteCommands && !ssh.isAvailable() -> UiText.Resource(R.string.error_native_ssh_unavailable)
         else -> null
     }
 

@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.files
 
+import io.github.andreacovelli.abyssh.model.UiText
+
 enum class ConnectionTab {
     Terminal,
     Files,
@@ -41,7 +43,7 @@ data class FileBrowserUiState(
     val entries: List<FileBrowserEntry> = emptyList(),
     val sort: FileSort = FileSort.Name,
     val isLoading: Boolean = false,
-    val error: String? = null,
+    val error: UiText? = null,
     val resolvedHomePath: String? = null,
     val uploadProgress: UploadProgress? = null,
 )

@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.ui.components.asString
+
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
@@ -166,7 +168,7 @@ internal fun TerminalMultiplexerPanel(vm: TerminalViewModel, onDismiss: () -> Un
     MultiplexerSessionPanel(
         sessions = state.sessions,
         loading = state.sessionsLoading,
-        error = state.sessionsError,
+        error = state.sessionsError?.asString(),
         onRefresh = vm.multiplexer::listSessionsForActiveHost,
         onNew = vm.multiplexer::createNextSession,
         onAttach = { name -> vm.multiplexer.switchToSession(name, state.sessionsSourceTabId) },

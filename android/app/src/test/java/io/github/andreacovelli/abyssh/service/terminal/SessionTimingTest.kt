@@ -1,6 +1,8 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.Transport
+import io.github.andreacovelli.abyssh.model.UiText
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -36,12 +38,17 @@ class SessionTimingTest {
     fun notificationLabelNamesTheActiveTabAndTheCount() {
         val shell = TabSpec(transport = Transport.LocalShell)
         val server = TabSpec(host = "example.com", username = "me")
-        assertEquals("Active session", sessionNotificationLabel(emptyList(), null))
-        assertEquals("local shell", sessionNotificationLabel(listOf(shell), null))
+        val localShell = UiText.Resource(R.string.session_notification_local_shell)
+        val twoSessions = UiText.Plural(R.plurals.session_notification_sessions, 2)
+        assertEquals(UiText.Resource(R.string.session_notification_fallback), sessionNotificationLabel(emptyList(), null))
+        assertEquals(localShell, sessionNotificationLabel(listOf(shell), null))
         assertEquals(
-            "2 sessions  ·  me@example.com:22",
+            UiText.Resource(R.string.session_notification_count, twoSessions, UiText.Raw("me@example.com:22")),
             sessionNotificationLabel(listOf(shell, server), server),
         )
-        assertEquals("2 sessions  ·  local shell", sessionNotificationLabel(listOf(shell, server), null))
+        assertEquals(
+            UiText.Resource(R.string.session_notification_count, twoSessions, localShell),
+            sessionNotificationLabel(listOf(shell, server), null),
+        )
     }
 }

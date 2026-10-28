@@ -20,7 +20,7 @@ import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.ui.theme.GhosttyThemeRegistry
 
 class SessionForegroundService : Service() {
-    private var currentLabel: String = "Active session"
+    private var currentLabel: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -59,7 +59,7 @@ class SessionForegroundService : Service() {
                 ServiceCompat.startForeground(
                     this,
                     NOTIFICATION_ID,
-                    buildNotification(currentLabel),
+                    buildNotification(currentLabel ?: getString(R.string.session_notification_fallback)),
                     type,
                 )
                 return START_STICKY
