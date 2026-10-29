@@ -40,8 +40,21 @@ const verbose_snapshot_perf_logs = false;
 // then row_count * cols cells of SNAPSHOT_CELL_SIZE_BYTES each, one row after
 // another. A snapshot carries only the rows that changed since the previous
 // one; the host keeps the other rows from its previous snapshot.
+//
+// Cell layout (bytes):
+//   0..3   codepoint (LE i32)
+//   4..6   fg r, g, b
+//   7..9   bg r, g, b
+//  10      flags (bold, italic, inverse, blink, faint, grapheme, spacer)
+//  11      decoration: bits 0-2 underline style (0 none, 1 single, 2 double,
+//          3 curly, 4 dotted, 5 dashed), bit 3 strikethrough, bit 4
+//          overline, bit 5 set when bytes 12..14 hold an underline color
+//  12..14  underline r, g, b (SGR 58); 0 when the cell has none
 const SNAPSHOT_HEADER_I32_COUNT = 17;
-const SNAPSHOT_CELL_SIZE_BYTES = 11;
+const SNAPSHOT_CELL_SIZE_BYTES = 15;
+const DECORATION_STRIKETHROUGH: u8 = 1 << 3;
+const DECORATION_OVERLINE: u8 = 1 << 4;
+const DECORATION_UNDERLINE_COLOR: u8 = 1 << 5;
 // Flag bit set on a cell whose codepoint has additional grapheme codepoints
 // in the extras section.
 const CELL_FLAG_HAS_GRAPHEME: u8 = 1 << 6;
@@ -1096,7 +1109,6 @@ export fn abyssh_build_text_snapshot(handle: c.jlong, full_requested: bool, out_
             var flags: u8 = 0;
             if (style.flags.bold) flags |= 1 << 0;
             if (style.flags.italic) flags |= 1 << 1;
-            if (style.flags.underline != .none) flags |= 1 << 2;
             if (style.flags.inverse) flags |= 1 << 3;
             if (style.flags.blink) flags |= 1 << 4;
             if (style.flags.faint) flags |= 1 << 5;
@@ -1126,6 +1138,17 @@ export fn abyssh_build_text_snapshot(handle: c.jlong, full_requested: bool, out_
             buffer[base + 8] = bg.g;
             buffer[base + 9] = bg.b;
             buffer[base + 10] = flags;
+
+            var decoration: u8 = @backingInt(style.flags.underline);
+            if (style.flags.strikethrough) decoration |= DECORATION_STRIKETHROUGH;
+            if (style.flags.overline) decoration |= DECORATION_OVERLINE;
+            const underline_color = style.underlineColor(&terminal.render_state.colors.palette);
+            if (underline_color != null) decoration |= DECORATION_UNDERLINE_COLOR;
+            const ul: ghostty.color.RGB = underline_color orelse .{ .r = 0, .g = 0, .b = 0 };
+            buffer[base + 11] = decoration;
+            buffer[base + 12] = ul.r;
+            buffer[base + 13] = ul.g;
+            buffer[base + 14] = ul.b;
         }
     }
     std.debug.assert(slot == row_count);

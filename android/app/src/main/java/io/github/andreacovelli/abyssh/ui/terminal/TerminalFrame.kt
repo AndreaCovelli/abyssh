@@ -6,8 +6,10 @@ import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 internal const val TEXT_STYLE_MASK: Int =
     TerminalSnapshot.CELL_FLAG_BOLD or
         TerminalSnapshot.CELL_FLAG_ITALIC or
-        TerminalSnapshot.CELL_FLAG_UNDERLINE or
         TerminalSnapshot.CELL_FLAG_FAINT
+
+private const val ALPHA_SHIFT: Int = 24
+private const val RGB_MASK: Int = 0x00FFFFFF
 
 /** One frame to draw: the snapshot, the selected cells, and the visible search hits by row. */
 internal class TerminalFrame(
@@ -58,6 +60,29 @@ internal class FrameRow(val cells: TerminalRow, private val colors: TerminalCanv
     }
 
     fun textStyleAt(col: Int): Int = cells.flags[col].toInt() and TEXT_STYLE_MASK
+
+    /** The cell's DECORATION_ bits and underline style, as an unsigned value. */
+    fun decorationAt(col: Int): Int = cells.decorations[col].toInt() and 0xFF
+
+    fun underlineStyleAt(col: Int): Int = decorationAt(col) and TerminalSnapshot.UNDERLINE_STYLE_MASK
+
+    /** The color of overlines and strikethroughs: the text's, faded like faint text. */
+    fun lineColorAt(col: Int): Int = fadedIfFaint(col, foregroundAt(col))
+
+    /** The underline's own color when the app set one, otherwise [lineColorAt]. */
+    fun underlineColorAt(col: Int): Int =
+        if ((decorationAt(col) and TerminalSnapshot.DECORATION_UNDERLINE_COLOR) != 0) {
+            fadedIfFaint(col, cells.underlineArgb[col])
+        } else {
+            lineColorAt(col)
+        }
+
+    private fun fadedIfFaint(col: Int, argb: Int): Int =
+        if ((cells.flags[col].toInt() and TerminalSnapshot.CELL_FLAG_FAINT) != 0) {
+            (argb and RGB_MASK) or (FAINT_TEXT_ALPHA shl ALPHA_SHIFT)
+        } else {
+            argb
+        }
 
     /** The first column after the run of matching backgrounds that starts at [start]. */
     fun backgroundRunEnd(start: Int): Int {

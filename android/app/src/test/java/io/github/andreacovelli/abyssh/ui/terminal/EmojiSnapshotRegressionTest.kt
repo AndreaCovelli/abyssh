@@ -16,7 +16,7 @@ class EmojiSnapshotRegressionTest {
         val rows = 1
         val cellCount = cols * rows
         val headerBytes = 17 * 4 + rows * 4
-        val gridBytes = cellCount * 11
+        val gridBytes = cellCount * 15
         val extrasOffset = headerBytes + gridBytes
 
         val extrasRecordCount = 1
@@ -54,6 +54,7 @@ class EmojiSnapshotRegressionTest {
             raw.put(0.toByte())
             raw.put(0.toByte())
             raw.put((flags and 0xFF).toByte())
+            repeat(4) { raw.put(0.toByte()) }
         }
 
         // Cell 0: 🧑 + ZWJ (extras), Cell 1: 💻, Cell 2: spacer continuation, Cell 3: plain space
@@ -82,7 +83,7 @@ class EmojiSnapshotRegressionTest {
         val cols = 1
         val rows = 1
         val headerBytes = 17 * 4 + rows * 4
-        val gridBytes = cols * rows * 11
+        val gridBytes = cols * rows * 15
         val raw = ByteBuffer.allocate(headerBytes + gridBytes).order(ByteOrder.LITTLE_ENDIAN)
 
         raw.putInt(cols)
@@ -112,6 +113,7 @@ class EmojiSnapshotRegressionTest {
         raw.put(0.toByte())
         raw.put(0.toByte())
         raw.put(0.toByte())
+        repeat(4) { raw.put(0.toByte()) }
 
         raw.position(0)
         val snapshot = TerminalSnapshot.fromByteBuffer(raw)
@@ -184,7 +186,7 @@ class EmojiSnapshotRegressionTest {
         val rows = 1
         val cellCount = cols * rows
         val headerBytes = 17 * 4 + rows * 4
-        val gridBytes = cellCount * 11
+        val gridBytes = cellCount * 15
         val extrasOffset = headerBytes + gridBytes
 
         // Record 0: 🧑 + ZWJ + 💻
@@ -226,6 +228,7 @@ class EmojiSnapshotRegressionTest {
             raw.put(0.toByte())
             raw.put(0.toByte())
             raw.put((flags and 0xFF).toByte())
+            repeat(4) { raw.put(0.toByte()) }
         }
 
         putCell(0x1F9D1, TerminalSnapshot.CELL_FLAG_HAS_GRAPHEME)

@@ -17,10 +17,11 @@ class TerminalSnapshotRowsTest {
         rows: List<Int> = lines.indices.toList(),
         extras: Map<Int, IntArray> = emptyMap(),
         cursorX: Int = 0,
+        decorations: Map<Int, Pair<Int, Int>> = emptyMap(),
     ): ByteBuffer {
         val cols = lines.first().length
         val cellsStart = 17 * 4 + rows.size * 4
-        val extrasOffset = cellsStart + rows.size * cols * 11
+        val extrasOffset = cellsStart + rows.size * cols * 15
         val extrasSize = 4 + extras.values.sumOf { 8 + it.size * 4 }
         val raw = ByteBuffer.allocate(extrasOffset + extrasSize).order(ByteOrder.LITTLE_ENDIAN)
         val header = intArrayOf(cols, lines.size, cursorX, 0, 1, 0, 0, 0, 255, 255, 255, extrasOffset, 0, 0, 0, 0)
@@ -34,6 +35,11 @@ class TerminalSnapshotRowsTest {
                 repeat(3) { raw.put(0) }
                 val hasExtras = extras.containsKey(row * cols + col)
                 raw.put(if (hasExtras) TerminalSnapshot.CELL_FLAG_HAS_GRAPHEME.toByte() else 0)
+                val (decoration, underline) = decorations[row * cols + col] ?: (0 to 0)
+                raw.put(decoration.toByte())
+                raw.put((underline shr 16).toByte())
+                raw.put((underline shr 8).toByte())
+                raw.put(underline.toByte())
             }
         }
         raw.putInt(extras.size)
@@ -110,6 +116,34 @@ class TerminalSnapshotRowsTest {
         val first = TerminalSnapshot.fromByteBuffer(encode(listOf("ab", "cd", "ef")))
 
         assertThrows(IllegalArgumentException::class.java) { TerminalSnapshot.fromByteBuffer(raw, previous = first) }
+    }
+
+    @Test
+    fun `decorations and underline colors land in their cells`() {
+        val curlyRed = TerminalSnapshot.UNDERLINE_CURLY or TerminalSnapshot.DECORATION_UNDERLINE_COLOR
+        val snapshot = TerminalSnapshot.fromByteBuffer(
+            encode(
+                listOf("ab", "cd"),
+                decorations = mapOf(1 to (curlyRed to 0xFF0000), 2 to (TerminalSnapshot.DECORATION_STRIKETHROUGH to 0)),
+            ),
+        )
+
+        assertEquals(curlyRed, snapshot.rowData[0].decorations[1].toInt())
+        assertEquals(0xFFFF0000.toInt(), snapshot.rowData[0].underlineArgb[1])
+        assertEquals(0, snapshot.rowData[0].decorations[0].toInt())
+        assertEquals(TerminalSnapshot.DECORATION_STRIKETHROUGH, snapshot.rowData[1].decorations[0].toInt())
+        assertEquals("cd", snapshot.line(1))
+    }
+
+    @Test
+    fun `a row whose decorations changed is not reused`() {
+        val first = TerminalSnapshot.fromByteBuffer(encode(listOf("ab")))
+        val second = TerminalSnapshot.fromByteBuffer(
+            encode(listOf("ab"), decorations = mapOf(0 to (TerminalSnapshot.UNDERLINE_SINGLE to 0))),
+            previous = first,
+        )
+
+        assertNotEquals(first.rowData[0], second.rowData[0])
     }
 
     @Test

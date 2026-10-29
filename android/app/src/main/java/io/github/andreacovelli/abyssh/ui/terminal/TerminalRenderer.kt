@@ -14,7 +14,7 @@ import java.util.IdentityHashMap
 import kotlin.math.abs
 import kotlin.math.max
 
-private const val FAINT_TEXT_ALPHA: Int = 96
+internal const val FAINT_TEXT_ALPHA: Int = 96
 private const val OPAQUE_ALPHA: Int = 255
 private const val ITALIC_SKEW_X: Float = -0.25f
 private const val CURSOR_BAR_FRACTION: Float = 0.15f
@@ -82,6 +82,7 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         isAntiAlias = false
         style = Paint.Style.FILL
     }
+    private val decorations = TerminalDecorations()
     private val rowPictures = RowPictureCache()
 
     fun draw(canvas: Canvas, frame: TerminalFrame, paints: TerminalTextPaints, placement: SnapshotPlacement) {
@@ -118,7 +119,9 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         val cells = frame.row(row)
         drawBackgrounds(canvas, frame, cells)
         drawSearchSpans(canvas, frame, row)
+        decorations.drawUnder(canvas, frame.cell, cells)
         drawText(canvas, frame, paints, cells)
+        decorations.drawOver(canvas, frame.cell, cells)
     }
 
     private fun drawBackgrounds(canvas: Canvas, frame: TerminalFrame, cells: FrameRow) {
@@ -297,7 +300,6 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
 private fun Paint.applyTextStyle(argb: Int, style: Int) {
     color = argb
     isFakeBoldText = (style and TerminalSnapshot.CELL_FLAG_BOLD) != 0
-    isUnderlineText = (style and TerminalSnapshot.CELL_FLAG_UNDERLINE) != 0
     textSkewX = if ((style and TerminalSnapshot.CELL_FLAG_ITALIC) != 0) ITALIC_SKEW_X else 0f
     alpha = if ((style and TerminalSnapshot.CELL_FLAG_FAINT) != 0) FAINT_TEXT_ALPHA else OPAQUE_ALPHA
 }
