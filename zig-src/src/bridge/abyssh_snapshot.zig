@@ -151,6 +151,10 @@ const AbysshTerminal = struct {
     clipboard_len: usize = 0,
     clipboard_dirty: bool = false,
     bell_count: u32 = 0,
+    // When the app's current synchronized output hold (mode 2026) began, in
+    // monotonic milliseconds. The render state keeps the last finished frame
+    // until the hold ends or runs past sync_hold_timeout_ms.
+    sync_hold_since_ms: ?u64 = null,
     snapshot_buffer: std.ArrayListUnmanaged(u8) = .empty,
     snapshot_extras_scratch: std.ArrayListUnmanaged(u32) = .empty,
     // The colors the last text snapshot resolved its cells with. Cells hold
@@ -497,10 +501,43 @@ fn abysshDecodePng(alloc: std.mem.Allocator, data: []const u8) ghostty.sys.Decod
     return .{ .width = w, .height = h, .data = out };
 }
 
+/// How long a synchronized output hold may keep the screen frozen, as in Ghostty.
+const sync_hold_timeout_ms: u64 = 1000;
+
 export fn update_render_state(terminal: ?*AbysshTerminal) callconv(.c) void {
-    if (terminal == null) return;
-    terminal.?.render_state.update(allocator, &terminal.?.terminal) catch return;
-    updateMetadata(terminal.?);
+    const t = terminal orelse return;
+    if (syncHoldRemainingMs(t) == null) refreshRenderState(t);
+    updateMetadata(t);
+}
+
+fn refreshRenderState(terminal: *AbysshTerminal) void {
+    terminal.render_state.update(allocator, &terminal.terminal) catch return;
+}
+
+/// The milliseconds left in the app's synchronized output hold, or null when
+/// there is none or it ran out. A resize or reset clears the mode without
+/// reporting the end of the hold, so the mode is checked too.
+fn syncHoldRemainingMs(terminal: *AbysshTerminal) ?u64 {
+    const since = terminal.sync_hold_since_ms orelse return null;
+    const elapsed = time.monotonicMillis() -| since;
+    if (!terminal.terminal.modes.get(.synchronized_output) or elapsed >= sync_hold_timeout_ms) {
+        terminal.sync_hold_since_ms = null;
+        return null;
+    }
+    return sync_hold_timeout_ms - elapsed;
+}
+
+// When a hold begins, nothing after the sequence that began it has been parsed,
+// so the terminal holds the app's last finished frame: capture it now, and keep
+// it on screen while the app draws the next one.
+fn abysshRenderHold(handler: *ghostty.TerminalStream.Handler, held: bool) void {
+    const terminal = terminalFromHandler(handler);
+    if (held) {
+        refreshRenderState(terminal);
+        terminal.sync_hold_since_ms = time.monotonicMillis();
+    } else {
+        terminal.sync_hold_since_ms = null;
+    }
 }
 
 export fn abyssh_create_terminal(cols: c.jint, rows: c.jint, max_scrollback: c.jint) callconv(.c) c.jlong {
@@ -547,6 +584,7 @@ export fn abyssh_create_terminal(cols: c.jint, rows: c.jint, max_scrollback: c.j
     handler.effects.size = abysshSize;
     handler.effects.title_changed = abysshTitleChanged;
     handler.effects.xtversion = abysshXtversion;
+    handler.effects.render_hold = abysshRenderHold;
     terminal.stream_handler = .{
         .owner = terminal,
         .inner = handler,
@@ -665,6 +703,16 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     _ = thiz;
     const terminal = abysshFromHandle(handle) orelse return c.JNI_FALSE;
     return if (terminal.terminal.screens.active.kitty_images.loading != null) c.JNI_TRUE else c.JNI_FALSE;
+}
+
+// The milliseconds until the app's synchronized output hold times out, or -1
+// when there is no hold. Snapshots show the frame from before the hold.
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeSyncHoldRemainingMs(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jlong {
+    _ = env;
+    _ = thiz;
+    const terminal = abysshFromHandle(handle) orelse return -1;
+    const remaining = syncHoldRemainingMs(terminal) orelse return -1;
+    return @intCast(remaining);
 }
 
 // Advances running Kitty animations to the frame due now. Returns the milliseconds

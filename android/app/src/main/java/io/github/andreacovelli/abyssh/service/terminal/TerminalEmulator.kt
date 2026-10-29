@@ -5,6 +5,7 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -59,6 +60,7 @@ internal class TerminalEmulator(
     private var pwd: String? = null
     private var lastSnapshotAtMs = 0L
     private var snapshotScheduled = false
+    private var syncHoldTimeout: Job? = null
 
     private val animationFrames = AnimationFrames(
         scope = scope,
@@ -84,6 +86,8 @@ internal class TerminalEmulator(
 
     fun destroy() {
         animationFrames.cancel()
+        syncHoldTimeout?.cancel()
+        syncHoldTimeout = null
         if (!isOpen) return
         bridge.nativeDestroy(handle)
         handle = 0L
@@ -145,6 +149,7 @@ internal class TerminalEmulator(
     /** Publishes a snapshot now when [force] or a frame has passed, and otherwise schedules one. */
     fun requestSnapshot(force: Boolean = false) {
         if (!isOpen) return
+        watchSyncHold()
         val now = System.currentTimeMillis()
         val elapsed = now - lastSnapshotAtMs
         if (force || elapsed >= SNAPSHOT_INTERVAL_MS) {
@@ -161,6 +166,26 @@ internal class TerminalEmulator(
             if (!isOpen) return@launch
             emitSnapshot()
             lastSnapshotAtMs = System.currentTimeMillis()
+        }
+    }
+
+    /**
+     * While the app holds synchronized output, snapshots show its last finished frame.
+     * When the hold runs out with no output to follow, this takes the snapshot that
+     * shows what the app drew since.
+     */
+    private fun watchSyncHold() {
+        val remainingMs = bridge.nativeSyncHoldRemainingMs(handle)
+        if (remainingMs < 0) {
+            syncHoldTimeout?.cancel()
+            syncHoldTimeout = null
+            return
+        }
+        if (syncHoldTimeout?.isActive == true) return
+        syncHoldTimeout = scope.launch(dispatcher) {
+            delay(remainingMs + 1)
+            syncHoldTimeout = null
+            requestSnapshot(force = true)
         }
     }
 
