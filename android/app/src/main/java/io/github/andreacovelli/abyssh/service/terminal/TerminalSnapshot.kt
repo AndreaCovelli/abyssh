@@ -22,6 +22,66 @@ data class ImagePlacement(
     val bitmap: Bitmap,
 )
 
+/**
+ * One row of cells, as resolved colors and flags. Rows never change after they are
+ * built, so a snapshot keeps the previous snapshot's row objects for rows that didn't
+ * change, and code that draws or caches by row can compare rows by identity.
+ */
+class TerminalRow(
+    val codepoints: IntArray,
+    val fgArgb: IntArray,
+    val bgArgb: IntArray,
+    val flags: ByteArray,
+    /**
+     * Sparse map: column -> extra grapheme codepoints (appended after the base
+     * codepoint stored in [codepoints]). Present when the cell has
+     * [TerminalSnapshot.CELL_FLAG_HAS_GRAPHEME] set.
+     */
+    val graphemeExtras: Map<Int, IntArray> = emptyMap(),
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is TerminalRow) return false
+        return codepoints.contentEquals(other.codepoints) &&
+            fgArgb.contentEquals(other.fgArgb) &&
+            bgArgb.contentEquals(other.bgArgb) &&
+            flags.contentEquals(other.flags) &&
+            graphemeExtrasEquals(graphemeExtras, other.graphemeExtras)
+    }
+
+    // Rows are looked up by content when a snapshot is parsed, so the hash is kept. Like
+    // String's, it is one field that reads 0 until computed, so a race only recomputes it.
+    private var hash = 0
+
+    override fun hashCode(): Int {
+        var result = hash
+        if (result == 0) {
+            result = codepoints.contentHashCode()
+            result = 31 * result + fgArgb.contentHashCode()
+            result = 31 * result + bgArgb.contentHashCode()
+            result = 31 * result + flags.contentHashCode()
+            result = 31 * result + graphemeExtras.entries.fold(0) { acc, (key, arr) -> acc + key + arr.contentHashCode() }
+            hash = result
+        }
+        return result
+    }
+
+    private companion object {
+        fun graphemeExtrasEquals(a: Map<Int, IntArray>, b: Map<Int, IntArray>): Boolean {
+            if (a.size != b.size) return false
+            for ((k, v) in a) {
+                val o = b[k] ?: return false
+                if (!v.contentEquals(o)) return false
+            }
+            return true
+        }
+    }
+}
+
+/**
+ * The visible terminal: its size, cursor, default colors, and [rowData], one
+ * [TerminalRow] per row. Cells are addressed by index, row * cols + col.
+ */
 data class TerminalSnapshot(
     val cols: Int,
     val rows: Int,
@@ -31,16 +91,7 @@ data class TerminalSnapshot(
     val cursorStyle: Int = CURSOR_STYLE_BLOCK,
     val defaultBgArgb: Int,
     val defaultFgArgb: Int,
-    val codepoints: IntArray,
-    val fgArgb: IntArray,
-    val bgArgb: IntArray,
-    val flags: ByteArray,
-    /**
-     * Sparse map: cell index -> extra grapheme codepoints (appended after the
-     * base codepoint stored in [codepoints]). Present when the corresponding
-     * cell has [CELL_FLAG_HAS_GRAPHEME] set.
-     */
-    val graphemeExtras: Map<Int, IntArray> = emptyMap(),
+    val rowData: List<TerminalRow>,
     val images: List<ImagePlacement> = emptyList(),
     /**
      * Stable screen.y of the content currently at viewport row 0. Changes
@@ -59,52 +110,22 @@ data class TerminalSnapshot(
     /** True when the app has enabled any mouse mode, so taps reach it as clicks. */
     val appTracksMouse: Boolean = false,
 ) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other !is TerminalSnapshot) return false
-        return cols == other.cols &&
-            rows == other.rows &&
-            cursorX == other.cursorX &&
-            cursorY == other.cursorY &&
-            cursorVisible == other.cursorVisible &&
-            cursorStyle == other.cursorStyle &&
-            defaultBgArgb == other.defaultBgArgb &&
-            defaultFgArgb == other.defaultFgArgb &&
-            codepoints.contentEquals(other.codepoints) &&
-            fgArgb.contentEquals(other.fgArgb) &&
-            bgArgb.contentEquals(other.bgArgb) &&
-            flags.contentEquals(other.flags) &&
-            graphemeExtrasEquals(graphemeExtras, other.graphemeExtras) &&
-            images == other.images &&
-            viewportScrollY == other.viewportScrollY &&
-            appHandlesSelectionDrag == other.appHandlesSelectionDrag &&
-            appTracksMouse == other.appTracksMouse
+    init {
+        require(rowData.size == rows) { "Snapshot has ${rowData.size} rows, expected $rows" }
     }
 
-    override fun hashCode(): Int {
-        var result = cols
-        result = 31 * result + rows
-        result = 31 * result + cursorX
-        result = 31 * result + cursorY
-        result = 31 * result + cursorVisible.hashCode()
-        result = 31 * result + cursorStyle
-        result = 31 * result + defaultBgArgb
-        result = 31 * result + defaultFgArgb
-        result = 31 * result + codepoints.contentHashCode()
-        result = 31 * result + fgArgb.contentHashCode()
-        result = 31 * result + bgArgb.contentHashCode()
-        result = 31 * result + flags.contentHashCode()
-        result = 31 *
-            result +
-            graphemeExtras.entries.fold(0) { acc, (key, arr) ->
-            acc + key + arr.contentHashCode()
-        }
-        result = 31 * result + images.hashCode()
-        result = 31 * result + viewportScrollY
-        result = 31 * result + appHandlesSelectionDrag.hashCode()
-        result = 31 * result + appTracksMouse.hashCode()
-        return result
-    }
+    val cellCount: Int get() = cols * rows
+
+    fun codepointAt(cellIndex: Int): Int = rowData[cellIndex / cols].codepoints[cellIndex % cols]
+
+    fun fgAt(cellIndex: Int): Int = rowData[cellIndex / cols].fgArgb[cellIndex % cols]
+
+    fun bgAt(cellIndex: Int): Int = rowData[cellIndex / cols].bgArgb[cellIndex % cols]
+
+    /** The cell's flags as an unsigned value, [CELL_FLAG_BOLD] and so on. */
+    fun flagsAt(cellIndex: Int): Int = rowData[cellIndex / cols].flags[cellIndex % cols].toInt() and 0xFF
+
+    fun graphemeExtrasAt(cellIndex: Int): IntArray? = rowData[cellIndex / cols].graphemeExtras[cellIndex % cols]
 
     companion object {
         const val CELL_FLAG_HAS_GRAPHEME: Int = 0x40
@@ -119,31 +140,78 @@ data class TerminalSnapshot(
         const val CURSOR_STYLE_BAR: Int = 1
         const val CURSOR_STYLE_UNDERLINE: Int = 2
         const val CURSOR_STYLE_BLOCK_HOLLOW: Int = 3
-        private const val HEADER_I32_COUNT = 16
+        private const val HEADER_I32_COUNT = 17
         private const val CELL_SIZE_BYTES = 11
         private const val IMAGE_HEADER_BYTES = 52
-
-        private fun graphemeExtrasEquals(
-            a: Map<Int, IntArray>,
-            b: Map<Int, IntArray>,
-        ): Boolean {
-            if (a.size != b.size) return false
-            for ((k, v) in a) {
-                val o = b[k] ?: return false
-                if (!v.contentEquals(o)) return false
-            }
-            return true
-        }
 
         private fun packArgb(r: Int, g: Int, b: Int): Int =
             (0xFF shl 24) or (r shl 16) or (g shl 8) or b
 
+        /**
+         * Builds a snapshot from flat cell arrays indexed by row * cols + col, with
+         * [graphemeExtras] keyed the same way.
+         */
+        fun fromCells(
+            cols: Int,
+            rows: Int,
+            cursorX: Int,
+            cursorY: Int,
+            cursorVisible: Boolean,
+            defaultBgArgb: Int,
+            defaultFgArgb: Int,
+            codepoints: IntArray,
+            fgArgb: IntArray,
+            bgArgb: IntArray,
+            flags: ByteArray,
+            graphemeExtras: Map<Int, IntArray> = emptyMap(),
+            cursorStyle: Int = CURSOR_STYLE_BLOCK,
+            viewportScrollY: Int = 0,
+            appHandlesSelectionDrag: Boolean = false,
+            appTracksMouse: Boolean = false,
+        ): TerminalSnapshot {
+            val extrasByRow = graphemeExtras.entries.groupBy({ it.key / cols }, { it.key % cols to it.value })
+            val rowData = List(rows) { row ->
+                val from = row * cols
+                val to = from + cols
+                TerminalRow(
+                    codepoints = codepoints.copyOfRange(from, to),
+                    fgArgb = fgArgb.copyOfRange(from, to),
+                    bgArgb = bgArgb.copyOfRange(from, to),
+                    flags = flags.copyOfRange(from, to),
+                    graphemeExtras = extrasByRow[row]?.toMap().orEmpty(),
+                )
+            }
+            return TerminalSnapshot(
+                cols = cols,
+                rows = rows,
+                cursorX = cursorX,
+                cursorY = cursorY,
+                cursorVisible = cursorVisible,
+                cursorStyle = cursorStyle,
+                defaultBgArgb = defaultBgArgb,
+                defaultFgArgb = defaultFgArgb,
+                rowData = rowData,
+                viewportScrollY = viewportScrollY,
+                appHandlesSelectionDrag = appHandlesSelectionDrag,
+                appTracksMouse = appTracksMouse,
+            )
+        }
+
+        /**
+         * Parses a snapshot from the native side. It carries only the rows that
+         * changed, so the other rows come from [previous]; a snapshot that leaves
+         * rows out needs a [previous] of the same size, and throws without one. A
+         * row that matches one of [previous]'s, such as a line that scrolled, reuses
+         * that row object.
+         */
         fun fromByteBuffer(
             buffer: ByteBuffer,
             images: List<ImagePlacement> = emptyList(),
+            previous: TerminalSnapshot? = null,
         ): TerminalSnapshot {
             val wrapped = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
             wrapped.position(0)
+            require(buffer.capacity() >= HEADER_I32_COUNT * 4) { "Snapshot buffer too small: cap=${buffer.capacity()}" }
 
             val cols = wrapped.int
             val rows = wrapped.int
@@ -161,30 +229,75 @@ data class TerminalSnapshot(
             val appHandlesSelectionDrag = wrapped.int == 1
             val cursorStyle = wrapped.int
             val appTracksMouse = wrapped.int == 1
+            val rowCount = wrapped.int
 
-            val cellCount = cols * rows
-            val expectedSize = (HEADER_I32_COUNT * 4) + (cellCount * CELL_SIZE_BYTES)
+            require(cols >= 0 && rows >= 0 && rowCount in 0..rows) { "Bad snapshot size: ${cols}x$rows rows=$rowCount" }
+            val expectedSize = HEADER_I32_COUNT * 4L + rowCount * 4L + rowCount.toLong() * cols * CELL_SIZE_BYTES
             require(buffer.capacity() >= expectedSize) {
                 "Snapshot buffer too small: cap=${buffer.capacity()} expected=$expectedSize"
             }
 
+            val rowIndices = IntArray(rowCount) { wrapped.int }
+            for (i in rowIndices.indices) {
+                val lower = if (i == 0) 0 else rowIndices[i - 1] + 1
+                require(rowIndices[i] in lower until rows) { "Bad snapshot row index ${rowIndices[i]}" }
+            }
+            val base = if (rowCount == rows) {
+                null
+            } else {
+                checkNotNull(previous?.takeIf { it.cols == cols && it.rows == rows }?.rowData) {
+                    "Partial snapshot without a previous snapshot of the same size"
+                }
+            }
+
+            val graphemeExtras: Map<Int, IntArray> =
+                if (extrasOffset > 0 && extrasOffset < wrapped.capacity()) {
+                    val extras = wrapped.duplicate().order(ByteOrder.LITTLE_ENDIAN)
+                    extras.position(extrasOffset)
+                    parseGraphemeExtras(extras, cols * rows)
+                } else {
+                    emptyMap()
+                }
+            val extrasByRow = graphemeExtras.entries.groupBy({ it.key / cols }, { it.key % cols to it.value })
+
             // Bulk-read all cell bytes in one operation, then parse from the
             // byte array to avoid thousands of virtual-dispatch ByteBuffer
             // calls that dominate the parse cost on Android.
-            // Allocate fresh arrays each frame — the old arrays are held by the
-            // previous TerminalSnapshot visible to the UI thread, so reusing
-            // them would cause a data race.
-            val cellDataLen = cellCount * CELL_SIZE_BYTES
-            val cellBytes = ByteArray(cellDataLen)
-            wrapped.get(cellBytes, 0, cellDataLen)
+            val cellBytes = ByteArray(rowCount * cols * CELL_SIZE_BYTES)
+            wrapped.get(cellBytes)
 
-            val codepoints = IntArray(cellCount)
-            val fgArgb = IntArray(cellCount)
-            val bgArgb = IntArray(cellCount)
-            val flags = ByteArray(cellCount)
+            val rowData = arrayOfNulls<TerminalRow>(rows)
+            base?.forEachIndexed { row, data -> rowData[row] = data }
+            val reusable = ReusableRows(previous)
+            for ((slot, row) in rowIndices.withIndex()) {
+                val parsed = parseRow(cellBytes, slot * cols * CELL_SIZE_BYTES, cols, extrasByRow[row]?.toMap().orEmpty())
+                rowData[row] = reusable.find(parsed, row) ?: parsed
+            }
 
-            var off = 0
-            for (i in 0 until cellCount) {
+            return TerminalSnapshot(
+                cols = cols,
+                rows = rows,
+                cursorX = cursorX,
+                cursorY = cursorY,
+                cursorVisible = cursorVisible,
+                cursorStyle = cursorStyle,
+                defaultBgArgb = packArgb(defaultBgR, defaultBgG, defaultBgB),
+                defaultFgArgb = packArgb(defaultFgR, defaultFgG, defaultFgB),
+                rowData = rowData.map { checkNotNull(it) },
+                images = images,
+                viewportScrollY = viewportScrollY,
+                appHandlesSelectionDrag = appHandlesSelectionDrag,
+                appTracksMouse = appTracksMouse,
+            )
+        }
+
+        private fun parseRow(cellBytes: ByteArray, start: Int, cols: Int, extras: Map<Int, IntArray>): TerminalRow {
+            val codepoints = IntArray(cols)
+            val fgArgb = IntArray(cols)
+            val bgArgb = IntArray(cols)
+            val flags = ByteArray(cols)
+            var off = start
+            for (i in 0 until cols) {
                 // codepoint: little-endian i32 from 4 bytes
                 codepoints[i] = (cellBytes[off].toInt() and 0xFF) or
                     ((cellBytes[off + 1].toInt() and 0xFF) shl 8) or
@@ -201,37 +314,7 @@ data class TerminalSnapshot(
                 bgArgb[i] = packArgb(bgR, bgG, bgB)
                 flags[i] = cellBytes[off]; off++
             }
-
-            val graphemeExtras: Map<Int, IntArray> =
-                if (extrasOffset > 0 && extrasOffset < wrapped.capacity()) {
-                    val extras = wrapped.duplicate().order(ByteOrder.LITTLE_ENDIAN)
-                    extras.position(extrasOffset)
-                    parseGraphemeExtras(extras, cellCount)
-                } else {
-                    emptyMap()
-                }
-
-            val snapshot = TerminalSnapshot(
-                cols = cols,
-                rows = rows,
-                cursorX = cursorX,
-                cursorY = cursorY,
-                cursorVisible = cursorVisible,
-                cursorStyle = cursorStyle,
-                defaultBgArgb = packArgb(defaultBgR, defaultBgG, defaultBgB),
-                defaultFgArgb = packArgb(defaultFgR, defaultFgG, defaultFgB),
-                codepoints = codepoints,
-                fgArgb = fgArgb,
-                bgArgb = bgArgb,
-                flags = flags,
-                graphemeExtras = graphemeExtras,
-                images = images,
-                viewportScrollY = viewportScrollY,
-                appHandlesSelectionDrag = appHandlesSelectionDrag,
-                appTracksMouse = appTracksMouse,
-            )
-
-            return snapshot
+            return TerminalRow(codepoints, fgArgb, bgArgb, flags, extras)
         }
 
         // Returns an empty map when any record is truncated or out of range, so a
@@ -315,5 +398,21 @@ data class TerminalSnapshot(
             }
             return images
         }
+    }
+}
+
+/**
+ * Finds a row of [previous] equal to a parsed one. A row that was resent but didn't
+ * change is usually on the same line, so that is checked first; other lines, such as
+ * after a scroll, are looked up by hash, indexed on first use.
+ */
+private class ReusableRows(private val previous: TerminalSnapshot?) {
+    private var byContent: Map<TerminalRow, TerminalRow>? = null
+
+    fun find(row: TerminalRow, line: Int): TerminalRow? {
+        val rows = previous?.rowData ?: return null
+        rows.getOrNull(line)?.let { if (it == row) return it }
+        val lookup = byContent ?: rows.associateBy { it }.also { byContent = it }
+        return lookup[row]
     }
 }

@@ -33,7 +33,7 @@ class TerminalCanvasGestureTest {
     private fun snapshot(appTracksMouse: Boolean, vararg rows: String): TerminalSnapshot {
         val cols = 40
         val text = rows.joinToString("") { it.padEnd(cols) }
-        return TerminalSnapshot(
+        return TerminalSnapshot.fromCells(
             cols = cols,
             rows = rows.size,
             cursorX = 0,
@@ -52,7 +52,7 @@ class TerminalCanvasGestureTest {
     private fun show(snapshot: TerminalSnapshot) {
         compose.setContent {
             TerminalCanvas(
-                snapshot = snapshot,
+                snapshot = { snapshot },
                 modifier = Modifier.size(360.dp, 200.dp).testTag("canvas"),
                 onResize = { _, _, w, h, _, _ -> cellWidth = w; cellHeight = h },
                 onLinkTap = { _, _, url, noLink -> if (url == null) noLink() else linkTaps += url },

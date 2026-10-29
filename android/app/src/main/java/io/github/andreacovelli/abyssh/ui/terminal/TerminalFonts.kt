@@ -8,7 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.res.ResourcesCompat
 import io.github.andreacovelli.abyssh.R
-import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
+import io.github.andreacovelli.abyssh.service.terminal.TerminalRow
 import io.github.andreacovelli.abyssh.ui.theme.LocalChuFont
 import kotlin.math.ceil
 import kotlin.math.max
@@ -19,6 +19,7 @@ private const val PAINT_FALLBACK: Int = 2
 private const val PAINT_EMOJI: Int = 3
 
 private const val FALLBACK_CELL_WIDTH_PX = 8f
+private const val BMP_SIZE = 0x10000
 private const val FALLBACK_CELL_HEIGHT_PX = 16f
 
 /**
@@ -50,6 +51,10 @@ internal class TerminalFonts(
         for (cp in 33..126) this[cp] = cp.toChar().toString()
     }
     private val singleChoices = HashMap<Int, Int>(256)
+
+    // Choices for the Basic Multilingual Plane, plus one so 0 means not looked up yet.
+    // The renderer asks for every cell it draws, and an array avoids boxing the key.
+    private val bmpChoices = ByteArray(BMP_SIZE)
     private val clusterChoices = HashMap<String, Int>(64)
 
     fun glyphFor(codepoint: Int): String = singleGlyphs.getOrPut(codepoint) { String(Character.toChars(codepoint)) }
@@ -57,13 +62,18 @@ internal class TerminalFonts(
     fun choiceFor(codepoint: Int): Int {
         // Fast path for the overwhelmingly common command-output ASCII glyphs.
         if (codepoint in 0x21..0x7E) return PAINT_PRIMARY
-        return singleChoices.getOrPut(codepoint) {
-            if (isNerdFontPrivateUse(codepoint)) {
-                privateUseChoice(codepoint, primaryPuaCoverage)
-            } else {
-                choiceForGlyph(glyphFor(codepoint))
-            }
+        if (codepoint in 0 until BMP_SIZE) {
+            val cached = bmpChoices[codepoint].toInt()
+            if (cached != 0) return cached - 1
+            return lookUpChoice(codepoint).also { bmpChoices[codepoint] = (it + 1).toByte() }
         }
+        return singleChoices.getOrPut(codepoint) { lookUpChoice(codepoint) }
+    }
+
+    private fun lookUpChoice(codepoint: Int): Int = if (isNerdFontPrivateUse(codepoint)) {
+        privateUseChoice(codepoint, primaryPuaCoverage)
+    } else {
+        choiceForGlyph(glyphFor(codepoint))
     }
 
     fun choiceFor(cluster: String): Int = clusterChoices.getOrPut(cluster) {
@@ -71,11 +81,11 @@ internal class TerminalFonts(
         if (isNerdFontPrivateUse(first)) privateUseChoice(first, primaryPuaCoverage) else choiceForGlyph(cluster)
     }
 
-    /** The paint choice for one cell of [snapshot]. */
-    fun choiceAt(snapshot: TerminalSnapshot, cellIndex: Int): Int = if (snapshot.hasGraphemeExtras(cellIndex)) {
-        choiceFor(snapshot.glyphAt(cellIndex))
+    /** The paint choice for one cell of [row]. */
+    fun choiceAt(row: TerminalRow, col: Int): Int = if (row.hasGraphemeExtras(col)) {
+        choiceFor(row.glyphAt(col))
     } else {
-        choiceFor(snapshot.codepoints[cellIndex])
+        choiceFor(row.codepoints[col])
     }
 
     private fun choiceForGlyph(glyph: String): Int = when {

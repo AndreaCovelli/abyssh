@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
+import io.github.andreacovelli.abyssh.service.terminal.TerminalRow
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 import kotlin.math.floor
 
@@ -13,12 +14,23 @@ internal fun TerminalSnapshot.cellAt(x: Float, y: Float, cellWidth: Float, cellH
 
 /** True for the second cell of a wide character. */
 internal fun TerminalSnapshot.isSpacerContinuation(cellIndex: Int): Boolean =
-    ((flags[cellIndex].toInt() and 0xFF) and TerminalSnapshot.CELL_FLAG_SPACER) != 0
+    rowData[cellIndex / cols].isSpacerContinuation(cellIndex % cols)
 
 /** The text in a cell: its codepoint plus any grapheme extras. */
-internal fun TerminalSnapshot.glyphAt(cellIndex: Int): String {
-    val codepoint = codepoints[cellIndex]
-    val extras = graphemeExtras[cellIndex]
+internal fun TerminalSnapshot.glyphAt(cellIndex: Int): String = rowData[cellIndex / cols].glyphAt(cellIndex % cols)
+
+/** True when a cell holds more than one codepoint. */
+internal fun TerminalSnapshot.hasGraphemeExtras(cellIndex: Int): Boolean =
+    rowData[cellIndex / cols].hasGraphemeExtras(cellIndex % cols)
+
+/** True for the second cell of a wide character. */
+internal fun TerminalRow.isSpacerContinuation(col: Int): Boolean =
+    (flags[col].toInt() and TerminalSnapshot.CELL_FLAG_SPACER) != 0
+
+/** The text in a cell: its codepoint plus any grapheme extras. */
+internal fun TerminalRow.glyphAt(col: Int): String {
+    val codepoint = codepoints[col]
+    val extras = graphemeExtras[col]
     if (extras == null || extras.isEmpty()) return String(Character.toChars(codepoint))
     val builder = StringBuilder(1 + extras.size)
     builder.appendCodePoint(codepoint)
@@ -27,5 +39,4 @@ internal fun TerminalSnapshot.glyphAt(cellIndex: Int): String {
 }
 
 /** True when a cell holds more than one codepoint. */
-internal fun TerminalSnapshot.hasGraphemeExtras(cellIndex: Int): Boolean =
-    graphemeExtras[cellIndex]?.isNotEmpty() == true
+internal fun TerminalRow.hasGraphemeExtras(col: Int): Boolean = graphemeExtras[col]?.isNotEmpty() == true

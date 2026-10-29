@@ -59,6 +59,9 @@ internal class TerminalEmulator(
     private var lastSnapshotAtMs = 0L
     private var snapshotScheduled = false
 
+    /** The last snapshot built, which the next one reuses for rows that didn't change. */
+    private var lastSnapshot: TerminalSnapshot? = null
+
     val isOpen: Boolean get() = handle != 0L
 
     /** Replaces the terminal with a blank one of the current size and colors. */
@@ -72,6 +75,7 @@ internal class TerminalEmulator(
         if (!isOpen) return
         bridge.nativeDestroy(handle)
         handle = 0L
+        lastSnapshot = null
     }
 
     /** Destroys the terminal and forgets what the last session reported. */
@@ -148,22 +152,34 @@ internal class TerminalEmulator(
     @Suppress("TooGenericExceptionCaught")
     private fun emitSnapshot() {
         try {
-            val raw = bridge.nativeSnapshot(handle)
-            val images = TerminalSnapshot.parseImages(bridge.nativeSnapshotImages(handle))
-            val snapshot = TerminalSnapshot.fromByteBuffer(raw, images)
+            // The native side forgets which rows changed once it sends them, so a failed
+            // parse below leaves no previous snapshot and the next one is sent in full.
+            val previous = lastSnapshot
+            lastSnapshot = null
+            val raw = traceSection("Terminal.nativeSnapshot") { bridge.nativeSnapshot(handle, previous == null) }
+            val images = traceSection("Terminal.snapshotImages") {
+                TerminalSnapshot.parseImages(bridge.nativeSnapshotImages(handle))
+            }
+            val snapshot = traceSection("Terminal.parseSnapshot") {
+                TerminalSnapshot.fromByteBuffer(raw, images, previous)
+            }
+            lastSnapshot = snapshot
             bridge.nativePollTitle(handle)?.let { title = it }
             bridge.nativePollPwd(handle)?.let { pwd = it }
             bridge.nativePollClipboard(handle)?.let { publishClipboard(it.toString(Charsets.UTF_8)) }
             val bellCount = bridge.nativeDrainBellCount(handle)
-            state.update {
-                it.copy(
-                    snapshot = snapshot,
-                    title = title,
-                    pwd = pwd,
-                    bellCount = bellCount,
-                    nativeVersion = nativeVersion,
-                    handle = handle,
-                )
+            // Includes the StateFlow equality check, which compares only the rows that changed.
+            traceSection("Terminal.publishSnapshot") {
+                state.update {
+                    it.copy(
+                        snapshot = snapshot,
+                        title = title,
+                        pwd = pwd,
+                        bellCount = bellCount,
+                        nativeVersion = nativeVersion,
+                        handle = handle,
+                    )
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "emitSnapshot failed", e)

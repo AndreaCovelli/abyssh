@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -31,10 +32,13 @@ import kotlinx.coroutines.isActive
  * Draws a terminal snapshot and turns touch, mouse, and pinch input into selections,
  * clicks, scrolling, and font size changes. Fonts and cell metrics live in
  * [TerminalFonts], drawing in [TerminalRenderer], and input in [TerminalCanvasGestures].
+ *
+ * [snapshot] is read in the draw phase and in effects, not during composition, so a
+ * snapshot held in Compose state redraws the canvas without recomposing it.
  */
 @Composable
 fun TerminalCanvas(
-    snapshot: TerminalSnapshot,
+    snapshot: () -> TerminalSnapshot,
     modifier: Modifier = Modifier,
     fontSizeSp: Float = 14f,
     fitSnapshotToCanvas: Boolean = false,
@@ -82,6 +86,8 @@ fun TerminalCanvas(
     val cell = remember(paints) { paints.cellMetrics() }
     val renderer = remember(fonts) { TerminalRenderer(fonts) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    val currentSnapshot by rememberUpdatedState(snapshot)
+    val snapshotSource = remember { { currentSnapshot() } }
 
     val callbacks = TerminalCanvasCallbacks(
         onSelectionChange = onSelectionChange,
@@ -96,17 +102,11 @@ fun TerminalCanvas(
     )
     val env = rememberUpdatedState(
         TerminalGestureEnv(
-            snapshot = snapshot,
+            snapshotSource = snapshotSource,
+            fitSnapshotToCanvas = fitSnapshotToCanvas,
             selection = selection,
             cell = cell,
             canvasSize = canvasSize,
-            placement = SnapshotPlacement.of(
-                fitSnapshotToCanvas,
-                snapshot,
-                cell,
-                canvasSize.width.toFloat(),
-                canvasSize.height.toFloat(),
-            ),
             fontSizeSp = fontSizeSp,
             fontSizeRange = minFontSizeSp..maxFontSizeSp,
             shiftActive = shiftActive,
@@ -120,12 +120,19 @@ fun TerminalCanvas(
         TerminalCanvasGestures(env, gestureConfig) { scrollDeltas.trySend(it) }
     }
 
-    TerminalSelectionEffects(snapshot, selection, cell, canvasSize, terminalHandle, gestures, onSelectionChange, onSelectionChanged)
+    TerminalSelectionEffects(
+        snapshotSource,
+        selection,
+        cell,
+        canvasSize,
+        terminalHandle,
+        gestures,
+        onSelectionChange,
+        onSelectionChanged,
+    )
     TerminalResizeEffect(canvasSize, cell, onResize)
 
-    val searchSpans = remember(searchMatches, currentSearchMatch, snapshot.viewportScrollY, snapshot.rows, snapshot.cols) {
-        searchSpansByRow(searchMatches, currentSearchMatch, snapshot)
-    }
+    val searchSpans = remember { SearchSpanCache() }
     val colors = TerminalCanvasColors(
         selectionBackground = selectionBackgroundColor.toArgb(),
         selectionForeground = selectionForegroundColor?.toArgb(),
@@ -140,14 +147,15 @@ fun TerminalCanvas(
             .onSizeChanged { canvasSize = it }
             .then(if (enableGestures) gestures.modifier else Modifier),
     ) {
-        drawRect(color = Color(snapshot.defaultBgArgb))
-        val placement = SnapshotPlacement.of(fitSnapshotToCanvas, snapshot, cell, size.width, size.height)
+        val shown = snapshotSource()
+        drawRect(color = Color(shown.defaultBgArgb))
+        val placement = SnapshotPlacement.of(fitSnapshotToCanvas, shown, cell, size.width, size.height)
         val frame = TerminalFrame(
-            snapshot = snapshot,
+            snapshot = shown,
             cell = cell,
             colors = colors,
-            selection = selection?.normalized(snapshot.codepoints.size),
-            searchSpans = searchSpans,
+            selection = selection?.normalized(shown.cellCount),
+            searchSpans = searchSpans.get(searchMatches, currentSearchMatch, shown),
         )
         drawIntoCanvas { renderer.draw(it.nativeCanvas, frame, paints, placement) }
     }
@@ -179,7 +187,7 @@ private fun rememberScrollDeltas(onScroll: (delta: Int, x: Float, y: Float) -> U
  */
 @Composable
 private fun TerminalSelectionEffects(
-    snapshot: TerminalSnapshot,
+    snapshot: () -> TerminalSnapshot,
     selection: TerminalSelection?,
     cell: TerminalCellMetrics,
     canvasSize: IntSize,
@@ -190,42 +198,41 @@ private fun TerminalSelectionEffects(
 ) {
     val currentOnSelectionChanged by rememberUpdatedState(onSelectionChanged)
     val currentOnSelectionChange by rememberUpdatedState(onSelectionChange)
-    val currentSnapshot by rememberUpdatedState(snapshot)
     val currentSelection by rememberUpdatedState(selection)
     val ghosttyBridge = remember { GhosttyBridge() }
     if (selection != null) {
-        LaunchedEffect(snapshot, selection, cell, canvasSize, terminalHandle) {
-            currentOnSelectionChanged(
-                buildSelectionState(
-                    snapshot = snapshot,
-                    selection = selection,
-                    cellWidth = cell.width,
-                    cellHeight = cell.height,
-                    canvasWidthPx = canvasSize.width,
-                    canvasHeightPx = canvasSize.height,
-                    terminalHandle = terminalHandle,
-                    ghosttyBridge = ghosttyBridge,
-                ),
-            )
+        LaunchedEffect(selection, cell, canvasSize, terminalHandle) {
+            snapshotFlow { snapshot() }.collect { shown ->
+                currentOnSelectionChanged(
+                    buildSelectionState(
+                        snapshot = shown,
+                        selection = selection,
+                        cellWidth = cell.width,
+                        cellHeight = cell.height,
+                        canvasWidthPx = canvasSize.width,
+                        canvasHeightPx = canvasSize.height,
+                        terminalHandle = terminalHandle,
+                        ghosttyBridge = ghosttyBridge,
+                    ),
+                )
+            }
         }
     } else {
         LaunchedEffect(Unit) { currentOnSelectionChanged(null) }
     }
 
-    var viewportBaseline by remember { mutableStateOf<Int?>(null) }
+    // Keeps the selection on the same text while the viewport scrolls under it.
     val hasSelection = selection != null
     LaunchedEffect(hasSelection) {
-        viewportBaseline = if (hasSelection) currentSnapshot.viewportScrollY else null
-    }
-    LaunchedEffect(snapshot) {
-        remapSelectionForViewportScroll(
-            snapshot = snapshot,
-            selection = currentSelection,
-            baseline = viewportBaseline,
-            autoScrollingSelection = gestures.autoScrollingSelection,
-            onBaselineChange = { viewportBaseline = it },
-            onSelectionChange = currentOnSelectionChange,
-        )
+        if (!hasSelection) return@LaunchedEffect
+        var baseline = snapshot().viewportScrollY
+        snapshotFlow { snapshot().let { it.viewportScrollY to it.cols } }.collect { (scrollY, cols) ->
+            if (scrollY == baseline) return@collect
+            val deltaCells = (baseline - scrollY) * max(cols, 1)
+            baseline = scrollY
+            val sel = currentSelection ?: return@collect
+            currentOnSelectionChange(sel.shiftedBy(deltaCells, focusToo = !gestures.autoScrollingSelection))
+        }
     }
 }
 
@@ -249,36 +256,31 @@ private fun TerminalResizeEffect(
     }
 }
 
-/** The visible parts of the search matches, by viewport row, flagged when current. */
-private fun searchSpansByRow(
-    matches: List<SearchMatch>,
-    current: SearchMatch?,
-    snapshot: TerminalSnapshot,
-): Map<Int, List<Pair<SearchSpan, Boolean>>> = matches
-    .flatMap { match ->
-        match.viewportSpans(snapshot.viewportScrollY, snapshot.rows, snapshot.cols).map { span -> span to (match == current) }
-    }
-    .groupBy { it.first.row }
+/**
+ * The visible parts of the search matches, by viewport row, flagged when current. Kept
+ * until the matches or the viewport change, since the canvas asks on every frame.
+ */
+private class SearchSpanCache {
+    private var matches: List<SearchMatch>? = null
+    private var current: SearchMatch? = null
+    private var viewport = Triple(-1, -1, -1)
+    private var spans: Map<Int, List<Pair<SearchSpan, Boolean>>> = emptyMap()
 
-private fun remapSelectionForViewportScroll(
-    snapshot: TerminalSnapshot,
-    selection: TerminalSelection?,
-    baseline: Int?,
-    autoScrollingSelection: Boolean,
-    onBaselineChange: (Int) -> Unit,
-    onSelectionChange: (TerminalSelection?) -> Unit,
-) {
-    val sel = selection ?: return
-    val startBaseline = baseline ?: return
-    val cur = snapshot.viewportScrollY
-    if (startBaseline == cur) return
-    val deltaCells = (startBaseline - cur) * max(snapshot.cols, 1)
-    onBaselineChange(cur)
-    onSelectionChange(
-        if (autoScrollingSelection) {
-            sel.copy(anchorIndex = sel.anchorIndex + deltaCells)
-        } else {
-            sel.copy(anchorIndex = sel.anchorIndex + deltaCells, focusIndex = sel.focusIndex + deltaCells)
-        },
-    )
+    fun get(matches: List<SearchMatch>, current: SearchMatch?, snapshot: TerminalSnapshot): Map<Int, List<Pair<SearchSpan, Boolean>>> {
+        val viewport = Triple(snapshot.viewportScrollY, snapshot.rows, snapshot.cols)
+        if (matches !== this.matches || current != this.current || viewport != this.viewport) {
+            this.matches = matches
+            this.current = current
+            this.viewport = viewport
+            spans = matches
+                .flatMap { match ->
+                    match.viewportSpans(snapshot.viewportScrollY, snapshot.rows, snapshot.cols).map { span -> span to (match == current) }
+                }
+                .groupBy { it.first.row }
+        }
+        return spans
+    }
 }
+
+private fun TerminalSelection.shiftedBy(deltaCells: Int, focusToo: Boolean): TerminalSelection =
+    copy(anchorIndex = anchorIndex + deltaCells, focusIndex = if (focusToo) focusIndex + deltaCells else focusIndex)

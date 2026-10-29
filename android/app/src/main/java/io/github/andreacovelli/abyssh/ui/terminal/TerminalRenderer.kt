@@ -3,10 +3,14 @@ package io.github.andreacovelli.abyssh.ui.terminal
 import android.graphics.Canvas
 import androidx.core.graphics.withTranslation
 import android.graphics.Paint
+import android.graphics.Picture
 import android.graphics.Rect
 import android.graphics.RectF
 import androidx.compose.ui.geometry.Offset
+import io.github.andreacovelli.abyssh.service.terminal.TerminalRow
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
+import io.github.andreacovelli.abyssh.service.terminal.traceSection
+import java.util.IdentityHashMap
 import kotlin.math.max
 
 private const val FAINT_TEXT_ALPHA: Int = 96
@@ -14,12 +18,6 @@ private const val OPAQUE_ALPHA: Int = 255
 private const val ITALIC_SKEW_X: Float = -0.25f
 private const val CURSOR_BAR_FRACTION: Float = 0.15f
 private const val CURSOR_UNDERLINE_FRACTION: Float = 0.15f
-
-private const val TEXT_STYLE_MASK: Int =
-    TerminalSnapshot.CELL_FLAG_BOLD or
-        TerminalSnapshot.CELL_FLAG_ITALIC or
-        TerminalSnapshot.CELL_FLAG_UNDERLINE or
-        TerminalSnapshot.CELL_FLAG_FAINT
 
 /** Colors the canvas adds to the snapshot's own, as ARGB ints. */
 internal data class TerminalCanvasColors(
@@ -60,84 +58,12 @@ internal data class SnapshotPlacement(val scale: Float = 1f, val offsetX: Float 
     }
 }
 
-/** One frame to draw: the snapshot, the selected cells, and the visible search hits by row. */
-internal class TerminalFrame(
-    val snapshot: TerminalSnapshot,
-    val cell: TerminalCellMetrics,
-    val colors: TerminalCanvasColors,
-    val selection: IntRange? = null,
-    // Flagged true for the current match.
-    val searchSpans: Map<Int, List<Pair<SearchSpan, Boolean>>> = emptyMap(),
-) {
-    val cols = max(snapshot.cols, 1)
-    val rows = max(snapshot.rows, 1)
-
-    fun isSelected(cellIndex: Int): Boolean = selection?.contains(cellIndex) == true
-
-    fun isInverse(cellIndex: Int): Boolean =
-        !isSelected(cellIndex) && (snapshot.flags[cellIndex].toInt() and TerminalSnapshot.CELL_FLAG_INVERSE) != 0
-
-    fun backgroundAt(cellIndex: Int): Int = when {
-        isSelected(cellIndex) -> colors.selectionBackground
-        isInverse(cellIndex) -> snapshot.fgArgb[cellIndex]
-        else -> snapshot.bgArgb[cellIndex]
-    }
-
-    fun foregroundAt(cellIndex: Int): Int {
-        val selectedForeground = colors.selectionForeground
-        return when {
-            selectedForeground != null && isSelected(cellIndex) -> selectedForeground
-            isInverse(cellIndex) -> snapshot.bgArgb[cellIndex]
-            else -> snapshot.fgArgb[cellIndex]
-        }
-    }
-
-    fun textStyleAt(cellIndex: Int): Int = snapshot.flags[cellIndex].toInt() and TEXT_STYLE_MASK
-
-    /** The first cell after the run of matching backgrounds that starts at [start]. */
-    fun backgroundRunEnd(start: Int, rowEnd: Int): Int {
-        val background = backgroundAt(start)
-        val inverse = isInverse(start)
-        var end = start + 1
-        while (end < rowEnd && backgroundAt(end) == background && isInverse(end) == inverse) end++
-        return end
-    }
-
-    /**
-     * The first cell after the text run that starts at [start]: text drawn in one call,
-     * with one color, style, and paint. Spaces join a run; empty cells and wide
-     * characters after the first end it.
-     */
-    inline fun textRunEnd(start: Int, rowEnd: Int, paintChoiceAt: (Int) -> Int): Int {
-        val foreground = foregroundAt(start)
-        val style = textStyleAt(start)
-        val choice = paintChoiceAt(start)
-        var end = textRunBodyStart(start, rowEnd)
-        while (end < rowEnd &&
-            joinsTextRun(end, rowEnd, foreground, style) &&
-            (snapshot.codepoints[end] == ' '.code || paintChoiceAt(end) == choice)
-        ) {
-            end++
-        }
-        return end
-    }
-
-    /** Where a run's later cells start: past the first cell's spacer when it is wide. */
-    fun textRunBodyStart(start: Int, rowEnd: Int): Int =
-        if (start + 1 < rowEnd && snapshot.isSpacerContinuation(start + 1)) start + 2 else start + 1
-
-    fun joinsTextRun(cellIndex: Int, rowEnd: Int, foreground: Int, style: Int): Boolean {
-        val codepoint = snapshot.codepoints[cellIndex]
-        return when {
-            codepoint == 0 -> false
-            codepoint == ' '.code && !snapshot.isSpacerContinuation(cellIndex) -> false
-            cellIndex + 1 < rowEnd && snapshot.isSpacerContinuation(cellIndex + 1) -> false
-            else -> foregroundAt(cellIndex) == foreground && textStyleAt(cellIndex) == style
-        }
-    }
-}
-
-/** Draws [TerminalFrame]s onto a native canvas, reusing its paints and text buffer. */
+/**
+ * Draws [TerminalFrame]s onto a native canvas, reusing its paints and text buffer. Each
+ * row's drawing is kept as a [Picture] and replayed while the row's cells, the paints,
+ * and the cell size stay the same. Rows with selected cells or search hits are drawn
+ * each frame, and images and the cursor are drawn on top.
+ */
 internal class TerminalRenderer(private val fonts: TerminalFonts) {
     private val text = StringBuilder(256)
     private val fillPaint = Paint().apply {
@@ -148,38 +74,54 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         isAntiAlias = false
         style = Paint.Style.FILL
     }
+    private val rowPictures = RowPictureCache()
 
     fun draw(canvas: Canvas, frame: TerminalFrame, paints: TerminalTextPaints, placement: SnapshotPlacement) {
-        canvas.withTranslation(placement.offsetX, placement.offsetY) {
-            if (placement.scale != 1f) scale(placement.scale, placement.scale)
-            for (row in 0 until frame.rows) {
-                drawBackgrounds(this, frame, row)
-                drawSearchSpans(this, frame, row)
-                drawText(this, frame, paints, row)
+        traceSection("TerminalRenderer.draw") {
+            canvas.withTranslation(placement.offsetX, placement.offsetY) {
+                if (placement.scale != 1f) scale(placement.scale, placement.scale)
+                drawRows(this, frame, paints)
+                drawImages(this, frame)
+                drawCursor(this, frame, paints)
             }
-            drawImages(this, frame)
-            drawCursor(this, frame, paints)
         }
     }
 
-    private fun drawBackgrounds(canvas: Canvas, frame: TerminalFrame, row: Int) {
+    private fun drawRows(canvas: Canvas, frame: TerminalFrame, paints: TerminalTextPaints) {
         val cell = frame.cell
-        val rowStart = row * frame.cols
-        val rowEnd = rowStart + frame.cols
-        val top = row * cell.height
-        var start = rowStart
-        while (start < rowEnd) {
-            val end = frame.backgroundRunEnd(start, rowEnd)
-            val background = frame.backgroundAt(start)
-            if (frame.isSelected(start) || frame.isInverse(start) || background != frame.snapshot.defaultBgArgb) {
+        val width = frame.snapshot.cols * cell.widthPx
+        rowPictures.startFrame(RowPictureCache.Style(paints, cell, frame.snapshot.defaultBgArgb))
+        for (row in 0 until frame.snapshot.rows) {
+            canvas.withTranslation(0f, row * cell.height) {
+                if (frame.hasHighlights(row)) {
+                    drawRow(this, frame, paints, row)
+                } else {
+                    rowPictures.draw(this, frame.snapshot.rowData[row], width, cell.heightPx) {
+                        drawRow(it, frame, paints, row)
+                    }
+                }
+            }
+        }
+        rowPictures.endFrame()
+    }
+
+    /** Draws one row at the canvas origin. */
+    private fun drawRow(canvas: Canvas, frame: TerminalFrame, paints: TerminalTextPaints, row: Int) {
+        val cells = frame.row(row)
+        drawBackgrounds(canvas, frame, cells)
+        drawSearchSpans(canvas, frame, row)
+        drawText(canvas, frame, paints, cells)
+    }
+
+    private fun drawBackgrounds(canvas: Canvas, frame: TerminalFrame, cells: FrameRow) {
+        val cell = frame.cell
+        var start = 0
+        while (start < cells.cols) {
+            val end = cells.backgroundRunEnd(start)
+            val background = cells.backgroundAt(start)
+            if (cells.isSelected(start) || cells.isInverse(start) || background != frame.snapshot.defaultBgArgb) {
                 fillPaint.color = background
-                canvas.drawRect(
-                    (start - rowStart) * cell.width,
-                    top,
-                    (end - rowStart) * cell.width,
-                    top + cell.height,
-                    fillPaint,
-                )
+                canvas.drawRect(start * cell.width, 0f, end * cell.width, cell.height, fillPaint)
             }
             start = end
         }
@@ -187,65 +129,53 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
 
     private fun drawSearchSpans(canvas: Canvas, frame: TerminalFrame, row: Int) {
         val cell = frame.cell
-        val top = row * cell.height
         frame.searchSpans[row]?.forEach { (span, isCurrent) ->
             fillPaint.color = if (isCurrent) frame.colors.currentSearchMatch else frame.colors.searchMatch
-            canvas.drawRect(
-                span.firstCol * cell.width,
-                top,
-                (span.lastCol + 1) * cell.width,
-                top + cell.height,
-                fillPaint,
-            )
+            canvas.drawRect(span.firstCol * cell.width, 0f, (span.lastCol + 1) * cell.width, cell.height, fillPaint)
         }
     }
 
-    private fun drawText(canvas: Canvas, frame: TerminalFrame, paints: TerminalTextPaints, row: Int) {
-        val snapshot = frame.snapshot
-        val rowStart = row * frame.cols
-        val rowEnd = rowStart + frame.cols
-        val baseline = row * frame.cell.height + frame.cell.baseline
-        var start = rowStart
-        while (start < rowEnd) {
-            val codepoint = snapshot.codepoints[start]
+    private fun drawText(canvas: Canvas, frame: TerminalFrame, paints: TerminalTextPaints, cells: FrameRow) {
+        var start = 0
+        while (start < cells.cols) {
+            val codepoint = cells.cells.codepoints[start]
             start = if (codepoint == 0 || codepoint == ' '.code) {
                 start + 1
             } else {
-                drawTextRun(canvas, frame, paints, start, rowEnd, (start - rowStart) * frame.cell.width, baseline)
+                drawTextRun(canvas, paints, cells, start, start * frame.cell.width, frame.cell.baseline)
             }
         }
     }
 
-    /** Draws the text run that starts at [start], and returns the cell after it. */
+    /** Draws the text run that starts at [start], and returns the column after it. */
     private fun drawTextRun(
         canvas: Canvas,
-        frame: TerminalFrame,
         paints: TerminalTextPaints,
+        cells: FrameRow,
         start: Int,
-        rowEnd: Int,
         x: Float,
         baseline: Float,
     ): Int {
-        val snapshot = frame.snapshot
-        val end = frame.textRunEnd(start, rowEnd) { fonts.choiceAt(snapshot, it) }
+        val row = cells.cells
+        val end = cells.textRunEnd(start) { fonts.choiceAt(row, it) }
         text.setLength(0)
-        appendCell(snapshot, start)
-        for (cellIndex in frame.textRunBodyStart(start, rowEnd) until end) {
-            if (snapshot.codepoints[cellIndex] != ' '.code) appendCell(snapshot, cellIndex)
+        appendCell(row, start)
+        for (col in cells.textRunBodyStart(start) until end) {
+            if (row.codepoints[col] != ' '.code) appendCell(row, col)
         }
-        val paint = paints.forChoice(fonts.choiceAt(snapshot, start))
-        paint.applyTextStyle(frame.foregroundAt(start), frame.textStyleAt(start))
+        val paint = paints.forChoice(fonts.choiceAt(row, start))
+        paint.applyTextStyle(cells.foregroundAt(start), cells.textStyleAt(start))
         // Pass the builder, not text.toString(): Canvas copies a CharSequence into a
         // pooled char buffer, so no String is allocated per run per frame.
         canvas.drawText(text, 0, text.length, x, baseline, paint)
         return end
     }
 
-    private fun appendCell(snapshot: TerminalSnapshot, cellIndex: Int) {
-        if (snapshot.hasGraphemeExtras(cellIndex)) {
-            text.append(snapshot.glyphAt(cellIndex))
+    private fun appendCell(row: TerminalRow, col: Int) {
+        if (row.hasGraphemeExtras(col)) {
+            text.append(row.glyphAt(col))
         } else {
-            text.appendCodePoint(snapshot.codepoints[cellIndex])
+            text.appendCodePoint(row.codepoints[col])
         }
     }
 
@@ -269,7 +199,7 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
 
     private fun drawCursor(canvas: Canvas, frame: TerminalFrame, paints: TerminalTextPaints) {
         val snapshot = frame.snapshot
-        if (!snapshot.cursorVisible || snapshot.cursorX !in 0 until frame.cols || snapshot.cursorY !in 0 until frame.rows) {
+        if (!snapshot.cursorVisible || snapshot.cursorX !in 0 until snapshot.cols || snapshot.cursorY !in 0 until snapshot.rows) {
             return
         }
         val left = snapshot.cursorX * frame.cell.width
@@ -316,12 +246,12 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         top: Float,
     ) {
         val snapshot = frame.snapshot
-        val index = snapshot.cursorY * frame.cols + snapshot.cursorX
-        if (index !in snapshot.codepoints.indices) return
-        val codepoint = snapshot.codepoints[index]
+        val row = snapshot.rowData[snapshot.cursorY]
+        val col = snapshot.cursorX
+        val codepoint = row.codepoints[col]
         if (codepoint == 0 || codepoint == ' '.code) return
-        val glyph = if (snapshot.hasGraphemeExtras(index)) snapshot.glyphAt(index) else fonts.glyphFor(codepoint)
-        val paint = paints.forChoice(fonts.choiceAt(snapshot, index))
+        val glyph = if (row.hasGraphemeExtras(col)) row.glyphAt(col) else fonts.glyphFor(codepoint)
+        val paint = paints.forChoice(fonts.choiceAt(row, col))
         paint.applyTextStyle(color, style = 0)
         // Set again so the cursor text keeps its own alpha.
         paint.color = color
@@ -335,4 +265,62 @@ private fun Paint.applyTextStyle(argb: Int, style: Int) {
     isUnderlineText = (style and TerminalSnapshot.CELL_FLAG_UNDERLINE) != 0
     textSkewX = if ((style and TerminalSnapshot.CELL_FLAG_ITALIC) != 0) ITALIC_SKEW_X else 0f
     alpha = if ((style and TerminalSnapshot.CELL_FLAG_FAINT) != 0) FAINT_TEXT_ALPHA else OPAQUE_ALPHA
+}
+
+/**
+ * The [Picture] of each row drawn last frame, by row identity: a row that didn't change,
+ * or moved to another line as the terminal scrolled, is the same [TerminalRow] object.
+ * A row is drawn directly for its first two frames on screen and recorded on the third,
+ * since recording costs more than drawing and output that streams past, such as `cat`,
+ * keeps a row only briefly. A change of [Style] drops every picture.
+ */
+internal class RowPictureCache {
+    /** What a row's picture depends on besides its cells. */
+    data class Style(val paints: TerminalTextPaints, val cell: TerminalCellMetrics, val defaultBg: Int)
+
+    private var style: Style? = null
+
+    // How many frames in a row each row has been drawn, and its picture once it has one.
+    private class Entry(val frames: Int, val picture: Picture?)
+
+    private var previous = IdentityHashMap<TerminalRow, Entry>()
+    private var current = IdentityHashMap<TerminalRow, Entry>()
+
+    fun startFrame(style: Style) {
+        if (style != this.style) {
+            this.style = style
+            previous.clear()
+        }
+    }
+
+    /** Draws [row] at the canvas origin, from its picture when it has one; [draw] draws it afresh. */
+    fun draw(canvas: Canvas, row: TerminalRow, width: Int, height: Int, draw: (Canvas) -> Unit) {
+        val entry = current.getOrPut(row) { next(previous[row], width, height, draw) }
+        val picture = entry.picture
+        if (picture != null) canvas.drawPicture(picture) else draw(canvas)
+    }
+
+    private fun next(last: Entry?, width: Int, height: Int, draw: (Canvas) -> Unit): Entry = when {
+        last == null -> Entry(1, null)
+        last.picture != null -> last
+        last.frames < DIRECT_FRAMES -> Entry(last.frames + 1, null)
+        else -> Entry(last.frames + 1, record(width, height, draw))
+    }
+
+    private fun record(width: Int, height: Int, draw: (Canvas) -> Unit): Picture = Picture().also { picture ->
+        draw(picture.beginRecording(width, height))
+        picture.endRecording()
+    }
+
+    /** Keeps the rows drawn this frame and drops the rest. */
+    fun endFrame() {
+        val used = current
+        current = previous
+        current.clear()
+        previous = used
+    }
+
+    private companion object {
+        const val DIRECT_FRAMES = 2
+    }
 }

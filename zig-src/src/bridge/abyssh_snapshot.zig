@@ -37,7 +37,13 @@ const verbose_snapshot_perf_logs = false;
 //      0 = block, 1 = bar, 2 = underline, 3 = block_hollow)
 //  15  app_tracks_mouse (1 when the app has enabled any mouse mode, so taps
 //      go to it as clicks instead of opening links)
-const SNAPSHOT_HEADER_I32_COUNT = 16;
+//  16  row_count (how many rows follow; rows when the snapshot is full)
+//
+// After the header come row_count LE i32 row indices, in increasing order,
+// then row_count * cols cells of SNAPSHOT_CELL_SIZE_BYTES each, one row after
+// another. A snapshot carries only the rows that changed since the previous
+// one; the host keeps the other rows from its previous snapshot.
+const SNAPSHOT_HEADER_I32_COUNT = 17;
 const SNAPSHOT_CELL_SIZE_BYTES = 11;
 // Flag bit set on a cell whose codepoint has additional grapheme codepoints
 // in the extras section.
@@ -114,6 +120,12 @@ fn appHandlesSelectionDrag(event: anytype) bool {
     };
 }
 
+const SnapshotColors = struct {
+    background: ghostty.color.RGB,
+    foreground: ghostty.color.RGB,
+    palette: ghostty.color.Palette,
+};
+
 const AbysshTerminal = struct {
     terminal: ghostty.Terminal,
     render_state: ghostty.RenderState = .empty,
@@ -140,6 +152,9 @@ const AbysshTerminal = struct {
     bell_count: u32 = 0,
     snapshot_buffer: std.ArrayListUnmanaged(u8) = .empty,
     snapshot_extras_scratch: std.ArrayListUnmanaged(u32) = .empty,
+    // The colors the last text snapshot resolved its cells with. Cells hold
+    // resolved RGB values, so a change here means every row must be sent.
+    snapshot_colors: ?SnapshotColors = null,
     image_snapshot_buffer: std.ArrayListUnmanaged(u8) = .empty,
     pty_write_buffer: std.ArrayListUnmanaged(u8) = .empty,
     pty_write_len: usize = 0,
@@ -604,10 +619,10 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     abyssh_scroll_to_active(handle);
 }
 
-export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeSnapshot(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jobject {
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeSnapshot(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, full: c.jboolean) callconv(.c) c.jobject {
     _ = thiz;
     var size: usize = 0;
-    const buffer = abyssh_build_text_snapshot(handle, &size);
+    const buffer = abyssh_build_text_snapshot(handle, full != 0, &size);
     if (buffer == null or size == 0) return jniNewDirectByteBuffer(env, null, 0);
     return jniNewDirectByteBuffer(env, @ptrCast(buffer), @intCast(size));
 }
@@ -868,7 +883,12 @@ fn cellHasExtras(render_cell: ghostty.RenderState.Cell) bool {
     return render_cell.raw.content_tag == .codepoint_grapheme and render_cell.grapheme.len > 0;
 }
 
-export fn abyssh_build_text_snapshot(handle: c.jlong, out_size: [*c]usize) callconv(.c) ?[*]u8 {
+/// Builds a text snapshot with the rows that changed since the last one, or
+/// with every row when `full_requested` is set, the size or colors changed,
+/// or libghostty asks for a full redraw. Consumes the render state's dirty
+/// flags, so the caller must pass `full_requested` whenever it lost the
+/// previous snapshot.
+export fn abyssh_build_text_snapshot(handle: c.jlong, full_requested: bool, out_size: [*c]usize) callconv(.c) ?[*]u8 {
     const terminal = abysshFromHandle(handle) orelse return null;
     if (out_size == null) return null;
 
@@ -878,9 +898,28 @@ export fn abyssh_build_text_snapshot(handle: c.jlong, out_size: [*c]usize) callc
 
     const cols: usize = terminal.render_state.cols;
     const rows: usize = terminal.render_state.rows;
+
+    const colors: SnapshotColors = .{
+        .background = terminal.render_state.colors.background,
+        .foreground = terminal.render_state.colors.foreground,
+        .palette = terminal.render_state.colors.palette,
+    };
+    const colors_changed = if (terminal.snapshot_colors) |previous| !std.meta.eql(previous, colors) else true;
+    const full = full_requested or colors_changed or terminal.render_state.dirty == .full;
+
+    const row_slice = terminal.render_state.row_data.slice();
+    const row_cells = row_slice.items(.cells);
+    const row_dirty = row_slice.items(.dirty);
+    var row_count: usize = 0;
+    for (row_dirty[0..rows]) |dirty| {
+        if (full or dirty) row_count += 1;
+    }
+
     const header_size = SNAPSHOT_HEADER_I32_COUNT * @sizeOf(i32);
-    const grid_size = cols * rows * SNAPSHOT_CELL_SIZE_BYTES;
-    const base_total_size = header_size + grid_size;
+    const index_size = row_count * @sizeOf(i32);
+    const grid_size = row_count * cols * SNAPSHOT_CELL_SIZE_BYTES;
+    const cells_offset = header_size + index_size;
+    const base_total_size = cells_offset + grid_size;
 
     var buffer = ensureListSize(&terminal.snapshot_buffer, base_total_size) orelse return null;
 
@@ -920,24 +959,33 @@ export fn abyssh_build_text_snapshot(handle: c.jlong, out_size: [*c]usize) callc
     writeIntLe(i32, buffer[0..base_total_size], 56, cursor_style);
     const app_tracks_mouse: i32 = if (terminal.terminal.flags.mouse_event != .none) 1 else 0;
     writeIntLe(i32, buffer[0..base_total_size], 60, app_tracks_mouse);
+    writeIntLe(i32, buffer[0..base_total_size], 64, @intCast(row_count));
+
+    // The dirty flags are consumed from here on: a failure below returns
+    // null, and the host then asks for a full snapshot.
+    terminal.snapshot_colors = colors;
+    terminal.render_state.dirty = .false;
 
     terminal.snapshot_extras_scratch.clearRetainingCapacity();
     var extras_records: usize = 0;
     var non_blank_cells: usize = 0;
 
-    const row_slice = terminal.render_state.row_data.slice();
-    const row_cells = row_slice.items(.cells);
-    var cell_index: usize = 0;
-    for (row_cells[0..rows]) |cells| {
+    var slot: usize = 0;
+    for (row_cells[0..rows], row_dirty[0..rows], 0..) |cells, *dirty, y| {
+        if (!full and !dirty.*) continue;
+        dirty.* = false;
+        writeIntLe(i32, buffer[0..base_total_size], header_size + slot * @sizeOf(i32), @intCast(y));
+        const row_base = cells_offset + slot * cols * SNAPSHOT_CELL_SIZE_BYTES;
+        slot += 1;
+
         const cell_slice = cells.slice();
         const render_cells = cell_slice.items(.raw);
         const graphemes = cell_slice.items(.grapheme);
         const styles = cell_slice.items(.style);
         var x: usize = 0;
         while (x < cols) : (x += 1) {
-            const base = header_size + cell_index * SNAPSHOT_CELL_SIZE_BYTES;
-            const this_index = cell_index;
-            cell_index += 1;
+            const base = row_base + x * SNAPSHOT_CELL_SIZE_BYTES;
+            const this_index = y * cols + x;
 
             const render_cell: ghostty.RenderState.Cell = .{
                 .raw = render_cells[x],
@@ -986,6 +1034,7 @@ export fn abyssh_build_text_snapshot(handle: c.jlong, out_size: [*c]usize) callc
             buffer[base + 10] = flags;
         }
     }
+    std.debug.assert(slot == row_count);
 
     if (extras_records == 0) {
         out_size.* = base_total_size;

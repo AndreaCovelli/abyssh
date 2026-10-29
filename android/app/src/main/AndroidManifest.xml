@@ -20,6 +20,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Abyssh"
         android:extractNativeLibs="false">
+        <!-- Lets Perfetto and the Android Studio profiler record release builds from adb. -->
+        <profileable android:shell="true" />
         <activity
             android:name="io.github.andreacovelli.abyssh.MainActivity"
             android:enabled="true"

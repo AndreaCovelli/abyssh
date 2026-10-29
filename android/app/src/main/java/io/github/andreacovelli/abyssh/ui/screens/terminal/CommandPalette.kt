@@ -269,7 +269,7 @@ private fun FocusedTabPreview(tab: TabSession) {
                     .align(Alignment.Center),
         ) {
             TerminalCanvas(
-                snapshot = shown,
+                snapshot = { shown },
                 fontSizeSp = 10.5f,
                 fitSnapshotToCanvas = true,
                 enableGestures = false,

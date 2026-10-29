@@ -11,7 +11,7 @@ private const val TRAILING_PUNCTUATION = ".,;:!?"
  * row continues on the next one, as long lines wrap.
  */
 fun TerminalSnapshot.urlAt(cellIndex: Int): String? {
-    if (cellIndex !in codepoints.indices) return null
+    if (cellIndex !in 0 until cellCount) return null
     val text = visibleText()
     for (match in URL_REGEX.findAll(text)) {
         if (match.range.first > cellIndex) break
@@ -24,9 +24,9 @@ fun TerminalSnapshot.urlAt(cellIndex: Int): String? {
 }
 
 /** One character per cell. Cells that aren't plain characters become spaces. */
-private fun TerminalSnapshot.visibleText(): String = buildString(codepoints.size) {
-    for (i in codepoints.indices) {
-        val cp = codepoints[i]
+private fun TerminalSnapshot.visibleText(): String = buildString(cellCount) {
+    for (i in 0 until cellCount) {
+        val cp = codepointAt(i)
         val plain = cp in 0x21..0xFFFF && !Character.isSurrogate(cp.toChar()) && !isSpacerContinuation(i)
         append(if (plain) cp.toChar() else ' ')
     }

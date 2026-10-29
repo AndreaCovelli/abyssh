@@ -61,19 +61,33 @@ internal class TerminalCanvasCallbacks(
     val onFontSizeChange: (sizeSp: Float) -> Unit,
 )
 
-/** The canvas as of its last composition, which its gestures read and call. */
+/**
+ * The canvas as of its last composition, which its gestures read and call. The snapshot
+ * is read when a gesture asks for it, since snapshots change without a recomposition.
+ */
 internal class TerminalGestureEnv(
-    val snapshot: TerminalSnapshot,
+    private val snapshotSource: () -> TerminalSnapshot,
+    private val fitSnapshotToCanvas: Boolean,
     val selection: TerminalSelection?,
     val cell: TerminalCellMetrics,
     val canvasSize: IntSize,
-    val placement: SnapshotPlacement,
     val fontSizeSp: Float,
     val fontSizeRange: ClosedFloatingPointRange<Float>,
     val shiftActive: Boolean,
     val haptics: HapticFeedback,
     val callbacks: TerminalCanvasCallbacks,
 ) {
+    val snapshot: TerminalSnapshot get() = snapshotSource()
+
+    private val placement: SnapshotPlacement
+        get() = SnapshotPlacement.of(
+            fitSnapshotToCanvas,
+            snapshot,
+            cell,
+            canvasSize.width.toFloat(),
+            canvasSize.height.toFloat(),
+        )
+
     fun toSnapshot(position: Offset): Offset = placement.toSnapshot(position)
 
     /** The cell under a point in snapshot pixels. */
