@@ -27,7 +27,7 @@ class GhosttyBridge {
     external fun nativeResize(handle: Long, cols: Int, rows: Int, cellW: Int, cellH: Int)
     external fun nativeScroll(handle: Long, delta: Int, x: Float, y: Float)
     external fun nativeScrollToActive(handle: Long)
-    external fun nativeSnapshot(handle: Long): ByteBuffer
+    external fun nativeSnapshot(handle: Long, full: Boolean): ByteBuffer
     external fun nativePollTitle(handle: Long): String?
     external fun nativePollPwd(handle: Long): String?
     external fun nativePollClipboard(handle: Long): ByteArray?

@@ -154,7 +154,7 @@ fun TerminalCanvas(
             snapshot = shown,
             cell = cell,
             colors = colors,
-            selection = selection?.normalized(shown.codepoints.size),
+            selection = selection?.normalized(shown.cellCount),
             searchSpans = searchSpans.get(searchMatches, currentSearchMatch, shown),
         )
         drawIntoCanvas { renderer.draw(it.nativeCanvas, frame, paints, placement) }

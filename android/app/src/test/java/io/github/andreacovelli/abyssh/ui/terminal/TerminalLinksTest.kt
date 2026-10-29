@@ -9,7 +9,7 @@ class TerminalLinksTest {
     private fun screen(cols: Int, vararg rows: String): TerminalSnapshot {
         val text = rows.joinToString("") { it.padEnd(cols) }
         val cells = text.length
-        return TerminalSnapshot(
+        return TerminalSnapshot.fromCells(
             cols = cols,
             rows = rows.size,
             cursorX = 0,

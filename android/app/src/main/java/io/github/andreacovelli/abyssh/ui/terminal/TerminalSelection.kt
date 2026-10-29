@@ -63,25 +63,25 @@ data class TerminalSelectionState(
 )
 
 internal fun TerminalSnapshot.wordAt(cellIndex: Int): IntRange? {
-    if (cols <= 0 || cellIndex !in codepoints.indices) return null
+    if (cols <= 0 || cellIndex !in 0 until cellCount) return null
     val row = cellIndex / cols
     val rowStart = row * cols
     val rowEnd = rowStart + cols - 1
 
-    val cp = codepoints[cellIndex]
+    val cp = codepointAt(cellIndex)
     if (cp == 0 || (cp == 32 && !isSpacerContinuation(cellIndex))) return null
 
     var start = cellIndex
     while (start > rowStart) {
         val prev = start - 1
-        val prevCp = codepoints[prev]
+        val prevCp = codepointAt(prev)
         if (prevCp == 0 || (prevCp == 32 && !isSpacerContinuation(prev))) break
         start--
     }
     var end = cellIndex
     while (end < rowEnd) {
         val next = end + 1
-        val nextCp = codepoints[next]
+        val nextCp = codepointAt(next)
         if (nextCp == 0 || (nextCp == 32 && !isSpacerContinuation(next))) break
         end++
     }
@@ -89,11 +89,11 @@ internal fun TerminalSnapshot.wordAt(cellIndex: Int): IntRange? {
 }
 
 internal fun extractSelectionText(snapshot: TerminalSnapshot, range: IntRange): String? {
-    if (snapshot.cols <= 0 || snapshot.codepoints.isEmpty()) return null
+    if (snapshot.cols <= 0 || snapshot.cellCount == 0) return null
 
     val normalizedRange = IntRange(
-        start = range.first.coerceIn(0, snapshot.codepoints.lastIndex),
-        endInclusive = range.last.coerceIn(0, snapshot.codepoints.lastIndex),
+        start = range.first.coerceIn(0, snapshot.cellCount - 1),
+        endInclusive = range.last.coerceIn(0, snapshot.cellCount - 1),
     )
     val startRow = normalizedRange.first / snapshot.cols
     val endRow = normalizedRange.last / snapshot.cols
@@ -105,12 +105,12 @@ internal fun extractSelectionText(snapshot: TerminalSnapshot, range: IntRange): 
         val until = minOf(normalizedRange.last, rowStart + snapshot.cols - 1)
         var lastContentIdx = until
         while (lastContentIdx >= from) {
-            val cp = snapshot.codepoints[lastContentIdx]
+            val cp = snapshot.codepointAt(lastContentIdx)
             if (cp != 0 && (cp != 32 || snapshot.isSpacerContinuation(lastContentIdx))) break
             lastContentIdx--
         }
         for (index in from..lastContentIdx) {
-            val codepoint = snapshot.codepoints[index]
+            val codepoint = snapshot.codepointAt(index)
             if (codepoint == 0 || (codepoint == 32 && !snapshot.isSpacerContinuation(index))) {
                 builder.append(' ')
             } else if (codepoint != 32) {
@@ -136,7 +136,7 @@ internal fun buildSelectionState(
     ghosttyBridge: GhosttyBridge,
 ): TerminalSelectionState? {
     val cols = max(snapshot.cols, 1)
-    val cellCount = snapshot.codepoints.size
+    val cellCount = snapshot.cellCount
 
     val visibleRange = selection.normalized(cellCount) ?: return null
     val startCol = visibleRange.first % cols

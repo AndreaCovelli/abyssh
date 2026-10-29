@@ -33,7 +33,7 @@ class TerminalCanvasGestureTest {
     private fun snapshot(appTracksMouse: Boolean, vararg rows: String): TerminalSnapshot {
         val cols = 40
         val text = rows.joinToString("") { it.padEnd(cols) }
-        return TerminalSnapshot(
+        return TerminalSnapshot.fromCells(
             cols = cols,
             rows = rows.size,
             cursorX = 0,

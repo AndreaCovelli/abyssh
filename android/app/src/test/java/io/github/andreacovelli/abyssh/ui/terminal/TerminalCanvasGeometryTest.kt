@@ -9,7 +9,7 @@ import org.junit.Test
 
 class TerminalCanvasGeometryTest {
     private val cell = TerminalCellMetrics(widthPx = 10, heightPx = 20, baseline = 15f)
-    private val snapshot = TerminalSnapshot(
+    private val snapshot = TerminalSnapshot.fromCells(
         cols = 10,
         rows = 5,
         cursorX = 0,
