@@ -68,7 +68,8 @@ fun KeyboardAccessoryBar(
     onAction: (AccessoryAction) -> Unit,
     modifier: Modifier = Modifier,
     capsLockOn: Boolean = false,
-    onSettings: (() -> Unit)? = null,
+    onZoom: (() -> Unit)? = null,
+    zoomActive: Boolean = false,
     onAbysshKey: (() -> Unit)? = null,
     abysshKeyActive: Boolean = false,
     onOpenFiles: (() -> Unit)? = null,
@@ -136,8 +137,9 @@ fun KeyboardAccessoryBar(
                     buttonPadding = buttonPadding,
                     modifier = keyModifier,
                 )
-                SettingsButton(
-                    onSettings = onSettings,
+                ZoomButton(
+                    onZoom = onZoom,
+                    active = zoomActive,
                     buttonHeight = buttonHeight,
                     buttonPadding = buttonPadding,
                     modifier = keyModifier,
@@ -182,8 +184,9 @@ fun KeyboardAccessoryBar(
                 buttonPadding = buttonPadding,
                 modifier = keyModifier,
             )
-            SettingsButton(
-                onSettings = onSettings,
+            ZoomButton(
+                onZoom = onZoom,
+                active = zoomActive,
                 buttonHeight = buttonHeight,
                 buttonPadding = buttonPadding,
                 modifier = keyModifier,
@@ -350,21 +353,24 @@ private fun FilesButton(
     )
 }
 
+/** Toggles zoom mode, which magnifies the terminal without changing its font size. */
 @Composable
-private fun SettingsButton(
-    onSettings: (() -> Unit)?,
+private fun ZoomButton(
+    onZoom: (() -> Unit)?,
+    active: Boolean,
     buttonHeight: Dp,
     buttonPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
-    if (onSettings == null) return
+    if (onZoom == null) return
     AccessoryIconKey(
-        icon = R.drawable.ic_settings,
-        contentDescription = stringResource(R.string.accessory_settings),
-        onClick = onSettings,
+        icon = R.drawable.ic_zoom_in,
+        contentDescription = stringResource(R.string.accessory_zoom),
+        onClick = onZoom,
         buttonHeight = buttonHeight,
         buttonPadding = buttonPadding,
         modifier = modifier,
+        active = active,
     )
 }
 
@@ -396,10 +402,12 @@ private fun AccessoryIconKey(
     buttonHeight: Dp,
     buttonPadding: PaddingValues,
     modifier: Modifier = Modifier,
+    active: Boolean = false,
     tint: Color = Color.Unspecified,
 ) {
     AbyssKey(
         onClick = onClick,
+        active = active,
         modifier = modifier.height(buttonHeight),
         contentPadding = buttonPadding,
     ) {

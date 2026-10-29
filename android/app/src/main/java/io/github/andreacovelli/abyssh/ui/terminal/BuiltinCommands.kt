@@ -24,7 +24,8 @@ enum class BuiltinCommand(
     Actions("actions", "Actions", "Toggle floating custom actions button", 'a'),
     Settings("settings", "Settings", "Open settings", 's'),
     Close("close", "Close", "Close the active tab", 'q'),
-    Search("search", "Search", "Search the terminal output", 'f');
+    Search("search", "Search", "Search the terminal output", 'f'),
+    Zoom("zoom", "Zoom", "Toggle zoom mode", 'z');
 
     companion object {
         fun fromId(id: String): BuiltinCommand? = entries.find { it.id == id }

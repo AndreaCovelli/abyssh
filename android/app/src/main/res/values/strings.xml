@@ -240,6 +240,7 @@
     <string name="terminal_reconnecting_attempt">Reconnecting (%1$d)</string>
     <string name="terminal_preparing_multiplexer">Preparing new multiplexer session…</string>
     <string name="terminal_zoom_font_size">Font size %1$d</string>
+    <string name="terminal_zoom_scale">Zoom %1$.1f×</string>
     <string name="action_paste">Paste</string>
     <string name="terminal_reconnecting_to">Reconnecting to %1$s…</string>
     <string name="terminal_reconnecting_ellipsis">Reconnecting…</string>
@@ -363,7 +364,7 @@
     <string name="notification_channel_sessions_description">Keeps active terminal sessions alive</string>
     <string name="notification_connected_title">Abyssh connected</string>
     <string name="accessory_open_files">Open files</string>
-    <string name="accessory_settings">Accessory settings</string>
+    <string name="accessory_zoom">Zoom</string>
     <string name="terminal_end_session">End session</string>
     <string name="terminal_end_session_title">End %1$s?</string>
     <string name="terminal_end_session_body">This closes the session. To leave it running, go back instead.</string>

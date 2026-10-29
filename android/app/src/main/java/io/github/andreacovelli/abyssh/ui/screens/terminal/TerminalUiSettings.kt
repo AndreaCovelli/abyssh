@@ -145,6 +145,10 @@ internal fun rememberAbysshKeys(
                 vm.files.selectPane(ConnectionTab.Terminal)
                 vm.search.open()
             },
+            BuiltinCommand.Zoom to {
+                vm.files.selectPane(ConnectionTab.Terminal)
+                overlay.zoom.toggle()
+            },
         )
         AbysshKeyBindings.build(
             builtinShortcuts = settings.builtinShortcuts,
