@@ -24,6 +24,8 @@ fn logError(comptime fmt: []const u8, args: anytype) void {
 }
 const setup_wait_timeout_ms = 10_000;
 const io_wait_timeout_ms = 120;
+// The most one IPC read returns; Kotlin asks for 64 KiB at most.
+const max_read_bytes = 1024 * 1024;
 // SFTP servers may make progress between short 120ms socket waits; use a
 // longer idle cap before failing directory listing/realpath as truly stalled.
 const sftp_idle_limit_ms: i64 = 15_000;
@@ -41,6 +43,9 @@ const NativeSshSession = struct {
     hostkey_copy: ?[]u8 = null,
     last_error: std.ArrayListUnmanaged(u8) = .empty,
     empty_reads: u32 = 0,
+    // Kept between IPC calls, which the read loop makes hundreds of times a second.
+    read_buffer: []u8 = &.{},
+    ipc_response: std.ArrayList(u8) = .empty,
 };
 
 fn sessionFromHandle(handle: c.jlong) ?*NativeSshSession {
@@ -216,6 +221,8 @@ fn destroyNativeSshSession(session: *NativeSshSession) void {
     if (session.username) |username| allocator.free(username);
     clearHostKeyCopy(session);
     session.last_error.deinit(allocator);
+    allocator.free(session.read_buffer);
+    session.ipc_response.deinit(allocator);
     allocator.destroy(session);
 }
 
@@ -461,11 +468,17 @@ fn writeChannel(session: *NativeSshSession, bytes: []const u8) c.jint {
     return @intCast(total_written);
 }
 
-fn readChannel(alloc: std.mem.Allocator, session: *NativeSshSession, max_bytes: usize) ?[]u8 {
+/// Reads stdout and stderr into the session's read buffer. The bytes stay valid until
+/// the next read.
+fn readChannel(session: *NativeSshSession, max_bytes: usize) ?[]const u8 {
     const channel = session.channel orelse return null;
-    const cap = @max(max_bytes, 1);
-    const buf = alloc.alloc(u8, cap) catch return null;
-    defer alloc.free(buf);
+    const cap = std.math.clamp(max_bytes, 1, max_read_bytes);
+    if (session.read_buffer.len < cap) {
+        const grown = allocator.alloc(u8, cap) catch return null;
+        allocator.free(session.read_buffer);
+        session.read_buffer = grown;
+    }
+    const buf = session.read_buffer[0..cap];
     var total_read: usize = 0;
     // Read both stdout and stderr — exec channels may send
     // diagnostics on stderr, blocking EOF if we ignore it.
@@ -489,10 +502,7 @@ fn readChannel(alloc: std.mem.Allocator, session: *NativeSshSession, max_bytes: 
             session.empty_reads = 0;
         }
     }
-    if (total_read == 0) {
-        return alloc.dupe(u8, &.{}) catch null;
-    }
-    return alloc.dupe(u8, buf[0..total_read]) catch null;
+    return buf[0..total_read];
 }
 
 fn readJByteArray(env: *c.JNIEnv, array: c.jbyteArray) ?[]u8 {
@@ -1119,12 +1129,12 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     const req_bytes = readJByteArray(env, request) orelse return null;
     defer if (req_bytes.len > 0) allocator.free(req_bytes);
 
-    var response: std.ArrayList(u8) = .empty;
-    defer response.deinit(allocator);
+    const response = &session.ipc_response;
+    response.clearRetainingCapacity();
 
     const frame = ipc.parse(req_bytes) catch {
         setError(session, "Invalid IPC frame", .{});
-        appendErrorFrame(&response, session, "Invalid IPC frame");
+        appendErrorFrame(response, session, "Invalid IPC frame");
         return jniNewByteArrayOrNull(env, response.items);
     };
 
@@ -1132,29 +1142,28 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         .Write => {
             const written = writeChannel(session, frame.payload);
             if (written < 0) {
-                appendErrorFrame(&response, session, "Write failed");
+                appendErrorFrame(response, session, "Write failed");
                 return jniNewByteArrayOrNull(env, response.items);
             }
             const written_u32: u32 = @intCast(written);
-            ipc.appendMessage(allocator, &response, .Ack, std.mem.asBytes(&written_u32)) catch {};
+            ipc.appendMessage(allocator, response, .Ack, std.mem.asBytes(&written_u32)) catch {};
         },
         .Read => {
             if (frame.payload.len != @sizeOf(u32)) {
                 setError(session, "Invalid read request payload", .{});
-                appendErrorFrame(&response, session, "Invalid read request payload");
+                appendErrorFrame(response, session, "Invalid read request payload");
                 return jniNewByteArrayOrNull(env, response.items);
             }
             const max_bytes = std.mem.bytesToValue(u32, frame.payload[0..@sizeOf(u32)]);
-            const bytes = readChannel(allocator, session, @intCast(@max(max_bytes, 1))) orelse {
-                appendErrorFrame(&response, session, "Read failed");
+            const bytes = readChannel(session, max_bytes) orelse {
+                appendErrorFrame(response, session, "Read failed");
                 return jniNewByteArrayOrNull(env, response.items);
             };
-            defer allocator.free(bytes);
-            ipc.appendMessage(allocator, &response, .Data, bytes) catch {};
+            ipc.appendMessage(allocator, response, .Data, bytes) catch {};
         },
         else => {
             setError(session, "Unsupported IPC tag {}", .{@backingInt(frame.header.tag)});
-            appendErrorFrame(&response, session, "Unsupported IPC tag");
+            appendErrorFrame(response, session, "Unsupported IPC tag");
         },
     }
 
