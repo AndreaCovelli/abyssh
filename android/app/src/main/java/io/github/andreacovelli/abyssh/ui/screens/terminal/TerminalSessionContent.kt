@@ -433,6 +433,7 @@ private fun TerminalFooter(
         KeyboardAccessoryBar(
             entries = host.settings.accessoryLayout,
             modifierState = input.modifierState,
+            capsLockOn = input.capsLockOn,
             onAction = { action -> input.dispatchAccessoryAction(action) },
             onSettings = host.onOpenSettings,
             onAbysshKey = {
@@ -482,6 +483,7 @@ private fun TerminalPaletteSheet(
             KeyboardAccessoryBar(
                 entries = host.settings.accessoryLayout,
                 modifierState = input.modifierState,
+                capsLockOn = input.capsLockOn,
                 onAction = { action -> input.dispatchAccessoryAction(action, inSwitcher = true) },
                 onSettings = host.onOpenSettings,
                 onAbysshKey = host.abysshKeys::togglePrefix,

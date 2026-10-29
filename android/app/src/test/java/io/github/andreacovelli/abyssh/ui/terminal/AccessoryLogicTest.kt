@@ -222,9 +222,19 @@ class AccessoryLogicTest {
         assertTrue("up" in ids)
         assertTrue("down" in ids)
         assertTrue("ctrl" in ids)
-        assertTrue("cmd" in ids)
+        assertTrue("home" in ids)
+        assertTrue("end" in ids)
         assertTrue("page_up" in ids)
         assertTrue("page_down" in ids)
+        assertTrue("delete" in ids)
+    }
+
+    @Test
+    fun `defaultEntries leaves out keys the soft keyboard or the ⌘ key already cover`() {
+        val ids = TerminalAccessoryLayoutStore.defaultEntries().map { it.id }
+        assertFalse("cmd" in ids)
+        assertFalse("space" in ids)
+        assertFalse("enter" in ids)
     }
 
     @Test
