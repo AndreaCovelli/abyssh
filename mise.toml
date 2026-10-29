@@ -23,7 +23,7 @@ description = "Install the debug APK on a connected device and launch it"
 dir = "android"
 run = [
   "./gradlew installDebug",
-  "adb shell am start -n io.github.andreacovelli.abyssh/.MainActivity",
+  "adb shell am start -n io.github.andreacovelli.abyssh.debug/io.github.andreacovelli.abyssh.MainActivity",
 ]
 
 [tasks.lint]

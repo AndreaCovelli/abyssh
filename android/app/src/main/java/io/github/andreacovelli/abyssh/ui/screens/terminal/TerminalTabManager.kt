@@ -72,7 +72,7 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssColorPalette
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 import io.github.andreacovelli.abyssh.ui.terminal.AbysshKeyBindings
-import io.github.andreacovelli.abyssh.ui.terminal.metaShortcutKey
+import io.github.andreacovelli.abyssh.ui.terminal.shortcutChordKey
 
 private data class TabRowState(
     val status: SessionStatus,
@@ -125,7 +125,7 @@ fun TerminalTabManager(
                 .focusRequester(focusRequester)
                 .focusable()
                 .onPreviewKeyEvent { event ->
-                    handleMetaShortcut(event, shortcuts) ||
+                    handleShortcutChord(event, shortcuts) ||
                         handleTabManagerKey(
                             event = event,
                             tabCount = tabs.size,
@@ -184,11 +184,11 @@ fun TerminalTabManager(
 }
 
 /**
- * The manager holds key focus, so a hardware ⌘ chord lands here rather than in the
+ * The manager holds key focus, so a hardware shortcut chord lands here rather than in the
  * terminal: run its Abyssh command, and leave unbound chords to the system.
  */
-private fun handleMetaShortcut(event: KeyEvent, shortcuts: AbysshKeyBindings?): Boolean {
-    val key = metaShortcutKey(event.nativeKeyEvent) ?: return false
+private fun handleShortcutChord(event: KeyEvent, shortcuts: AbysshKeyBindings?): Boolean {
+    val key = shortcutChordKey(event.nativeKeyEvent) ?: return false
     if (shortcuts == null || !shortcuts.hasShortcut(key)) return false
     if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0) shortcuts.runShortcut(key)
     return true

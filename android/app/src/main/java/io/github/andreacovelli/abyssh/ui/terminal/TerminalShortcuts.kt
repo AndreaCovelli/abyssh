@@ -62,16 +62,26 @@ internal fun isCopyShortcut(text: String, modifierState: ModifierState, hasSelec
 }
 
 /**
- * The key a hardware ⌘ chord presses, or null when it isn't one. Holding ⌘ and pressing
- * a key runs the same Abyssh command as tapping ⌘ in the accessory bar and then the key.
- * Only plain ⌘ counts: with Shift, Ctrl, or Alt held too, the chord stays the system's.
- * [plainChar] is what the key types with no modifiers.
+ * The key a hardware shortcut chord presses, or null when it isn't one. Holding ⌘, or
+ * Ctrl+Shift, and pressing a key runs the same Abyssh command as tapping ⌘ in the
+ * accessory bar and then the key. Ctrl+Shift is there because Android keeps every ⌘
+ * chord for itself unless an app captures the keyboard, and capturing it breaks the
+ * system's own ⌘ shortcuts. Only plain ⌘ counts: with Shift, Ctrl, or Alt held too,
+ * the chord stays the system's. Ctrl+Shift+C, V, and F keep copying, pasting, and
+ * searching. [plainChar] is what the key types with no modifiers.
  */
-internal fun metaShortcutKey(metaState: Int, plainChar: Int): Char? {
-    if (metaState and KeyEvent.META_META_ON == 0) return null
-    if (metaState and (KeyEvent.META_SHIFT_ON or KeyEvent.META_CTRL_ON or KeyEvent.META_ALT_ON) != 0) return null
+internal fun shortcutChordKey(metaState: Int, plainChar: Int): Char? {
     if (plainChar <= ' '.code || plainChar > Char.MAX_VALUE.code) return null
-    return plainChar.toChar().lowercaseChar()
+    val key = plainChar.toChar().lowercaseChar()
+    val held = metaState and (KeyEvent.META_META_ON or KeyEvent.META_SHIFT_ON or KeyEvent.META_CTRL_ON or KeyEvent.META_ALT_ON)
+    return when (held) {
+        KeyEvent.META_META_ON -> key
+        KeyEvent.META_CTRL_ON or KeyEvent.META_SHIFT_ON -> key.takeUnless { it in TERMINAL_CTRL_SHIFT_KEYS }
+        else -> null
+    }
 }
 
-internal fun metaShortcutKey(event: KeyEvent): Char? = metaShortcutKey(event.metaState, event.getUnicodeChar(0))
+internal fun shortcutChordKey(event: KeyEvent): Char? = shortcutChordKey(event.metaState, event.getUnicodeChar(0))
+
+// The Ctrl+Shift chords the terminal handles itself: copy, paste, and search.
+private val TERMINAL_CTRL_SHIFT_KEYS = setOf('c', 'v', 'f')

@@ -85,22 +85,44 @@ class TerminalShortcutsTest {
 
     @Test
     fun `plain cmd chord gives its key`() {
-        assertEquals('t', metaShortcutKey(KeyEvent.META_META_ON or KeyEvent.META_META_LEFT_ON, 't'.code))
-        assertEquals('t', metaShortcutKey(KeyEvent.META_META_ON, 'T'.code))
+        assertEquals('t', shortcutChordKey(KeyEvent.META_META_ON or KeyEvent.META_META_LEFT_ON, 't'.code))
+        assertEquals('t', shortcutChordKey(KeyEvent.META_META_ON, 'T'.code))
     }
 
     @Test
     fun `cmd chords with other modifiers stay the system's`() {
-        assertNull(metaShortcutKey(KeyEvent.META_META_ON or KeyEvent.META_SHIFT_ON, 't'.code))
-        assertNull(metaShortcutKey(KeyEvent.META_META_ON or KeyEvent.META_CTRL_ON, 't'.code))
-        assertNull(metaShortcutKey(KeyEvent.META_META_ON or KeyEvent.META_ALT_ON, 't'.code))
+        assertNull(shortcutChordKey(KeyEvent.META_META_ON or KeyEvent.META_SHIFT_ON, 't'.code))
+        assertNull(shortcutChordKey(KeyEvent.META_META_ON or KeyEvent.META_CTRL_ON, 't'.code))
+        assertNull(shortcutChordKey(KeyEvent.META_META_ON or KeyEvent.META_ALT_ON, 't'.code))
+    }
+
+    @Test
+    fun `ctrl shift chord gives its key`() {
+        val ctrlShift = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON or KeyEvent.META_SHIFT_ON
+        assertEquals('t', shortcutChordKey(ctrlShift, 't'.code))
+        assertEquals('n', shortcutChordKey(ctrlShift or KeyEvent.META_NUM_LOCK_ON, 'n'.code))
+    }
+
+    @Test
+    fun `ctrl shift copy, paste, and search stay the terminal's`() {
+        val ctrlShift = KeyEvent.META_CTRL_ON or KeyEvent.META_SHIFT_ON
+        assertNull(shortcutChordKey(ctrlShift, 'c'.code))
+        assertNull(shortcutChordKey(ctrlShift, 'v'.code))
+        assertNull(shortcutChordKey(ctrlShift, 'f'.code))
+    }
+
+    @Test
+    fun `ctrl or shift alone, or ctrl shift with alt, are not shortcuts`() {
+        assertNull(shortcutChordKey(KeyEvent.META_CTRL_ON, 't'.code))
+        assertNull(shortcutChordKey(KeyEvent.META_SHIFT_ON, 't'.code))
+        assertNull(shortcutChordKey(KeyEvent.META_CTRL_ON or KeyEvent.META_SHIFT_ON or KeyEvent.META_ALT_ON, 't'.code))
     }
 
     @Test
     fun `keys without cmd or without a character are not cmd shortcuts`() {
-        assertNull(metaShortcutKey(0, 't'.code))
-        assertNull(metaShortcutKey(KeyEvent.META_META_ON, '\t'.code))
-        assertNull(metaShortcutKey(KeyEvent.META_META_ON, ' '.code))
-        assertNull(metaShortcutKey(KeyEvent.META_META_ON, 0))
+        assertNull(shortcutChordKey(0, 't'.code))
+        assertNull(shortcutChordKey(KeyEvent.META_META_ON, '\t'.code))
+        assertNull(shortcutChordKey(KeyEvent.META_META_ON, ' '.code))
+        assertNull(shortcutChordKey(KeyEvent.META_META_ON, 0))
     }
 }

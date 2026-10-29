@@ -1,8 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
 import android.app.Activity
-import android.os.Build
-import android.view.Window
 import android.view.WindowManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -13,6 +11,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.platform.AutoClearFocusBehavior
+import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -98,27 +98,20 @@ internal fun KeepScreenOnEffect(enabled: Boolean) {
 }
 
 /**
- * Asks Android to send keyboard shortcuts to the terminal before handling them itself,
- * so a hardware ⌘ chord such as ⌘+t runs its Abyssh command instead of a system one.
- * Chords the terminal leaves unhandled still reach the system. Needs Android 16 QPR2.
+ * Keeps a mouse press on the terminal from clearing focus. Compose clears focus when a
+ * mouse press lands outside the focused node, which here is the 1 dp input view, so every
+ * click told the remote app the terminal lost focus until the button came up. Apps such as
+ * Claude Code then dropped the drag selection made in between.
  */
 @Composable
-internal fun KeyboardCaptureEffect() {
+internal fun KeepFocusOnMouseClickEffect() {
     val view = LocalView.current
     DisposableEffect(view) {
-        val window = (view.context as? Activity)?.window
-        if (window != null) setKeyboardCapture(window, enabled = true)
-        onDispose { if (window != null) setKeyboardCapture(window, enabled = false) }
+        val host = view.parent as? ComposeView
+        val previous = host?.autoClearFocusBehavior
+        host?.autoClearFocusBehavior = AutoClearFocusBehavior.None
+        onDispose { if (host != null && previous != null) host.autoClearFocusBehavior = previous }
     }
-}
-
-private fun setKeyboardCapture(window: Window, enabled: Boolean) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) return
-    if (Build.VERSION.SDK_INT_FULL < Build.VERSION_CODES_FULL.BAKLAVA_1) return
-    val attributes = window.attributes
-    if (attributes.hasKeyboardCapture() == enabled) return
-    attributes.setKeyboardCaptureEnabled(enabled)
-    window.attributes = attributes
 }
 
 /** The ⌘ prefix bindings: builtin commands first, then the custom actions. */
