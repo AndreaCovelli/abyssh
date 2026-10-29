@@ -76,6 +76,11 @@ android {
     }
 
     buildTypes {
+        // A separate application ID lets the debug build sit next to an installed release
+        // build without replacing it and its saved hosts and keys.
+        debug {
+            applicationIdSuffix = ".debug"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
