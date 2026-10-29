@@ -437,32 +437,25 @@ fn appendErrorFrame(response: *std.ArrayList(u8), session: *NativeSshSession, fa
     ipc.appendMessage(allocator, response, .Error, message) catch {};
 }
 
+/// Writes what the channel takes without waiting, and returns how many bytes that was,
+/// possibly 0. libssh2 keeps a packet it couldn't finish sending, so the caller must
+/// retry with the bytes from where this left off.
 fn writeChannel(session: *NativeSshSession, bytes: []const u8) c.jint {
     const channel = session.channel orelse {
         setError(session, "Shell not open", .{});
         return -1;
     };
-    if (bytes.len == 0) return 0;
+    // The written count goes back as a jint.
+    const len = @min(bytes.len, std.math.maxInt(c.jint));
     var total_written: usize = 0;
-    var stalled_loops: u32 = 0;
-    while (total_written < bytes.len) {
-        const chunk = bytes[total_written..];
+    while (total_written < len) {
+        const chunk = bytes[total_written..len];
         const rc = c.libssh2_channel_write_ex(channel, 0, @ptrCast(chunk.ptr), @intCast(chunk.len));
-        if (rc == c.LIBSSH2_ERROR_EAGAIN or rc == 0) {
-            stalled_loops +%= 1;
-            if (stalled_loops > 64) {
-                break;
-            }
-            if (!waitSocket(session, io_wait_timeout_ms)) {
-                break;
-            }
-            continue;
-        }
+        if (rc == c.LIBSSH2_ERROR_EAGAIN or rc == 0) break;
         if (rc < 0) {
             setLibssh2Error(session, "Write failed", @intCast(rc));
             return -1;
         }
-        stalled_loops = 0;
         total_written += @intCast(rc);
     }
     return @intCast(total_written);

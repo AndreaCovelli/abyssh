@@ -128,9 +128,12 @@ internal class SessionTransports(hostKeyPolicy: HostKeyPolicy, val localShell: N
                 // The native read reports a closed channel the same way as "no data
                 // yet", so check EOF here; otherwise a finished shell is polled forever.
                 ssh.isChannelEof() -> return true
-                // Adaptive poll: stay snappy while data is flowing, back off when
-                // idle so a quiet session doesn't spin at 500 wakeups/sec.
-                else -> pacer.idle()
+                // Adaptive poll: stay snappy while data is flowing or input waits to
+                // go out, back off when idle so a quiet session doesn't spin.
+                else -> {
+                    if (ssh.hasPendingWrites) pacer.onActivity()
+                    pacer.idle()
+                }
             }
         }
         return false

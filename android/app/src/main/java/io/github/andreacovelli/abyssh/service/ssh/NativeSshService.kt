@@ -237,48 +237,58 @@ class NativeSshService(
         }
     }
 
+    // Input the channel hasn't taken yet, oldest first. The first array is sent from
+    // pendingOffset, because libssh2 must be retried from where it stopped.
+    private val pendingWrites = ArrayDeque<ByteArray>()
+    private var pendingOffset = 0
+
+    /** Whether written input is still waiting for the channel to take it. */
+    val hasPendingWrites: Boolean get() = pendingWrites.isNotEmpty()
+
+    /**
+     * Sends [data] as far as the channel takes it now, and queues the rest, which each
+     * [read] and later write sends on. Never waits, so a full channel can't stall the
+     * read loop that frees it.
+     */
     fun write(data: ByteArray) {
         if (handle == 0L || data.isEmpty()) return
-        var offset = 0
-        var stalledWrites = 0
-        while (offset < data.size) {
-            val chunk = if (offset == 0) data else data.copyOfRange(offset, data.size)
-            val response =
-                bridge.nativeIpcExchange(handle, Ipc.encodeWrite(chunk))
-                    ?: error(
-                        bridge.nativeGetLastError(handle) ?: "Native SSH write failed"
-                    )
-            val decoded = Ipc.decode(response)
-            val written =
-                when (decoded.tag) {
-                    Ipc.tagAck -> Ipc.parseAckWritten(decoded.payload)
-                    Ipc.tagError -> error(Ipc.parseError(decoded.payload))
-                    else ->
-                        error(
-                            "Unexpected IPC write response tag: ${decoded.tag}"
-                        )
-                }
-            if (written == 0) {
-                stalledWrites += 1
-                if (stalledWrites > 64) {
-                    error("Native SSH write stalled")
-                }
-                Thread.sleep(4)
-                continue
+        pendingWrites.addLast(data)
+        flushPendingWrites()
+    }
+
+    private fun flushPendingWrites() {
+        while (pendingWrites.isNotEmpty()) {
+            val head = pendingWrites.first()
+            val chunk = if (pendingOffset == 0) head else head.copyOfRange(pendingOffset, head.size)
+            val written = writeOnce(chunk)
+            if (written == 0) return
+            pendingOffset += written
+            if (pendingOffset == head.size) {
+                pendingWrites.removeFirst()
+                pendingOffset = 0
             }
-            val remaining = data.size - offset
-            if (written < 0 || written > remaining) {
-                error(
-                    "Invalid native SSH ACK size: $written (remaining=$remaining)"
-                )
-            }
-            stalledWrites = 0
-            offset += written
         }
+    }
+
+    /** Writes what the channel takes of [chunk] now; returns how much that was. */
+    private fun writeOnce(chunk: ByteArray): Int {
+        val response =
+            bridge.nativeIpcExchange(handle, Ipc.encodeWrite(chunk))
+                ?: error(bridge.nativeGetLastError(handle) ?: "Native SSH write failed")
+        val decoded = Ipc.decode(response)
+        val written =
+            when (decoded.tag) {
+                Ipc.tagAck -> Ipc.parseAckWritten(decoded.payload)
+                Ipc.tagError -> error(Ipc.parseError(decoded.payload))
+                else -> error("Unexpected IPC write response tag: ${decoded.tag}")
+            }
+        check(written in 0..chunk.size) { "Invalid native SSH ACK size: $written (remaining=${chunk.size})" }
+        return written
     }
 
     fun read(maxBytes: Int = 8192): ByteArray? {
         if (handle == 0L) return null
+        flushPendingWrites()
         val response = bridge.nativeIpcExchange(handle, Ipc.encodeRead(maxBytes)) ?: return null
         val decoded = Ipc.decode(response)
         return when (decoded.tag) {
@@ -394,6 +404,8 @@ class NativeSshService(
     }
 
     override fun close() {
+        pendingWrites.clear()
+        pendingOffset = 0
         if (handle == 0L) return
         bridge.nativeClose(handle)
         bridge.nativeDestroySession(handle)
