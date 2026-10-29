@@ -103,7 +103,19 @@ terminal emulation, libssh2 and OpenSSL for SSH, and a Zig Mosh client.
 Every push to `main` publishes a nightly APK as a GitHub prerelease. Pushing a tag such
 as `v1.2.3` builds a signed APK and app bundle and attaches them to a draft release.
 Signing reads the `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and
-`KEY_PASSWORD` repository secrets.
+`KEY_PASSWORD` repository secrets; the workflow decodes the keystore into the runner's
+temporary directory and deletes it after the build.
+
+To sign a release build locally, keep the keystore outside the repository and point the
+build at it:
+
+```sh
+cd android
+KEYSTORE_PATH="$HOME/path/to/release.jks" KEYSTORE_PASSWORD=… KEY_ALIAS=… KEY_PASSWORD=… \
+  ./gradlew assembleRelease
+```
+
+Without these variables the release build is unsigned; with only some of them it fails.
 
 ## License
 

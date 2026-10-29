@@ -74,12 +74,25 @@ jobs:
       - name: build native library
         run: ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME" mise run native -Dtarget=aarch64-linux-android.24
 
-      - name: generate release key
+      - name: Decode release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          cd android/app/ && echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > key.jks
+          set -euo pipefail
+          # Fail here rather than publish an unsigned build.
+          test -n "$KEYSTORE_BASE64"
+          test -n "$KEYSTORE_PASSWORD"
+          test -n "$KEY_ALIAS"
+          test -n "$KEY_PASSWORD"
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
 
       - name: build android release APK
         env:
+          KEYSTORE_PATH: ${{ runner.temp }}/release.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -88,6 +101,10 @@ jobs:
           ANDROID_ABI_FILTERS: arm64-v8a
         working-directory: android
         run: ./gradlew assembleRelease --console=plain
+
+      - name: Remove release keystore
+        if: ${{ always() }}
+        run: rm -f -- "$RUNNER_TEMP/release.jks"
 
       - name: name APK artifact
         id: apk

@@ -19,7 +19,8 @@ scripts/
 
 # Android
 android/app/src/main/jniLibs/
-android/app/key.jks
+*.jks
+*.keystore
 build/
 /captures
 

@@ -143,8 +143,9 @@ Kotlin declares `external fun native*` methods in five bridge classes: `GhosttyB
 - `res/xml/backup_rules.xml` and `res/xml/data_extraction_rules.xml` keep credentials
   out of Android backup and device transfer. Preserve those exclusions when adding
   stored data; credentials leave the device only through the encrypted export.
-- Never commit `local.properties`, `android/app/key.jks`, signing passwords, or API
-  keys. Release signing reads them from environment variables in
+- Never commit `local.properties`, keystores, signing passwords, or API keys. Keep the
+  release keystore outside the repository. Release signing reads its path
+  (`KEYSTORE_PATH`), passwords, and alias from environment variables in
   `android/app/build.gradle.kts`.
 
 ## Git
