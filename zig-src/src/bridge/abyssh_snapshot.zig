@@ -49,7 +49,7 @@ const CELL_FLAG_HAS_GRAPHEME: u8 = 1 << 6;
 // These are serialized with codepoint=32 but should not force a shaping
 // run break between neighboring glyph cells.
 const CELL_FLAG_SPACER: u8 = 1 << 7;
-const IMAGE_HEADER_BYTES = 52;
+const IMAGE_HEADER_BYTES = 60;
 const MAX_KITTY_IMAGES = 64;
 const MAX_OSC52_CLIPBOARD_BYTES = 1024 * 1024;
 const MAX_OSC7_PWD_BYTES = 4096;
@@ -86,6 +86,10 @@ const PlacementInfo = struct {
     src_h: u32,
     img_w: u32,
     img_h: u32,
+    // Image.generation: changes whenever the displayed pixels do, so Kotlin keys
+    // its bitmaps on it. data_len is 0 when Kotlin already holds this generation
+    // or an earlier placement in the same snapshot carries its pixels.
+    generation: u64,
     data_ptr: [*c]const u8,
     data_len: usize,
     free_mode: ImageFreeMode,
@@ -626,10 +630,18 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     return jniNewDirectByteBuffer(env, @ptrCast(buffer), @intCast(size));
 }
 
-export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeSnapshotImages(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jobject {
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeSnapshotImages(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, cached: c.jlongArray) callconv(.c) c.jobject {
     _ = thiz;
+    // The image generations whose bitmaps Kotlin already holds; their pixels aren't resent.
+    var cached_buf: [MAX_KITTY_IMAGES]c.jlong = undefined;
+    var cached_len: usize = 0;
+    if (cached != null) {
+        const len = env.*.*.GetArrayLength.?(env, cached);
+        cached_len = @intCast(std.math.clamp(len, 0, MAX_KITTY_IMAGES));
+        if (cached_len > 0) env.*.*.GetLongArrayRegion.?(env, cached, 0, @intCast(cached_len), &cached_buf);
+    }
     var size: usize = 0;
-    const buffer = abyssh_build_image_snapshot(handle, &size);
+    const buffer = abyssh_build_image_snapshot(handle, @ptrCast(&cached_buf), cached_len, &size);
     if (buffer == null or size == 0) return jniNewDirectByteBuffer(env, null, 0);
     return jniNewDirectByteBuffer(env, @ptrCast(buffer), @intCast(size));
 }
@@ -1257,9 +1269,20 @@ fn prepareImageData(image_id: u32, image: ghostty.kitty.graphics.Image) ?Prepare
     };
 }
 
-export fn abyssh_build_image_snapshot(handle: c.jlong, out_size: [*c]usize) callconv(.c) ?[*]u8 {
+fn containsGeneration(generations: []const u64, generation: u64) bool {
+    return std.mem.indexOfScalar(u64, generations, generation) != null;
+}
+
+/// Builds the image snapshot: one record per placement, with pixels only for image
+/// generations that aren't in `cached` and that no earlier record already carries.
+/// A unicode placeholder image yields a placement per row, and a snapshot is taken
+/// on every frame, so without this each image would be copied once per row per frame.
+export fn abyssh_build_image_snapshot(handle: c.jlong, cached_ptr: [*c]const u64, cached_len: usize, out_size: [*c]usize) callconv(.c) ?[*]u8 {
     const terminal = abysshFromHandle(handle) orelse return null;
     if (out_size == null) return null;
+    const cached: []const u64 = if (cached_ptr == null) &.{} else cached_ptr[0..cached_len];
+    var sent: [MAX_KITTY_IMAGES]u64 = undefined;
+    var sent_count: usize = 0;
     logKittyState("image_snapshot_begin", terminal);
 
     // RenderState resolves every kitty placement to viewport cells: fixed,
@@ -1275,7 +1298,18 @@ export fn abyssh_build_image_snapshot(handle: c.jlong, out_size: [*c]usize) call
             .kitty => {},
         }
         const image = storage.imageById(placement.image_id) orelse continue;
-        const prepared = prepareImageData(placement.image_id, image) orelse continue;
+        const generation = image.generation;
+        const known = containsGeneration(cached, generation) or containsGeneration(sent[0..sent_count], generation);
+        const prepared: PreparedImageData = if (known) blk: {
+            // Pixels still loading (an animation frame in flight) aren't drawable yet.
+            if (image.renderData().bytes() == null) continue;
+            break :blk .{ .data_ptr = null, .data_len = 0, .img_w = image.width, .img_h = image.height, .free_mode = .none };
+        } else blk: {
+            const data = prepareImageData(placement.image_id, image) orelse continue;
+            sent[sent_count] = generation;
+            sent_count += 1;
+            break :blk data;
+        };
         placements[count] = .{
             .cell_col = placement.x,
             .cell_row = placement.y,
@@ -1289,6 +1323,7 @@ export fn abyssh_build_image_snapshot(handle: c.jlong, out_size: [*c]usize) call
             .src_h = placement.source_height,
             .img_w = prepared.img_w,
             .img_h = prepared.img_h,
+            .generation = generation,
             .data_ptr = prepared.data_ptr,
             .data_len = prepared.data_len,
             .free_mode = prepared.free_mode,
@@ -1327,8 +1362,9 @@ export fn abyssh_build_image_snapshot(handle: c.jlong, out_size: [*c]usize) call
         writeIntLe(u32, buf[0..total], offset + 36, p.src_h);
         writeIntLe(u32, buf[0..total], offset + 40, p.img_w);
         writeIntLe(u32, buf[0..total], offset + 44, p.img_h);
-        writeIntLe(u32, buf[0..total], offset + 48, @intCast(p.data_len));
-        copyPremultiplied(buf[offset + IMAGE_HEADER_BYTES .. offset + IMAGE_HEADER_BYTES + p.data_len], p.data_ptr[0..p.data_len]);
+        writeIntLe(u64, buf[0..total], offset + 48, p.generation);
+        writeIntLe(u32, buf[0..total], offset + 56, @intCast(p.data_len));
+        if (p.data_len > 0) copyPremultiplied(buf[offset + IMAGE_HEADER_BYTES .. offset + IMAGE_HEADER_BYTES + p.data_len], p.data_ptr[0..p.data_len]);
         offset += IMAGE_HEADER_BYTES + p.data_len;
         switch (p.free_mode) {
             .malloc_buf => allocator.free(@constCast(p.data_ptr[0..p.data_len])),

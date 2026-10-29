@@ -19,6 +19,8 @@ data class ImagePlacement(
     val srcH: Int,
     val imgW: Int,
     val imgH: Int,
+    /** The image's displayed pixels: a process-wide stamp that changes whenever they do. */
+    val generation: Long,
     val bitmap: Bitmap,
 )
 
@@ -142,7 +144,7 @@ data class TerminalSnapshot(
         const val CURSOR_STYLE_BLOCK_HOLLOW: Int = 3
         private const val HEADER_I32_COUNT = 17
         private const val CELL_SIZE_BYTES = 11
-        private const val IMAGE_HEADER_BYTES = 52
+        private const val IMAGE_HEADER_BYTES = 60
 
         private fun packArgb(r: Int, g: Int, b: Int): Int =
             (0xFF shl 24) or (r shl 16) or (g shl 8) or b
@@ -335,7 +337,12 @@ data class TerminalSnapshot(
             return parsed
         }
 
-        fun parseImages(buffer: ByteBuffer?): List<ImagePlacement> {
+        /**
+         * Parses an image snapshot. A record without pixels reuses the bitmap of an
+         * earlier record with the same generation, or the one in [cached]; the native
+         * side sends each generation's pixels only once and only when [cached] lacks it.
+         */
+        fun parseImages(buffer: ByteBuffer?, cached: Map<Long, Bitmap> = emptyMap()): List<ImagePlacement> {
             if (buffer == null || buffer.capacity() < 4) return emptyList()
             val wrapped = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
             wrapped.position(0)
@@ -343,7 +350,10 @@ data class TerminalSnapshot(
             if (count <= 0) return emptyList()
 
             val images = ArrayList<ImagePlacement>(count)
-            while (images.size < count && wrapped.remaining() >= IMAGE_HEADER_BYTES) {
+            val bitmaps = HashMap(cached)
+            var parsed = 0
+            while (parsed < count && wrapped.remaining() >= IMAGE_HEADER_BYTES) {
+                parsed++
                 val cellCol = wrapped.int
                 val cellRow = wrapped.int
                 val cellXOffset = wrapped.int
@@ -356,47 +366,61 @@ data class TerminalSnapshot(
                 val srcH = wrapped.int
                 val imgW = wrapped.int
                 val imgH = wrapped.int
+                val generation = wrapped.long
                 val dataLen = wrapped.int
 
-                val expectedLen = imgW.toLong() * imgH.toLong() * 4L
-                // Positive dimensions make expectedLen positive, so a matching dataLen is too.
-                if (imgW <= 0 ||
-                    imgH <= 0 ||
-                    expectedLen > Int.MAX_VALUE ||
-                    dataLen != expectedLen.toInt() ||
-                    wrapped.remaining() < dataLen
-                ) {
-                    Log.w(
-                        "TerminalSnapshot",
-                        "bad image record: img=${imgW}x$imgH dataLen=$dataLen expected=$expectedLen remaining=${wrapped.remaining()}",
-                    )
-                    break
+                if (dataLen != 0) {
+                    // A bad record leaves the position of the next one unknown, so parsing stops.
+                    bitmaps[generation] = readBitmap(wrapped, imgW, imgH, dataLen) ?: break
                 }
-
-                val pixelBytes = wrapped.slice().order(ByteOrder.nativeOrder())
-                pixelBytes.limit(dataLen)
-
-                val bitmap = createBitmap(imgW, imgH)
-                bitmap.copyPixelsFromBuffer(pixelBytes)
-                wrapped.position(wrapped.position() + dataLen)
-
-                images += ImagePlacement(
-                    cellCol = cellCol,
-                    cellRow = cellRow,
-                    cellXOffset = cellXOffset,
-                    cellYOffset = cellYOffset,
-                    destW = destW,
-                    destH = destH,
-                    srcX = srcX,
-                    srcY = srcY,
-                    srcW = srcW,
-                    srcH = srcH,
-                    imgW = imgW,
-                    imgH = imgH,
-                    bitmap = bitmap,
-                )
+                val bitmap = bitmaps[generation]
+                if (bitmap == null) {
+                    Log.w("TerminalSnapshot", "image record without pixels for unknown generation $generation")
+                } else {
+                    images += ImagePlacement(
+                        cellCol = cellCol,
+                        cellRow = cellRow,
+                        cellXOffset = cellXOffset,
+                        cellYOffset = cellYOffset,
+                        destW = destW,
+                        destH = destH,
+                        srcX = srcX,
+                        srcY = srcY,
+                        srcW = srcW,
+                        srcH = srcH,
+                        imgW = bitmap.width,
+                        imgH = bitmap.height,
+                        generation = generation,
+                        bitmap = bitmap,
+                    )
+                }
             }
             return images
+        }
+
+        /** Reads [dataLen] bytes of premultiplied RGBA pixels into a new bitmap, or null when they don't fit. */
+        private fun readBitmap(buffer: ByteBuffer, imgW: Int, imgH: Int, dataLen: Int): Bitmap? {
+            val expectedLen = imgW.toLong() * imgH.toLong() * 4L
+            // Positive dimensions make expectedLen positive, so a matching dataLen is too.
+            if (imgW <= 0 ||
+                imgH <= 0 ||
+                expectedLen > Int.MAX_VALUE ||
+                dataLen != expectedLen.toInt() ||
+                buffer.remaining() < dataLen
+            ) {
+                Log.w(
+                    "TerminalSnapshot",
+                    "bad image record: img=${imgW}x$imgH dataLen=$dataLen expected=$expectedLen remaining=${buffer.remaining()}",
+                )
+                return null
+            }
+
+            val pixelBytes = buffer.slice().order(ByteOrder.nativeOrder())
+            pixelBytes.limit(dataLen)
+            val bitmap = createBitmap(imgW, imgH)
+            bitmap.copyPixelsFromBuffer(pixelBytes)
+            buffer.position(buffer.position() + dataLen)
+            return bitmap
         }
     }
 }

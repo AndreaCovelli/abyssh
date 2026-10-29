@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import android.graphics.Bitmap
 import android.util.Log
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -69,6 +70,9 @@ internal class TerminalEmulator(
     /** The last snapshot built, which the next one reuses for rows that didn't change. */
     private var lastSnapshot: TerminalSnapshot? = null
 
+    /** Bitmaps of the images on screen by generation, so their pixels cross JNI only once. */
+    private var imageBitmaps: Map<Long, Bitmap> = emptyMap()
+
     val isOpen: Boolean get() = handle != 0L
 
     /** Replaces the terminal with a blank one of the current size and colors. */
@@ -84,6 +88,7 @@ internal class TerminalEmulator(
         bridge.nativeDestroy(handle)
         handle = 0L
         lastSnapshot = null
+        imageBitmaps = emptyMap()
     }
 
     /** Destroys the terminal and forgets what the last session reported. */
@@ -171,8 +176,10 @@ internal class TerminalEmulator(
             animationFrames.advance()
             val raw = traceSection("Terminal.nativeSnapshot") { bridge.nativeSnapshot(handle, previous == null) }
             val images = traceSection("Terminal.snapshotImages") {
-                TerminalSnapshot.parseImages(bridge.nativeSnapshotImages(handle))
+                val cached = imageBitmaps
+                TerminalSnapshot.parseImages(bridge.nativeSnapshotImages(handle, cached.keys.toLongArray()), cached)
             }
+            imageBitmaps = images.associate { it.generation to it.bitmap }
             val snapshot = traceSection("Terminal.parseSnapshot") {
                 TerminalSnapshot.fromByteBuffer(raw, images, previous)
             }
