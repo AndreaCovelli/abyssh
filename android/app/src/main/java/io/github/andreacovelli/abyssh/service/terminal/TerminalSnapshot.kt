@@ -40,6 +40,10 @@ class TerminalRow(
      * [TerminalSnapshot.CELL_FLAG_HAS_GRAPHEME] set.
      */
     val graphemeExtras: Map<Int, IntArray> = emptyMap(),
+    /** Lines drawn with the text: [TerminalSnapshot.UNDERLINE_STYLE_MASK] and the DECORATION_ bits. */
+    val decorations: ByteArray = ByteArray(codepoints.size),
+    /** The SGR 58 underline color, read when [TerminalSnapshot.DECORATION_UNDERLINE_COLOR] is set. */
+    val underlineArgb: IntArray = IntArray(codepoints.size),
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -48,6 +52,8 @@ class TerminalRow(
             fgArgb.contentEquals(other.fgArgb) &&
             bgArgb.contentEquals(other.bgArgb) &&
             flags.contentEquals(other.flags) &&
+            decorations.contentEquals(other.decorations) &&
+            underlineArgb.contentEquals(other.underlineArgb) &&
             graphemeExtrasEquals(graphemeExtras, other.graphemeExtras)
     }
 
@@ -62,6 +68,8 @@ class TerminalRow(
             result = 31 * result + fgArgb.contentHashCode()
             result = 31 * result + bgArgb.contentHashCode()
             result = 31 * result + flags.contentHashCode()
+            result = 31 * result + decorations.contentHashCode()
+            result = 31 * result + underlineArgb.contentHashCode()
             result = 31 * result + graphemeExtras.entries.fold(0) { acc, (key, arr) -> acc + key + arr.contentHashCode() }
             hash = result
         }
@@ -134,16 +142,25 @@ data class TerminalSnapshot(
         const val CELL_FLAG_SPACER: Int = 0x80
         const val CELL_FLAG_BOLD: Int = 0x01
         const val CELL_FLAG_ITALIC: Int = 0x02
-        const val CELL_FLAG_UNDERLINE: Int = 0x04
         const val CELL_FLAG_INVERSE: Int = 0x08
         const val CELL_FLAG_BLINK: Int = 0x10
         const val CELL_FLAG_FAINT: Int = 0x20
+        const val UNDERLINE_STYLE_MASK: Int = 0x07
+        const val UNDERLINE_NONE: Int = 0
+        const val UNDERLINE_SINGLE: Int = 1
+        const val UNDERLINE_DOUBLE: Int = 2
+        const val UNDERLINE_CURLY: Int = 3
+        const val UNDERLINE_DOTTED: Int = 4
+        const val UNDERLINE_DASHED: Int = 5
+        const val DECORATION_STRIKETHROUGH: Int = 0x08
+        const val DECORATION_OVERLINE: Int = 0x10
+        const val DECORATION_UNDERLINE_COLOR: Int = 0x20
         const val CURSOR_STYLE_BLOCK: Int = 0
         const val CURSOR_STYLE_BAR: Int = 1
         const val CURSOR_STYLE_UNDERLINE: Int = 2
         const val CURSOR_STYLE_BLOCK_HOLLOW: Int = 3
         private const val HEADER_I32_COUNT = 17
-        private const val CELL_SIZE_BYTES = 11
+        private const val CELL_SIZE_BYTES = 15
         private const val IMAGE_HEADER_BYTES = 60
 
         private fun packArgb(r: Int, g: Int, b: Int): Int =
@@ -170,6 +187,8 @@ data class TerminalSnapshot(
             viewportScrollY: Int = 0,
             appHandlesSelectionDrag: Boolean = false,
             appTracksMouse: Boolean = false,
+            decorations: ByteArray = ByteArray(cols * rows),
+            underlineArgb: IntArray = IntArray(cols * rows),
         ): TerminalSnapshot {
             val extrasByRow = graphemeExtras.entries.groupBy({ it.key / cols }, { it.key % cols to it.value })
             val rowData = List(rows) { row ->
@@ -181,6 +200,8 @@ data class TerminalSnapshot(
                     bgArgb = bgArgb.copyOfRange(from, to),
                     flags = flags.copyOfRange(from, to),
                     graphemeExtras = extrasByRow[row]?.toMap().orEmpty(),
+                    decorations = decorations.copyOfRange(from, to),
+                    underlineArgb = underlineArgb.copyOfRange(from, to),
                 )
             }
             return TerminalSnapshot(
@@ -298,6 +319,8 @@ data class TerminalSnapshot(
             val fgArgb = IntArray(cols)
             val bgArgb = IntArray(cols)
             val flags = ByteArray(cols)
+            val decorations = ByteArray(cols)
+            val underlineArgb = IntArray(cols)
             var off = start
             for (i in 0 until cols) {
                 // codepoint: little-endian i32 from 4 bytes
@@ -315,8 +338,13 @@ data class TerminalSnapshot(
                 fgArgb[i] = packArgb(fgR, fgG, fgB)
                 bgArgb[i] = packArgb(bgR, bgG, bgB)
                 flags[i] = cellBytes[off]; off++
+                decorations[i] = cellBytes[off]; off++
+                val ulR = cellBytes[off].toInt() and 0xFF; off++
+                val ulG = cellBytes[off].toInt() and 0xFF; off++
+                val ulB = cellBytes[off].toInt() and 0xFF; off++
+                underlineArgb[i] = packArgb(ulR, ulG, ulB)
             }
-            return TerminalRow(codepoints, fgArgb, bgArgb, flags, extras)
+            return TerminalRow(codepoints, fgArgb, bgArgb, flags, extras, decorations, underlineArgb)
         }
 
         // Returns an empty map when any record is truncated or out of range, so a

@@ -66,6 +66,30 @@ class TerminalFrameTest {
     }
 
     @Test
+    fun `underlines don't split a text run`() {
+        val underline = TerminalSnapshot.UNDERLINE_CURLY.toByte()
+
+        assertEquals(4, row("abcd", decorations = byteArrayOf(0, underline, underline, 0)).textRunEnd(0) { PAINT_PRIMARY })
+    }
+
+    @Test
+    fun `underlines take their own color when set, otherwise the text's`() {
+        val colored = (TerminalSnapshot.UNDERLINE_CURLY or TerminalSnapshot.DECORATION_UNDERLINE_COLOR).toByte()
+        val faint = TerminalSnapshot.CELL_FLAG_FAINT.toByte()
+        val row = row(
+            "abc",
+            flags = byteArrayOf(0, 0, faint),
+            decorations = byteArrayOf(colored, TerminalSnapshot.UNDERLINE_SINGLE.toByte(), colored),
+            underlineArgb = intArrayOf(red, red, red),
+        )
+
+        assertEquals(TerminalSnapshot.UNDERLINE_CURLY, row.underlineStyleAt(0))
+        assertEquals(red, row.underlineColorAt(0))
+        assertEquals(fg, row.underlineColorAt(1))
+        assertEquals((red and 0x00FFFFFF) or (FAINT_TEXT_ALPHA shl 24), row.underlineColorAt(2))
+    }
+
+    @Test
     fun `a wide character starts a run but ends one it would join`() {
         val spacer = TerminalSnapshot.CELL_FLAG_SPACER.toByte()
         val wideFirst = row("W bc", flags = byteArrayOf(0, spacer, 0, 0))
@@ -81,6 +105,8 @@ class TerminalFrameTest {
         fgs: IntArray = IntArray(text.length) { fg },
         bgs: IntArray = IntArray(text.length) { bg },
         flags: ByteArray = ByteArray(text.length),
+        decorations: ByteArray = ByteArray(text.length),
+        underlineArgb: IntArray = IntArray(text.length),
         selection: IntRange? = null,
         colors: TerminalCanvasColors = this.colors,
     ) = TerminalFrame(
@@ -96,6 +122,8 @@ class TerminalFrameTest {
             fgArgb = fgs,
             bgArgb = bgs,
             flags = flags,
+            decorations = decorations,
+            underlineArgb = underlineArgb,
         ),
         cell = cell,
         colors = colors,
