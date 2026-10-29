@@ -255,7 +255,7 @@ private fun TerminalPane(
                 selectionForegroundColor = theme?.selectionForeground ?: colors.onAccent,
                 selection = input.selection,
                 onSelectionChange = { input.selection = it },
-                terminalHandle = sessionState.handle,
+                selectionText = vm.search::selectionText,
                 modifier = Modifier.fillMaxSize(),
                 onResize = vm.input::onCanvasSizeChanged,
                 onTap = input::requestFocus,

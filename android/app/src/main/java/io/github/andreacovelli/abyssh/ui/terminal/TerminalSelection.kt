@@ -14,7 +14,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import io.github.andreacovelli.abyssh.service.terminal.GhosttyBridge
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -125,6 +124,31 @@ internal fun extractSelectionText(snapshot: TerminalSnapshot, range: IntRange): 
     return builder.toString()
 }
 
+/**
+ * Reads the text of screen cells screenStart..screenEnd, counted from the oldest
+ * scrollback row, or of visible cells visibleStart..visibleEnd when that fails. Null
+ * when the terminal can't, and the text is then taken from the snapshot.
+ */
+typealias SelectionTextReader =
+    suspend (screenStart: Int, screenEnd: Int, visibleStart: Int, visibleEnd: Int) -> String?
+
+/** The text under [selection], read through [reader] when there is one. */
+internal suspend fun readSelectionText(
+    snapshot: TerminalSnapshot,
+    selection: TerminalSelection,
+    reader: SelectionTextReader?,
+): String? {
+    val visibleRange = selection.normalized(snapshot.cellCount) ?: return null
+    if (reader == null || snapshot.cols <= 0) return extractSelectionText(snapshot, visibleRange)
+    val screenOffset = snapshot.viewportScrollY * snapshot.cols
+    val screenStart = (minOf(selection.anchorIndex, selection.focusIndex) + screenOffset)
+        .coerceAtLeast(0)
+    val screenEnd = (maxOf(selection.anchorIndex, selection.focusIndex) + screenOffset)
+        .coerceAtLeast(screenStart)
+    return reader(screenStart, screenEnd, visibleRange.first, visibleRange.last)
+        ?: extractSelectionText(snapshot, visibleRange)
+}
+
 internal fun buildSelectionState(
     snapshot: TerminalSnapshot,
     selection: TerminalSelection,
@@ -132,8 +156,7 @@ internal fun buildSelectionState(
     cellHeight: Float,
     canvasWidthPx: Int,
     canvasHeightPx: Int,
-    terminalHandle: Long,
-    ghosttyBridge: GhosttyBridge,
+    text: String?,
 ): TerminalSelectionState? {
     val cols = max(snapshot.cols, 1)
     val cellCount = snapshot.cellCount
@@ -149,18 +172,6 @@ internal fun buildSelectionState(
     val boundsTop = startRow * cellHeight
     val boundsBottom = (endRow + 1) * cellHeight
 
-    val screenOffset = snapshot.viewportScrollY * cols
-    val screenStart = (minOf(selection.anchorIndex, selection.focusIndex) + screenOffset)
-        .coerceAtLeast(0)
-    val screenEnd = (maxOf(selection.anchorIndex, selection.focusIndex) + screenOffset)
-        .coerceAtLeast(screenStart)
-    val text = if (terminalHandle != 0L && snapshot.cols > 0) {
-        val screenText = ghosttyBridge.nativeFormatSelectionScreenRange(terminalHandle, screenStart, screenEnd)
-        screenText
-            ?: ghosttyBridge.nativeFormatSelectionRange(terminalHandle, visibleRange.first, visibleRange.last)
-    } else {
-        extractSelectionText(snapshot, visibleRange)
-    }
     return TerminalSelectionState(
         boundsLeft = boundsLeft,
         boundsTop = boundsTop,

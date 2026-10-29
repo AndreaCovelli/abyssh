@@ -14,8 +14,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * Scrollback search and tapped links for the active terminal. Both belong to one
- * terminal, so the view model calls [reset] when the active tab changes.
+ * Scrollback search, tapped links, and selected text for the active terminal. Search and
+ * links belong to one terminal, so the view model calls [reset] when the active tab changes.
  */
 class TerminalSearchController internal constructor(
     private val sessionRepository: TerminalSessionRepository,
@@ -96,6 +96,10 @@ class TerminalSearchController internal constructor(
             if (hyperlink == null) noLink()
         }
     }
+
+    /** Reads selected text on the session thread; see [TerminalSessionEngine.selectionText]. */
+    suspend fun selectionText(screenStart: Int, screenEnd: Int, visibleStart: Int, visibleEnd: Int): String? =
+        activeEngine?.selectionText(screenStart, screenEnd, visibleStart, visibleEnd)
 
     fun dismissLink() {
         _tappedLink.value = null
