@@ -30,6 +30,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -244,6 +245,7 @@ private fun TerminalPane(
             )
         }
         Box(modifier = Modifier.weight(1f)) {
+            var pinchZoomSteps by remember { mutableIntStateOf(0) }
             TerminalCanvas(
                 snapshot = snapshot,
                 fontSizeSp = host.fontSize.floatValue,
@@ -267,11 +269,15 @@ private fun TerminalPane(
                 shiftActive = input.modifierState.shift,
                 onShiftSelectionStart = input::spendStickyShift,
                 onScroll = vm.input::onScroll,
-                onFontSizeChange = { sizeSp -> host.fontSize.floatValue = sizeSp },
+                onFontSizeChange = { sizeSp ->
+                    host.fontSize.floatValue = sizeSp
+                    pinchZoomSteps++
+                },
                 onSelectionChanged = { state -> input.selectionState = state },
                 searchMatches = searchState?.matches.orEmpty(),
                 currentSearchMatch = searchState?.currentMatch,
             )
+            TerminalZoomIndicator(host.fontSize.floatValue, pinchZoomSteps, Modifier.align(Alignment.Center))
             TerminalLinkPrompt(vm, Modifier.align(Alignment.BottomCenter))
             TerminalStatusBadges(
                 sessionState = sessionState,

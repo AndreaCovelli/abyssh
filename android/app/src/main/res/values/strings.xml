@@ -239,6 +239,7 @@
     <string name="terminal_reconnecting">Reconnecting</string>
     <string name="terminal_reconnecting_attempt">Reconnecting (%1$d)</string>
     <string name="terminal_preparing_multiplexer">Preparing new multiplexer session…</string>
+    <string name="terminal_zoom_font_size">Font size %1$d</string>
     <string name="action_paste">Paste</string>
     <string name="terminal_reconnecting_to">Reconnecting to %1$s…</string>
     <string name="terminal_reconnecting_ellipsis">Reconnecting…</string>
