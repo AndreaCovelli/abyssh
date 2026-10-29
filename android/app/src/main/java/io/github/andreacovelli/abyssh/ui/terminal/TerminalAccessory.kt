@@ -233,6 +233,8 @@ object TerminalAccessoryLayoutStore {
         "down",
         "left",
         "right",
+        "page_up",
+        "page_down",
         "enter",
         "space",
     )

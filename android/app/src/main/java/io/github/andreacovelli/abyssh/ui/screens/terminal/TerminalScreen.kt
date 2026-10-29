@@ -29,6 +29,7 @@ import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.service.terminal.SessionStatus
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
+import io.github.andreacovelli.abyssh.ui.terminal.AbysshKeyBindings
 
 /**
  * The terminal for one route: a saved host's tabs, or the local shell's. It opens the
@@ -54,6 +55,7 @@ fun TerminalScreen(
     val endSession = rememberTerminalEndSession(vm)
     val abysshKeys = rememberAbysshKeys(vm, repo, settings, overlay, onOpenSettings)
     KeepScreenOnEffect(settings.keepScreenAwake)
+    KeyboardCaptureEffect()
 
     val tabs by vm.tabs.collectAsStateWithLifecycle()
     val activeTabId by vm.activeTabId.collectAsStateWithLifecycle()
@@ -138,7 +140,7 @@ fun TerminalScreen(
 
     BackHandler(enabled = overlay.showTabManager) { overlay.showTabManager = false }
     // Outside the status branches, so the manager opens from every state.
-    if (stripMode) TerminalStripTabManager(vm, overlay, tabs, activeTabId, onNewConnection)
+    if (stripMode) TerminalStripTabManager(vm, overlay, tabs, activeTabId, abysshKeys, onNewConnection)
 }
 
 @Composable
@@ -166,6 +168,7 @@ private fun TerminalStripTabManager(
     overlay: TerminalOverlayState,
     tabs: List<TabSession>,
     activeTabId: String?,
+    abysshKeys: AbysshKeyBindings,
     onAddTab: () -> Unit,
 ) {
     TerminalTabManager(
@@ -182,6 +185,7 @@ private fun TerminalStripTabManager(
         onDuplicateTab = { id -> vm.duplicateTab(id) },
         onAddTab = onAddTab,
         onDismiss = { overlay.showTabManager = false },
+        shortcuts = abysshKeys,
         multiplexerPanel = {
             TerminalMultiplexerPanel(
                 vm = vm,

@@ -71,6 +71,8 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColorPalette
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
+import io.github.andreacovelli.abyssh.ui.terminal.AbysshKeyBindings
+import io.github.andreacovelli.abyssh.ui.terminal.metaShortcutKey
 
 private data class TabRowState(
     val status: SessionStatus,
@@ -97,6 +99,7 @@ fun TerminalTabManager(
     onDuplicateTab: (String) -> Unit,
     onAddTab: () -> Unit,
     onDismiss: () -> Unit,
+    shortcuts: AbysshKeyBindings? = null,
     multiplexerPanel: @Composable ColumnScope.() -> Unit = {},
 ) {
     val colors = AbyssColors.current
@@ -122,17 +125,18 @@ fun TerminalTabManager(
                 .focusRequester(focusRequester)
                 .focusable()
                 .onPreviewKeyEvent { event ->
-                    handleTabManagerKey(
-                        event = event,
-                        tabCount = tabs.size,
-                        focusedTabIndex = focusedTabIndex,
-                        onFocusedTabIndexChange = onFocusedTabIndexChange,
-                        onConfirm = {
-                            tabs.getOrNull(focusedTabIndex)?.let { onSelectTab(it.id) }
-                            onDismiss()
-                        },
-                        onDismiss = onDismiss,
-                    )
+                    handleMetaShortcut(event, shortcuts) ||
+                        handleTabManagerKey(
+                            event = event,
+                            tabCount = tabs.size,
+                            focusedTabIndex = focusedTabIndex,
+                            onFocusedTabIndexChange = onFocusedTabIndexChange,
+                            onConfirm = {
+                                tabs.getOrNull(focusedTabIndex)?.let { onSelectTab(it.id) }
+                                onDismiss()
+                            },
+                            onDismiss = onDismiss,
+                        )
                 },
         ) {
             Column(
@@ -177,6 +181,17 @@ fun TerminalTabManager(
             }
         }
     }
+}
+
+/**
+ * The manager holds key focus, so a hardware ⌘ chord lands here rather than in the
+ * terminal: run its Abyssh command, and leave unbound chords to the system.
+ */
+private fun handleMetaShortcut(event: KeyEvent, shortcuts: AbysshKeyBindings?): Boolean {
+    val key = metaShortcutKey(event.nativeKeyEvent) ?: return false
+    if (shortcuts == null || !shortcuts.hasShortcut(key)) return false
+    if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0) shortcuts.runShortcut(key)
+    return true
 }
 
 /** Arrow and page keys move the focus, Enter opens the focused tab, and Escape closes. */

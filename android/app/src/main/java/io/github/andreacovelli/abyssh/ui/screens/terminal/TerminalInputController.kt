@@ -69,6 +69,7 @@ internal class TerminalInputController(
     fun createInputView(viewContext: Context): TerminalInputView = TerminalInputView(viewContext).apply {
         onTerminalText = ::onText
         onTerminalKey = ::onKey
+        onMetaShortcut = ::onMetaShortcut
         setOnFocusChangeListener { _, hasFocus -> onFocusChanged(hasFocus) }
         inputView = this
     }
@@ -187,6 +188,12 @@ internal class TerminalInputController(
         forwardKey(key, codepoint, mods or modifierState.terminalMods(), action, charCode)
     }
 
+    /** A hardware ⌘ chord: the same command as tapping ⌘ in the accessory bar and then [key]. */
+    private fun onMetaShortcut(key: Char): Boolean {
+        val switcherTabs = if (overlay.isSwitcherOpen) overlay.switcherTabs(allTabs, routeTabs) else null
+        return if (switcherTabs.isNullOrEmpty()) abysshKeys.runShortcut(key) else runSwitcherCommand(key)
+    }
+
     private fun onFocusChanged(hasFocus: Boolean) {
         input.onFocusChanged(hasFocus)
         if (hasFocus) requestFocus()
@@ -230,7 +237,7 @@ internal class TerminalInputController(
         return consumed
     }
 
-    private fun runSwitcherCommand(command: Char) {
+    private fun runSwitcherCommand(command: Char): Boolean {
         when (command) {
             'n' -> {
                 vm.duplicateTab()
@@ -238,7 +245,9 @@ internal class TerminalInputController(
                 overlay.closeSwitcher()
             }
             't' -> overlay.openSwitcher(tabMode)
+            else -> return false
         }
+        return true
     }
 
     private fun forwardKey(key: Int, codepoint: Int, mods: Int, action: Int, charCode: Int) {
