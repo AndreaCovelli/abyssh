@@ -641,6 +641,19 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     return if (terminal.terminal.screens.active.kitty_images.loading != null) c.JNI_TRUE else c.JNI_FALSE;
 }
 
+// Advances running Kitty animations to the frame due now. Returns the milliseconds
+// until the next frame is due, or -1 when nothing is playing. Call it before taking
+// an image snapshot, so the snapshot shows the new frame.
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeAnimationTick(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jlong {
+    _ = env;
+    _ = thiz;
+    const terminal = abysshFromHandle(handle) orelse return -1;
+    const storage = &terminal.terminal.screens.active.kitty_images;
+    if (storage.images.count() == 0) return -1;
+    const delay = storage.animationTick(ghostty.TinyIo.init.io(), time.monotonicMillis()) orelse return -1;
+    return @intCast(@min(delay, std.math.maxInt(i32)));
+}
+
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativePollTitle(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jstring {
     _ = thiz;
     const value = abyssh_poll_title_ptr(handle) orelse return null;

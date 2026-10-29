@@ -59,6 +59,13 @@ internal class TerminalEmulator(
     private var lastSnapshotAtMs = 0L
     private var snapshotScheduled = false
 
+    private val animationFrames = AnimationFrames(
+        scope = scope,
+        dispatcher = dispatcher,
+        tick = { bridge.nativeAnimationTick(handle) },
+        requestSnapshot = { requestSnapshot() },
+    )
+
     /** The last snapshot built, which the next one reuses for rows that didn't change. */
     private var lastSnapshot: TerminalSnapshot? = null
 
@@ -72,6 +79,7 @@ internal class TerminalEmulator(
     }
 
     fun destroy() {
+        animationFrames.cancel()
         if (!isOpen) return
         bridge.nativeDestroy(handle)
         handle = 0L
@@ -119,6 +127,9 @@ internal class TerminalEmulator(
 
     fun isImageLoading(): Boolean = isOpen && bridge.nativeIsImageLoading(handle)
 
+    /** Plays Kitty animations while [visible], and pauses them on their current frame otherwise. */
+    fun setOnScreen(visible: Boolean) = animationFrames.setOnScreen(visible)
+
     fun writeRemote(chunk: ByteArray) {
         if (isOpen) bridge.nativeWriteRemote(handle, chunk)
     }
@@ -156,6 +167,8 @@ internal class TerminalEmulator(
             // parse below leaves no previous snapshot and the next one is sent in full.
             val previous = lastSnapshot
             lastSnapshot = null
+            // Advance animations first, so the image snapshot below shows the frame due now.
+            animationFrames.advance()
             val raw = traceSection("Terminal.nativeSnapshot") { bridge.nativeSnapshot(handle, previous == null) }
             val images = traceSection("Terminal.snapshotImages") {
                 TerminalSnapshot.parseImages(bridge.nativeSnapshotImages(handle))

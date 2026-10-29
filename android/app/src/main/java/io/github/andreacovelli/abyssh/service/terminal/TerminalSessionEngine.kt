@@ -86,6 +86,11 @@ class TerminalSessionEngine(
         bridge.nativeEncodeMouse(handle, action, button, mods, x, y, anyButtonPressed, trackLastCell)
     }
 
+    /** Whether this tab's terminal is on screen; Kitty animations play only while it is. */
+    fun setOnScreen(onScreen: Boolean) {
+        scope.launch(dispatcher) { emulator.setOnScreen(onScreen) }
+    }
+
     fun setColorScheme(isDark: Boolean) {
         scope.launch(dispatcher) { emulator.setColorScheme(isDark) }
     }
