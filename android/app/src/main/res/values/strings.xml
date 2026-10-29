@@ -276,6 +276,16 @@
     <string name="action_edit">Edit</string>
     <string name="server_list_disconnect_from">Disconnect from %1$s</string>
     <string name="server_list_connect_to">Connect to %1$s</string>
+    <string name="server_list_new_session">New session</string>
+    <string name="server_list_new_session_on">New session on %1$s</string>
+    <plurals name="server_list_session_count">
+        <item quantity="one">%d session</item>
+        <item quantity="other">%d sessions</item>
+    </plurals>
+    <string name="server_list_disconnect_choose">End one session, or disconnect all of them.</string>
+    <string name="server_list_disconnect_all">Disconnect all</string>
+    <string name="action_end">End</string>
+    <string name="server_list_end_session">End %1$s</string>
     <string name="action_disconnect">Disconnect</string>
     <string name="settings_section_theme">Theme</string>
     <string name="theme_dark">Dark</string>
@@ -353,6 +363,9 @@
     <string name="notification_connected_title">Abyssh connected</string>
     <string name="accessory_open_files">Open files</string>
     <string name="accessory_settings">Accessory settings</string>
+    <string name="terminal_end_session">End session</string>
+    <string name="terminal_end_session_title">End %1$s?</string>
+    <string name="terminal_end_session_body">This closes the session. To leave it running, go back instead.</string>
     <string name="files_go_up">Parent folder</string>
     <string name="files_sort">Sort</string>
     <string name="files_upload">Upload file</string>
@@ -413,6 +426,7 @@
     <string name="session_notification_local_shell">local shell</string>
     <!-- %1$s is the session count, such as "2 sessions"; %2$s names the active session -->
     <string name="session_notification_count">%1$s  ·  %2$s</string>
+    <string name="session_notification_disconnect_all">Disconnect all</string>
     <plurals name="session_notification_sessions">
         <item quantity="one">%d session</item>
         <item quantity="other">%d sessions</item>

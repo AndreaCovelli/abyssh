@@ -64,6 +64,7 @@ internal fun TerminalDisconnectedContent(
     onNewConnection: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onEndSession: (() -> Unit)? = null,
 ) {
     TerminalStatusFrame(tabStrip = tabStrip, modifier = modifier) {
         val message = (multiplexer.preflightError ?: error)?.asString()
@@ -80,6 +81,7 @@ internal fun TerminalDisconnectedContent(
                 },
                 onBack = { vm.multiplexer.dismissRecovery(onBack) },
                 onReconnect = vm::reconnect,
+                onEndSession = onEndSession,
             )
             showNoSessions -> TerminalNoSessions(onNewConnection, Modifier.align(Alignment.Center))
         }

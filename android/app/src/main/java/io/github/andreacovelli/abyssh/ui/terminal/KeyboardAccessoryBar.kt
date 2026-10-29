@@ -51,6 +51,9 @@ import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.ui.components.AbyssKey
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.takeOrElse
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -68,6 +71,7 @@ fun KeyboardAccessoryBar(
     onAbysshKey: (() -> Unit)? = null,
     abysshKeyActive: Boolean = false,
     onOpenFiles: (() -> Unit)? = null,
+    onEndSession: (() -> Unit)? = null,
     useSingleRow: Boolean = false,
     horizontalPadding: Dp = 8.dp,
     verticalPadding: Dp = 6.dp,
@@ -135,6 +139,12 @@ fun KeyboardAccessoryBar(
                     buttonPadding = buttonPadding,
                     modifier = keyModifier,
                 )
+                EndSessionButton(
+                    onEndSession = onEndSession,
+                    buttonHeight = buttonHeight,
+                    buttonPadding = buttonPadding,
+                    modifier = keyModifier,
+                )
             }
             return
         }
@@ -171,6 +181,12 @@ fun KeyboardAccessoryBar(
             )
             SettingsButton(
                 onSettings = onSettings,
+                buttonHeight = buttonHeight,
+                buttonPadding = buttonPadding,
+                modifier = keyModifier,
+            )
+            EndSessionButton(
+                onEndSession = onEndSession,
                 buttonHeight = buttonHeight,
                 buttonPadding = buttonPadding,
                 modifier = keyModifier,
@@ -349,6 +365,26 @@ private fun SettingsButton(
     )
 }
 
+/** Ends the active session; back leaves it running instead. */
+@Composable
+private fun EndSessionButton(
+    onEndSession: (() -> Unit)?,
+    buttonHeight: Dp,
+    buttonPadding: PaddingValues,
+    modifier: Modifier = Modifier,
+) {
+    if (onEndSession == null) return
+    AccessoryIconKey(
+        icon = R.drawable.ic_close,
+        contentDescription = stringResource(R.string.terminal_end_session),
+        onClick = onEndSession,
+        buttonHeight = buttonHeight,
+        buttonPadding = buttonPadding,
+        modifier = modifier,
+        tint = AbyssColors.current.warning,
+    )
+}
+
 @Composable
 private fun AccessoryIconKey(
     @DrawableRes icon: Int,
@@ -357,6 +393,7 @@ private fun AccessoryIconKey(
     buttonHeight: Dp,
     buttonPadding: PaddingValues,
     modifier: Modifier = Modifier,
+    tint: Color = Color.Unspecified,
 ) {
     AbyssKey(
         onClick = onClick,
@@ -367,6 +404,7 @@ private fun AccessoryIconKey(
             painter = painterResource(icon),
             contentDescription = contentDescription,
             modifier = Modifier.size(18.dp),
+            tint = tint.takeOrElse { LocalContentColor.current },
         )
     }
 }

@@ -9,16 +9,23 @@ import io.github.andreacovelli.abyssh.data.db.AppDatabase
 import io.github.andreacovelli.abyssh.data.repository.HostRepository
 import io.github.andreacovelli.abyssh.model.HostProfile
 import io.github.andreacovelli.abyssh.model.Transport
+import io.github.andreacovelli.abyssh.service.terminal.OpenTab
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionRepository
+import io.github.andreacovelli.abyssh.service.terminal.sessionLabel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ServerListViewModel(
     application: Application,
 ) : AndroidViewModel(application) {
@@ -47,13 +54,16 @@ class ServerListViewModel(
     /** Hosts with at least one connected tab. */
     val connectedHostIds: StateFlow<Set<Long>> = sessionRepository.connectedHostIds
 
-    /** How many tabs are open per host and on the local shell. */
+    /** The tabs open per host and on the local shell, with each tab's terminal title. */
     val openSessions: StateFlow<OpenSessions> = sessionRepository.tabs
-        .map { tabs ->
-            OpenSessions(
-                localShellTabs = tabs.count { it.spec.transport == Transport.LocalShell },
-                tabsByHost = tabs.mapNotNull { it.spec.hostId }.groupingBy { it }.eachCount(),
-            )
+        .flatMapLatest { tabs ->
+            if (tabs.isEmpty()) {
+                flowOf(OpenSessions())
+            } else {
+                combine(tabs.map { tab -> tab.sessionState.map { it.title }.distinctUntilChanged() }) { titles ->
+                    openSessionsOf(tabs, titles.toList())
+                }
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), OpenSessions())
 
@@ -69,6 +79,11 @@ class ServerListViewModel(
     /** Closes every tab connected to the host. */
     fun disconnectHost(id: Long) {
         closeTabsWhere { it.spec.hostId == id }
+    }
+
+    /** Closes one tab, leaving the host's other tabs open. */
+    fun closeSession(tabId: String) {
+        sessionRepository.closeTab(tabId)
     }
 
     /** Closes every local shell tab. */
@@ -107,12 +122,31 @@ class ServerListViewModel(
     }
 }
 
-/** Open tab counts shown on the server list. */
+/** One open tab as the server list shows it: its numbered label and terminal title. */
+data class OpenSession(val tabId: String, val label: String, val title: String?)
+
+/** The open tabs shown on the server list. */
 data class OpenSessions(
     val localShellTabs: Int = 0,
-    val tabsByHost: Map<Long, Int> = emptyMap(),
+    val sessionsByHost: Map<Long, List<OpenSession>> = emptyMap(),
 ) {
     val hasLocalShell: Boolean get() = localShellTabs > 0
 
-    fun tabsFor(hostId: Long): Int = tabsByHost[hostId] ?: 0
+    fun sessionsFor(hostId: Long): List<OpenSession> = sessionsByHost[hostId].orEmpty()
+
+    fun tabsFor(hostId: Long): Int = sessionsFor(hostId).size
+}
+
+/** Groups [tabs] by saved host; [titles] holds each tab's terminal title, in the same order. */
+internal fun openSessionsOf(tabs: List<OpenTab>, titles: List<String?>): OpenSessions {
+    val sessionsByHost = tabs.withIndex()
+        .mapNotNull { (i, tab) ->
+            val title = titles.getOrNull(i)?.takeIf(String::isNotBlank)
+            tab.spec.hostId?.let { hostId -> hostId to OpenSession(tab.id, tab.sessionLabel(tabs), title) }
+        }
+        .groupBy({ it.first }, { it.second })
+    return OpenSessions(
+        localShellTabs = tabs.count { it.spec.transport == Transport.LocalShell },
+        sessionsByHost = sessionsByHost,
+    )
 }

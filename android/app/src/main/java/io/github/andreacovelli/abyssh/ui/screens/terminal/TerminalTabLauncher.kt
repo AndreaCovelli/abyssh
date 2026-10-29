@@ -50,9 +50,16 @@ internal class TerminalTabLauncher(
     // Whether cancelling the prompt leaves the screen: true for the tab the route opens.
     private var leaveOnCancel = false
 
-    fun open(spec: TabSpec, requiresVerification: Boolean, leaveOnCancel: Boolean = false) {
+    // Whether the pending tab starts a new multiplexer session instead of picking one.
+    private var newSession = false
+
+    /**
+     * Opens a tab on [spec]. With [newSession], a multiplexer host gets a new multiplexer
+     * session, as when duplicating a tab, rather than attaching to a detached one.
+     */
+    fun open(spec: TabSpec, requiresVerification: Boolean, leaveOnCancel: Boolean = false, newSession: Boolean = false) {
         if (!requiresVerification) {
-            openOrPrompt(spec, leaveOnCancel)
+            openOrPrompt(spec, leaveOnCancel, newSession)
             return
         }
         requireUserVerification(
@@ -61,7 +68,7 @@ internal class TerminalTabLauncher(
             subtitle = resources.getString(R.string.terminal_verify_subtitle),
         ) { result ->
             if (result == VerificationResult.Success && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-                openOrPrompt(spec, leaveOnCancel)
+                openOrPrompt(spec, leaveOnCancel, newSession)
             }
         }
     }
@@ -88,8 +95,9 @@ internal class TerminalTabLauncher(
     fun confirm() {
         val spec = pendingSpec
         val typed = passphrase
+        val fresh = newSession
         reset()
-        if (spec != null) launch(spec.copy(keyPassphrase = typed))
+        if (spec != null) launch(spec.copy(keyPassphrase = typed), fresh)
     }
 
     fun dismiss(onBack: () -> Unit) {
@@ -102,19 +110,25 @@ internal class TerminalTabLauncher(
         pendingSpec = null
         passphrase = ""
         leaveOnCancel = false
+        newSession = false
     }
 
-    private fun openOrPrompt(spec: TabSpec, leaveOnCancel: Boolean) {
+    private fun openOrPrompt(spec: TabSpec, leaveOnCancel: Boolean, newSession: Boolean) {
         if (spec.authMethod == AuthMethod.KeyWithPassphrase && spec.keyPassphrase.isBlank()) {
             this.leaveOnCancel = leaveOnCancel
+            this.newSession = newSession
             pendingSpec = spec
         } else {
-            launch(spec)
+            launch(spec, newSession)
         }
     }
 
-    private fun launch(spec: TabSpec) {
-        if (spec.usesRuntimeMultiplexer) vm.multiplexer.open(spec) else vm.openTab(spec)
+    private fun launch(spec: TabSpec, newSession: Boolean) {
+        when {
+            !spec.usesRuntimeMultiplexer -> vm.openTab(spec)
+            newSession -> vm.multiplexer.duplicate(spec)
+            else -> vm.multiplexer.open(spec)
+        }
     }
 }
 

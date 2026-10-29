@@ -42,6 +42,7 @@ import io.github.andreacovelli.abyssh.service.terminal.SessionStatus
 import kotlinx.coroutines.flow.map
 import kotlin.math.roundToInt
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
+import io.github.andreacovelli.abyssh.service.terminal.sessionLabel
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
@@ -122,7 +123,7 @@ fun TerminalTabStrip(
         ) {
             tabs.forEachIndexed { index, tab ->
                 val isActive = tab.id == activeTabId
-                val alias = terminalTabDisplayLabel(tab)
+                val alias = tab.sessionLabel(tabs)
                 val title = titles[index]
                 val label = when {
                     title == null -> alias

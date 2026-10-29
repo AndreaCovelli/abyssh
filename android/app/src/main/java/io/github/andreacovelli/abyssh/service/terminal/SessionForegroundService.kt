@@ -21,6 +21,7 @@ import io.github.andreacovelli.abyssh.ui.theme.GhosttyThemeRegistry
 
 class SessionForegroundService : Service() {
     private var currentLabel: String? = null
+    private var endsSeveral = false
 
     override fun onCreate() {
         super.onCreate()
@@ -50,6 +51,7 @@ class SessionForegroundService : Service() {
                 if (!label.isNullOrBlank()) {
                     currentLabel = label
                 }
+                endsSeveral = intent?.getBooleanExtra(EXTRA_ENDS_SEVERAL, endsSeveral) ?: endsSeveral
                 val type =
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                         ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
@@ -84,6 +86,9 @@ class SessionForegroundService : Service() {
     }
 
     private fun buildNotification(label: String): Notification {
+        // The action ends every session, so say so once there is more than one.
+        val disconnectLabel =
+            if (endsSeveral) R.string.session_notification_disconnect_all else R.string.server_list_disconnect_confirm
         val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
 
         val tapIntent = Intent(this, MainActivity::class.java).apply {
@@ -111,7 +116,7 @@ class SessionForegroundService : Service() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setContentIntent(tapPending)
-            .addAction(0, getString(R.string.server_list_disconnect_confirm), disconnectPending)
+            .addAction(0, getString(disconnectLabel), disconnectPending)
 
         resolveNotificationColor()?.let { argb ->
             notificationBuilder
@@ -140,11 +145,14 @@ class SessionForegroundService : Service() {
         private const val ACTION_STOP = "io.github.andreacovelli.abyssh.action.STOP_SESSION_SERVICE"
         private const val ACTION_DISCONNECT = "io.github.andreacovelli.abyssh.action.DISCONNECT_SESSION"
         private const val EXTRA_LABEL = "extra_label"
+        private const val EXTRA_ENDS_SEVERAL = "extra_ends_several"
 
-        fun start(context: Context, label: String) {
+        /** Shows [label]; [endsSeveral] says the Disconnect action ends more than one session. */
+        fun start(context: Context, label: String, endsSeveral: Boolean = false) {
             val intent = Intent(context, SessionForegroundService::class.java)
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_LABEL, label)
+                .putExtra(EXTRA_ENDS_SEVERAL, endsSeveral)
             runCatching {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)

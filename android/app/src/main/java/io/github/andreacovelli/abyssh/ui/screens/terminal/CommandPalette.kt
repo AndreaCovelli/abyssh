@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import kotlinx.coroutines.flow.map
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -44,6 +45,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
+import io.github.andreacovelli.abyssh.service.terminal.sessionLabel
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
@@ -71,7 +73,7 @@ fun CommandPalette(
     multiplexerPanel: @Composable () -> Unit = {},
 ) {
     val colors = AbyssColors.current
-    val entries = remember(tabs) { tabs.map { it to terminalTabDisplayLabel(it) } }
+    val entries = remember(tabs) { tabs.map { it to it.sessionLabel(tabs) } }
     val maxIndex = (entries.size - 1).coerceAtLeast(0)
     LaunchedEffect(entries.size) { onFocusedTabIndexChange(focusedTabIndex.coerceIn(0, maxIndex)) }
     LaunchedEffect(activeTabId, entries) {
@@ -202,7 +204,6 @@ private fun PaletteTabRow(
     val title by remember(tab) {
         tab.sessionState.map { it.title?.takeIf(String::isNotBlank) }
     }.collectAsStateWithLifecycle(initialValue = null)
-    val displayLabel = title ?: alias
     Row(
         modifier =
             Modifier.fillMaxWidth()
@@ -219,16 +220,29 @@ private fun PaletteTabRow(
                     .clip(CircleShape)
                     .background(if (isActive) colors.success else Color.Transparent),
         )
-        AbyssText(
-            displayLabel,
-            style = AbyssTypography.current.body,
-            color = if (isFocused) colors.accent else colors.textPrimary,
-            modifier = Modifier.weight(1f),
-        )
+        // The session name first, so tabs to one host stay apart; the terminal title below it.
+        Column(modifier = Modifier.weight(1f)) {
+            AbyssText(
+                alias,
+                style = AbyssTypography.current.body,
+                color = if (isFocused) colors.accent else colors.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            title?.takeIf { it != alias }?.let {
+                AbyssText(
+                    it,
+                    style = AbyssTypography.current.codeSmall,
+                    color = colors.textMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
         if (canClose) {
             AbyssCloseButton(
                 onClick = onClose,
-                contentDescription = stringResource(R.string.tab_manager_close_tab, displayLabel),
+                contentDescription = stringResource(R.string.tab_manager_close_tab, alias),
                 color = colors.textMuted,
                 iconSize = 18.dp,
             )

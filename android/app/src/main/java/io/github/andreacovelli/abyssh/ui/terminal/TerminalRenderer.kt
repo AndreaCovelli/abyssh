@@ -235,7 +235,9 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         }
         val paint = paints.forChoice(fonts.choiceAt(snapshot, start))
         paint.applyTextStyle(frame.foregroundAt(start), frame.textStyleAt(start))
-        canvas.drawText(text.toString(), x, baseline, paint)
+        // Pass the builder, not text.toString(): Canvas copies a CharSequence into a
+        // pooled char buffer, so no String is allocated per run per frame.
+        canvas.drawText(text, 0, text.length, x, baseline, paint)
         return end
     }
 

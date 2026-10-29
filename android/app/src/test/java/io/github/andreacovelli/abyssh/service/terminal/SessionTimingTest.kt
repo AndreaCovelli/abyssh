@@ -36,8 +36,8 @@ class SessionTimingTest {
 
     @Test
     fun notificationLabelNamesTheActiveTabAndTheCount() {
-        val shell = TabSpec(transport = Transport.LocalShell)
-        val server = TabSpec(host = "example.com", username = "me")
+        val shell = FakeTab("shell", TabSpec(transport = Transport.LocalShell))
+        val server = FakeTab("server", TabSpec(host = "example.com", username = "me"))
         val localShell = UiText.Resource(R.string.session_notification_local_shell)
         val twoSessions = UiText.Plural(R.plurals.session_notification_sessions, 2)
         assertEquals(UiText.Resource(R.string.session_notification_fallback), sessionNotificationLabel(emptyList(), null))
@@ -50,5 +50,27 @@ class SessionTimingTest {
             UiText.Resource(R.string.session_notification_count, twoSessions, localShell),
             sessionNotificationLabel(listOf(shell, server), null),
         )
+    }
+
+    @Test
+    fun notificationLabelNumbersTabsToTheSameHost() {
+        val spec = TabSpec(hostId = 1, displayName = "web", host = "example.com", username = "me")
+        val first = FakeTab("a", spec, number = 1)
+        val second = FakeTab("b", spec, number = 2)
+        val twoSessions = UiText.Plural(R.plurals.session_notification_sessions, 2)
+        assertEquals(UiText.Raw("web  ·  me@example.com:22"), sessionNotificationLabel(listOf(first), first))
+        assertEquals(
+            UiText.Resource(R.string.session_notification_count, twoSessions, UiText.Raw("web · 2  ·  me@example.com:22")),
+            sessionNotificationLabel(listOf(first, second), second),
+        )
+    }
+
+    @Test
+    fun notificationEndsSeveralSessionsOnlyWhenSeveralAreOpen() {
+        val one = FakeTab("a", TabSpec(host = "example.com"))
+        val two = FakeTab("b", TabSpec(host = "example.org"))
+        assertEquals(null, sessionNotification(listOf(one), one, anyLive = false))
+        assertEquals(false, sessionNotification(listOf(one), one, anyLive = true)?.endsSeveral)
+        assertEquals(true, sessionNotification(listOf(one, two), one, anyLive = true)?.endsSeveral)
     }
 }
