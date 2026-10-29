@@ -5,8 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,10 +55,8 @@ internal fun HostSessionsDialog(
         },
         onDismiss = onDismiss,
     ) {
-        Column(
-            modifier = Modifier.verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
+        // AbyssDialog already scrolls its body; a second vertical scroll here crashes.
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             AbyssText(
                 stringResource(R.string.server_list_disconnect_choose),
                 style = AbyssTypography.current.body,
