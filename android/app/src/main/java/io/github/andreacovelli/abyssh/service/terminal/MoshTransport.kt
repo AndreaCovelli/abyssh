@@ -40,7 +40,11 @@ internal class MoshEvents(
  * A Mosh session: an SSH login that starts `mosh-server` and reads its key, then the UDP
  * client that replaces the SSH connection. Every call must run on the session thread.
  */
-internal class MoshTransport(private val ssh: NativeSshService, private val service: NativeMoshService) : Closeable {
+internal class MoshTransport(
+    private val ssh: NativeSshService,
+    private val service: NativeMoshService,
+    private val pacer: ReadPacer,
+) : Closeable {
     val isLoaded: Boolean get() = service.isLoaded
 
     fun sendInput(data: ByteArray) {
@@ -99,7 +103,7 @@ internal class MoshTransport(private val ssh: NativeSshService, private val serv
     suspend fun read(events: MoshEvents): Int? {
         Log.d(TAG, "MOSH: read loop started")
         var loopCount = 0
-        var lastActivityMs = System.currentTimeMillis()
+        pacer.onActivity()
         var failure: MoshRuntimeState? = null
         while (failure == null && currentCoroutineContext().isActive) {
             loopCount++
@@ -108,7 +112,7 @@ internal class MoshTransport(private val ssh: NativeSshService, private val serv
             if (!service.pumpNetwork()) Log.w(TAG, "MOSH: pumpNetwork returned false")
             if (drainEvents(events)) {
                 events.onEventsDrained()
-                lastActivityMs = System.currentTimeMillis()
+                pacer.onActivity()
             }
             val runtime = service.pollState()
             runtime?.let(events.onRuntimeState)
@@ -118,7 +122,8 @@ internal class MoshTransport(private val ssh: NativeSshService, private val serv
             } else {
                 // Adaptive cadence: Mosh's retransmit/heartbeat timers are coarse, so
                 // backing the pump off while idle is safe and avoids a 500 Hz spin.
-                delay(idleReadDelayMs(System.currentTimeMillis() - lastActivityMs))
+                // Input wakes the pump so keystrokes go out at once.
+                pacer.idle()
             }
         }
         Log.d(TAG, "MOSH: read loop exited after $loopCount iterations")
