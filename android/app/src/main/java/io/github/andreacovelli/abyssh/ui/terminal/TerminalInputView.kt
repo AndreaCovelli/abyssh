@@ -43,13 +43,13 @@ class TerminalInputView(context: Context) : EditText(context) {
     var onTerminalText: ((String) -> Unit)? = null
     var onTerminalKey: ((Int, Int, Int, Int, Int) -> Unit)? = null
 
-    /** Runs a hardware ⌘ chord's key as an Abyssh command; false leaves the chord to the system. */
-    var onMetaShortcut: ((Char) -> Boolean)? = null
+    /** Runs a hardware shortcut chord's key as an Abyssh command; false when none is bound to it. */
+    var onShortcutChord: ((Char) -> Boolean)? = null
 
-    // The key of the ⌘ chord being held, and whether a command took it, so its repeats
-    // and release go to the same place as its press.
-    private var metaChordKeyCode = KeyEvent.KEYCODE_UNKNOWN
-    private var metaChordConsumed = false
+    // The key of the chord being held and what its press returned, so its repeats and
+    // release go to the same place as its press.
+    private var chordKeyCode = KeyEvent.KEYCODE_UNKNOWN
+    private var chordResult = false
 
     /**
      * When true, suppress IME text input. Used to prevent double-sends
@@ -193,28 +193,33 @@ class TerminalInputView(context: Context) : EditText(context) {
     )
 
     /**
-     * ⌘ chords never reach the terminal. One bound to an Abyssh command runs it; any other
-     * returns false so the system can still use it, as with ⌘+Tab.
+     * A ⌘ or Ctrl+Shift chord bound to an Abyssh command runs it. Other ⌘ chords return
+     * false so the system can still use them, as with ⌘+Tab; other Ctrl+Shift chords
+     * return null and reach the terminal.
      */
-    private fun handleMetaChordDown(keyCode: Int, event: KeyEvent): Boolean? {
-        if (keyCode == metaChordKeyCode && event.repeatCount > 0) return metaChordConsumed
-        if (!event.isMetaPressed || KeyEvent.isModifierKey(keyCode)) return null
-        metaChordKeyCode = keyCode
-        metaChordConsumed = metaShortcutKey(event)?.let { onMetaShortcut?.invoke(it) } == true
-        return metaChordConsumed
+    private fun handleShortcutChordDown(keyCode: Int, event: KeyEvent): Boolean? {
+        if (keyCode == chordKeyCode && event.repeatCount > 0) return chordResult
+        val result = when {
+            shortcutChordKey(event)?.let { onShortcutChord?.invoke(it) } == true -> true
+            event.isMetaPressed && !KeyEvent.isModifierKey(keyCode) -> false
+            else -> return null
+        }
+        chordKeyCode = keyCode
+        chordResult = result
+        return result
     }
 
-    private fun handleMetaChordUp(keyCode: Int): Boolean? {
-        if (keyCode != metaChordKeyCode) return null
-        metaChordKeyCode = KeyEvent.KEYCODE_UNKNOWN
-        return metaChordConsumed
+    private fun handleShortcutChordUp(keyCode: Int): Boolean? {
+        if (keyCode != chordKeyCode) return null
+        chordKeyCode = KeyEvent.KEYCODE_UNKNOWN
+        return chordResult
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         logInput(
             "onKeyDown keyCode=$keyCode unicode=${event.unicodeChar} meta=${event.metaState} flags=${event.flags}",
         )
-        handleMetaChordDown(keyCode, event)?.let { return it }
+        handleShortcutChordDown(keyCode, event)?.let { return it }
         val altGr = altGrText(event)
         if (altGr != null) {
             clearSuppression("onKeyDown.altGr keyCode=$keyCode")
@@ -244,7 +249,7 @@ class TerminalInputView(context: Context) : EditText(context) {
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         logInput("onKeyUp keyCode=$keyCode flags=${event.flags}")
-        handleMetaChordUp(keyCode)?.let { return it }
+        handleShortcutChordUp(keyCode)?.let { return it }
         if (altGrText(event) != null) return true
         val ghosttyAction = GhosttyKeyAction.fromAndroid(event.action, event.repeatCount)
         val mapped = KeyMapper.map(keyCode, event.unicodeChar, event.metaState)
