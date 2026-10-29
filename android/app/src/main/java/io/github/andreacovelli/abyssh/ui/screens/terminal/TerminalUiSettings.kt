@@ -11,6 +11,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.platform.AutoClearFocusBehavior
+import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -92,6 +94,23 @@ internal fun KeepScreenOnEffect(enabled: Boolean) {
         val window = (view.context as? Activity)?.window
         if (enabled) window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
+}
+
+/**
+ * Keeps a mouse press on the terminal from clearing focus. Compose clears focus when a
+ * mouse press lands outside the focused node, which here is the 1 dp input view, so every
+ * click told the remote app the terminal lost focus until the button came up. Apps such as
+ * Claude Code then dropped the drag selection made in between.
+ */
+@Composable
+internal fun KeepFocusOnMouseClickEffect() {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val host = view.parent as? ComposeView
+        val previous = host?.autoClearFocusBehavior
+        host?.autoClearFocusBehavior = AutoClearFocusBehavior.None
+        onDispose { if (host != null && previous != null) host.autoClearFocusBehavior = previous }
     }
 }
 
