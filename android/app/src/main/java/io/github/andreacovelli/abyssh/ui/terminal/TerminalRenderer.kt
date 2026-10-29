@@ -181,10 +181,14 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         cellOffsets[end] = text.length
         val paint = paints.forChoice(choice)
         paint.applyTextStyle(cells.foregroundAt(start), cells.textStyleAt(start))
+        // Italics slant around the baseline, which pushes their tops into the next cell
+        // and, in the last column, off the screen. Shifting left by half the slant at
+        // mid-ascent centers each slanted glyph on its cell.
+        val slant = paint.textSkewX * baseline / 2f
         // Pass the builder, not text.toString(): Canvas copies a CharSequence into a
         // pooled char buffer, so no String is allocated per run per frame.
         if (ascii || fitsCells(paint, (end - start) * cellWidth)) {
-            canvas.drawText(text, 0, text.length, start * cellWidth, baseline, paint)
+            canvas.drawText(text, 0, text.length, start * cellWidth + slant, baseline, paint)
         } else {
             // Paint.hasGlyph() counts system fonts, so a glyph the primary font lacks (a
             // subscript, a math symbol) can join a primary run and be drawn from a
@@ -193,7 +197,7 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
             for (col in start until end) {
                 val from = cellOffsets[col]
                 val to = cellOffsets[col + 1]
-                if (to > from) canvas.drawText(text, from, to, col * cellWidth, baseline, paint)
+                if (to > from) canvas.drawText(text, from, to, col * cellWidth + slant, baseline, paint)
             }
         }
         return end
