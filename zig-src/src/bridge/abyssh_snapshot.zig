@@ -155,6 +155,9 @@ const AbysshTerminal = struct {
     // monotonic milliseconds. The render state keeps the last finished frame
     // until the hold ends or runs past sync_hold_timeout_ms.
     sync_hold_since_ms: ?u64 = null,
+    // Scrolled rows not yet sent as a wheel event, negative for up. See
+    // rows_per_wheel_event.
+    wheel_rows: i32 = 0,
     snapshot_buffer: std.ArrayListUnmanaged(u8) = .empty,
     snapshot_extras_scratch: std.ArrayListUnmanaged(u32) = .empty,
     // The colors the last text snapshot resolved its cells with. Cells hold
@@ -1581,6 +1584,23 @@ export fn abyssh_resize(handle: c.jlong, cols: c.jint, rows: c.jint, cell_width:
 }
 
 const max_wheel_events_per_scroll: usize = 16;
+// Programs scroll several lines per wheel event (3 in Vim and Neovim), so
+// one event per row would move the content three times as far as the finger,
+// and a mouse wheel notch, which scrolls 3 rows, would send three events. It
+// also queues three times the events. One event per this many rows keeps them
+// in step.
+const rows_per_wheel_event: i32 = 3;
+
+/// The wheel events [delta] rows add up to, keeping the rows left over in
+/// terminal.wheel_rows. Changing direction drops the rows left from the other way.
+fn takeWheelEvents(terminal: *AbysshTerminal, delta: i32) i32 {
+    const max_rows: i32 = @intCast(max_wheel_events_per_scroll * rows_per_wheel_event);
+    if ((delta < 0) != (terminal.wheel_rows < 0)) terminal.wheel_rows = 0;
+    terminal.wheel_rows += std.math.clamp(delta, -max_rows, max_rows);
+    const events = @divTrunc(terminal.wheel_rows, rows_per_wheel_event);
+    terminal.wheel_rows -= events * rows_per_wheel_event;
+    return events;
+}
 
 export fn abyssh_scroll(handle: c.jlong, delta: c.jint, x: c.jfloat, y: c.jfloat) callconv(.c) void {
     const terminal = abysshFromHandle(handle) orelse return;
@@ -1598,10 +1618,12 @@ export fn abyssh_scroll(handle: c.jlong, delta: c.jint, x: c.jfloat, y: c.jfloat
         // Send mouse scroll events to the application.
         // Negative delta = scroll up (older content) → button 4.
         // Positive delta = scroll down (newer content) → button 5.
-        const button: u8 = if (delta < 0) 4 else 5;
+        const events = takeWheelEvents(terminal, delta);
+        if (events == 0) return;
+        const button: u8 = if (events < 0) 4 else 5;
         // A fast swipe can cover many rows in one frame; cap the burst so
         // programs that parse input in chunks are not flooded.
-        const scroll_count: usize = @min(@max(1, @abs(delta)), max_wheel_events_per_scroll);
+        const scroll_count: usize = @min(@abs(events), max_wheel_events_per_scroll);
 
         // Use the gesture position so mouse-aware programs like tmux route the
         // wheel event to the pane under the user's finger.
