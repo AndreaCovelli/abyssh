@@ -19,6 +19,7 @@ version catalog pins AGP, Kotlin, and libraries. Run `mise install` once.
 | `mise run test` | Unit tests only. Filter with `cd android && ./gradlew testDebugUnitTest --tests '<pattern>'` |
 | `mise run test:device` | Instrumented tests on a connected device or emulator |
 | `mise run install` | Install the debug APK on a connected device and launch it |
+| `mise run release` | Tag the next version from the commits since the last tag (`mise-tasks/release`). Before 1.0, breaking changes bump minor and everything else bumps patch. Never tag by hand |
 | `cd zig-src && zig build fmt` | Format the Zig sources |
 
 Run one Gradle build at a time. The native build takes several minutes for all ABIs;

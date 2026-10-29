@@ -101,7 +101,15 @@ terminal emulation, libssh2 and OpenSSL for SSH, and a Zig Mosh client.
 ## Releases
 
 Every push to `main` publishes a nightly APK as a GitHub prerelease. Pushing a tag such
-as `v1.2.3` builds a signed APK and app bundle and attaches them to a draft release.
+as `v1.2.3` builds a signed APK and app bundle and attaches them to a draft release as
+`abyssh-1.2.3-arm64-v8a.apk` and `abyssh-1.2.3.aab`.
+
+`mise run release` creates the next tag from the Conventional Commits since the last
+one. Before 1.0, a breaking change bumps the minor version and anything else bumps the
+patch version; from 1.0 on, breaking changes bump major and `feat` bumps minor. Pass
+`major`, `minor`, or `patch` to override it. The tag stays local until you push it with
+`git push origin v<version>`.
+
 Signing reads the `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and
 `KEY_PASSWORD` secrets of the `release` environment, which only `main` and `v*` tags
 can use. The workflow decodes the keystore into the runner's temporary directory and

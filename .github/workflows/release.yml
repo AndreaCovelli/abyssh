@@ -97,6 +97,17 @@ jobs:
         if: ${{ always() }}
         run: rm -f -- "$RUNNER_TEMP/release.jks"
 
+      - name: name release artifacts
+        if: ${{ github.ref_type == 'tag' || inputs.release_tag != '' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          OUT=./android/app/build/outputs
+          mkdir -p dist
+          cp "$OUT/apk/release/app-release.apk" "dist/abyssh-${VERSION}-arm64-v8a.apk"
+          cp "$OUT/bundle/release/app-release.aab" "dist/abyssh-${VERSION}.aab"
+
       - name: upload release
         if: ${{ github.ref_type == 'tag' || inputs.release_tag != '' }}
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
@@ -105,7 +116,7 @@ jobs:
           target_commitish: ${{ github.sha }}
           draft: true
           files: |
-            ./android/app/build/outputs/apk/release/*.apk
-            ./android/app/build/outputs/bundle/release/*.aab
+            ./dist/abyssh-*.apk
+            ./dist/abyssh-*.aab
           fail_on_unmatched_files: true
 

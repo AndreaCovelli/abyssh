@@ -113,7 +113,7 @@ jobs:
         run: |
           set -euo pipefail
           SRC="$(find ./android/app/build/outputs/apk/release -name '*.apk' -print -quit)"
-          DEST="./android/app/build/outputs/apk/release/abyssh-nightly.apk"
+          DEST="./android/app/build/outputs/apk/release/abyssh-nightly-arm64-v8a.apk"
           cp "$SRC" "$DEST"
           echo "path=${DEST}" >> "$GITHUB_OUTPUT"
 
