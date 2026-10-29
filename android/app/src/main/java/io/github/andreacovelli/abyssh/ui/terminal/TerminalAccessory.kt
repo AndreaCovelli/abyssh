@@ -226,17 +226,17 @@ object TerminalAccessoryLayoutStore {
         "escape",
         "tab",
         "ctrl",
-        "cmd",
         "shift",
         "alt",
         "up",
         "down",
         "left",
         "right",
+        "home",
+        "end",
         "page_up",
         "page_down",
-        "enter",
-        "space",
+        "delete",
     )
 
     fun defaultEntries(): List<ResolvedAccessoryEntry> = resolveSelectedLayout(defaultLayoutIds)

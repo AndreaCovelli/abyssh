@@ -46,6 +46,10 @@ internal class TerminalInputController(
     var selectionState by mutableStateOf<TerminalSelectionState?>(null)
     var hasClipboardText by mutableStateOf(false)
         private set
+
+    /** Whether a physical keyboard's Caps Lock is on, as of its last key event. */
+    var capsLockOn by mutableStateOf(false)
+        private set
     var inputView: TerminalInputView? = null
 
     // The screen sets these on every composition. The input view keeps the callbacks it
@@ -70,6 +74,7 @@ internal class TerminalInputController(
         onTerminalText = ::onText
         onTerminalKey = ::onKey
         onShortcutChord = ::onShortcutChord
+        onCapsLockChanged = { capsLockOn = it }
         setOnFocusChangeListener { _, hasFocus -> onFocusChanged(hasFocus) }
         inputView = this
     }

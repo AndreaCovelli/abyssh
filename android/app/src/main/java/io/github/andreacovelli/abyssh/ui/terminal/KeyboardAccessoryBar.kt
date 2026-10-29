@@ -67,6 +67,7 @@ fun KeyboardAccessoryBar(
     modifierState: ModifierState,
     onAction: (AccessoryAction) -> Unit,
     modifier: Modifier = Modifier,
+    capsLockOn: Boolean = false,
     onSettings: (() -> Unit)? = null,
     onAbysshKey: (() -> Unit)? = null,
     abysshKeyActive: Boolean = false,
@@ -80,6 +81,8 @@ fun KeyboardAccessoryBar(
     val buttonPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 3.dp, bottom = 3.dp)
     // A shared minimum width keeps one-glyph keys (arrows, icons) as wide as Esc or Tab.
     val keyModifier = Modifier.widthIn(min = 40.dp)
+    // Shift lights up while Caps Lock is on, though it sends no Shift of its own.
+    val shownModifiers = if (capsLockOn) modifierState.copy(shift = true) else modifierState
     var expandedGroupId by remember { mutableStateOf<String?>(null) }
     val onChildAction: (AccessoryAction) -> Unit = { action ->
         onAction(action)
@@ -93,7 +96,7 @@ fun KeyboardAccessoryBar(
             if (expandedGroup != null) {
                 GroupPopover(
                     group = expandedGroup.group,
-                    modifierState = modifierState,
+                    modifierState = shownModifiers,
                     onAction = onChildAction,
                     buttonHeight = buttonHeight,
                     buttonPadding = buttonPadding,
@@ -115,7 +118,7 @@ fun KeyboardAccessoryBar(
                     AccessoryEntry(
                         entry = entry,
                         expanded = expandedGroupId == entry.id,
-                        modifierState = modifierState,
+                        modifierState = shownModifiers,
                         onAction = onAction,
                         onToggleGroup = { id ->
                             expandedGroupId = if (expandedGroupId == id) null else id
@@ -161,7 +164,7 @@ fun KeyboardAccessoryBar(
                 AccessoryEntry(
                     entry = entry,
                     expanded = expandedGroupId == entry.id,
-                    modifierState = modifierState,
+                    modifierState = shownModifiers,
                     onAction = onAction,
                     onToggleGroup = { id ->
                         expandedGroupId = if (expandedGroupId == id) null else id

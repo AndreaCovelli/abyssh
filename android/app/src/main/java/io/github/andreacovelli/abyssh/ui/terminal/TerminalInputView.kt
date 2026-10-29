@@ -46,6 +46,10 @@ class TerminalInputView(context: Context) : EditText(context) {
     /** Runs a hardware shortcut chord's key as an Abyssh command; false when none is bound to it. */
     var onShortcutChord: ((Char) -> Boolean)? = null
 
+    /** Reports a physical keyboard's Caps Lock turning on or off. */
+    var onCapsLockChanged: ((Boolean) -> Unit)? = null
+    private var capsLockOn = false
+
     // The key of the chord being held and what its press returned, so its repeats and
     // release go to the same place as its press.
     private var chordKeyCode = KeyEvent.KEYCODE_UNKNOWN
@@ -215,10 +219,21 @@ class TerminalInputView(context: Context) : EditText(context) {
         return chordResult
     }
 
+    // Soft keyboards don't report their caps lock, and their key events carry none, so
+    // only physical keys update it.
+    private fun trackCapsLock(event: KeyEvent) {
+        if (event.device?.isVirtual != false) return
+        val on = event.isCapsLockOn
+        if (on == capsLockOn) return
+        capsLockOn = on
+        onCapsLockChanged?.invoke(on)
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         logInput(
             "onKeyDown keyCode=$keyCode unicode=${event.unicodeChar} meta=${event.metaState} flags=${event.flags}",
         )
+        trackCapsLock(event)
         handleShortcutChordDown(keyCode, event)?.let { return it }
         val altGr = altGrText(event)
         if (altGr != null) {
@@ -249,6 +264,7 @@ class TerminalInputView(context: Context) : EditText(context) {
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         logInput("onKeyUp keyCode=$keyCode flags=${event.flags}")
+        trackCapsLock(event)
         handleShortcutChordUp(keyCode)?.let { return it }
         if (altGrText(event) != null) return true
         val ghosttyAction = GhosttyKeyAction.fromAndroid(event.action, event.repeatCount)
