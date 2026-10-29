@@ -1,6 +1,11 @@
 package io.github.andreacovelli.abyssh.ui
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
@@ -9,11 +14,16 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.pinch
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
+import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalZoomIndicator
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCanvas
+import io.github.andreacovelli.abyssh.ui.theme.AbyssTheme
+import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -103,5 +113,40 @@ class TerminalCanvasGestureTest {
         }
         compose.waitUntil { scrolls.isNotEmpty() }
         assertEquals(3, kotlin.math.abs(scrolls.sum()))
+    }
+
+    @Test
+    fun pinchShowsTheFontSizeUntilItHoldsStill() {
+        val snapshot = snapshot(appTracksMouse = false, "a", "b", "c")
+        var fontSize by mutableFloatStateOf(14f)
+        var steps by mutableIntStateOf(0)
+        compose.setContent {
+            AbyssTheme {
+                Box {
+                    TerminalCanvas(
+                        snapshot = { snapshot },
+                        modifier = Modifier.size(360.dp, 200.dp).testTag("canvas"),
+                        fontSizeSp = fontSize,
+                        onResize = { _, _, w, h, _, _ -> cellWidth = w; cellHeight = h },
+                        onFontSizeChange = { fontSize = it; steps++ },
+                    )
+                    TerminalZoomIndicator(fontSize, steps)
+                }
+            }
+        }
+        compose.waitUntil { cellWidth > 0 }
+        compose.onNodeWithText("Font size", substring = true).assertDoesNotExist()
+
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("canvas").performTouchInput {
+            val apart = Offset(60f, 0f)
+            pinch(center - apart, center - apart * 2f, center + apart, center + apart * 2f)
+        }
+        compose.mainClock.advanceTimeBy(300)
+        assertTrue(fontSize > 14f)
+        compose.onNodeWithText("Font size ${fontSize.roundToInt()}").assertExists()
+
+        compose.mainClock.advanceTimeBy(2_000)
+        compose.onNodeWithText("Font size", substring = true).assertDoesNotExist()
     }
 }
