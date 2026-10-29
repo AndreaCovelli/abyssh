@@ -351,6 +351,20 @@ fn ensureListSize(list: *std.ArrayListUnmanaged(u8), size_needed: usize) ?[*]u8 
     return list.items.ptr;
 }
 
+// A rebuilt buffer this much larger than it needs to be, and above the floor, is freed.
+const shrink_floor_bytes = 1024 * 1024;
+const shrink_factor = 4;
+
+/// Like ensureListSize, for a buffer about to be rebuilt from scratch. When it is far
+/// larger than this build needs, as after a huge grid or image, it is freed first, so
+/// the terminal doesn't hold that peak for the rest of its life.
+fn resetListSize(list: *std.ArrayListUnmanaged(u8), size_needed: usize) ?[*]u8 {
+    if (list.capacity > shrink_floor_bytes and list.capacity / shrink_factor > size_needed) {
+        list.clearAndFree(allocator);
+    }
+    return ensureListSize(list, size_needed);
+}
+
 fn updateString(storage: *?[]u8, storage_len: *usize, dirty: *bool, value: ?[:0]const u8) bool {
     const slice: []const u8 = if (value) |v| v else "";
 
@@ -950,7 +964,7 @@ export fn abyssh_build_text_snapshot(handle: c.jlong, full_requested: bool, out_
     const cells_offset = header_size + index_size;
     const base_total_size = cells_offset + grid_size;
 
-    var buffer = ensureListSize(&terminal.snapshot_buffer, base_total_size) orelse return null;
+    var buffer = resetListSize(&terminal.snapshot_buffer, base_total_size) orelse return null;
 
     writeIntLe(i32, buffer[0..base_total_size], 0, @intCast(cols));
     writeIntLe(i32, buffer[0..base_total_size], 4, @intCast(rows));
@@ -1338,7 +1352,7 @@ export fn abyssh_build_image_snapshot(handle: c.jlong, cached_ptr: [*c]const u64
 
     var total: usize = 4;
     for (placements[0..count]) |p| total += IMAGE_HEADER_BYTES + p.data_len;
-    const buf = ensureListSize(&terminal.image_snapshot_buffer, total) orelse {
+    const buf = resetListSize(&terminal.image_snapshot_buffer, total) orelse {
         for (placements[0..count]) |p| switch (p.free_mode) {
             .malloc_buf => allocator.free(@constCast(p.data_ptr[0..p.data_len])),
             .zignal => zignal_png.freePixels(@ptrCast(@constCast(p.data_ptr)), p.img_w, p.img_h),
