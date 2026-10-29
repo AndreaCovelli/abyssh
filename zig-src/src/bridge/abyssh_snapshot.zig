@@ -1112,6 +1112,25 @@ export fn abyssh_build_text_snapshot(handle: c.jlong, full_requested: bool, out_
     return buffer;
 }
 
+/// Copies RGBA pixels, multiplying each color channel by alpha. Kitty images carry
+/// straight alpha, but Android's ARGB_8888 bitmaps hold premultiplied pixels and
+/// `copyPixelsFromBuffer` doesn't convert: a transparent #FFFFFF00 pixel, as
+/// ImageMagick writes around snacks.nvim's math images, would draw as solid white.
+fn copyPremultiplied(dst: []u8, src: []const u8) void {
+    var i: usize = 0;
+    while (i + 4 <= src.len) : (i += 4) {
+        const a: u32 = src[i + 3];
+        if (a == 0xff) {
+            @memcpy(dst[i .. i + 4], src[i .. i + 4]);
+            continue;
+        }
+        inline for (0..3) |ch| {
+            dst[i + ch] = @intCast((@as(u32, src[i + ch]) * a + 127) / 255);
+        }
+        dst[i + 3] = src[i + 3];
+    }
+}
+
 fn allocRgba(pixel_count: usize) ?[]u8 {
     return allocator.alloc(u8, pixel_count * 4) catch null;
 }
@@ -1309,7 +1328,7 @@ export fn abyssh_build_image_snapshot(handle: c.jlong, out_size: [*c]usize) call
         writeIntLe(u32, buf[0..total], offset + 40, p.img_w);
         writeIntLe(u32, buf[0..total], offset + 44, p.img_h);
         writeIntLe(u32, buf[0..total], offset + 48, @intCast(p.data_len));
-        @memcpy(buf[offset + IMAGE_HEADER_BYTES .. offset + IMAGE_HEADER_BYTES + p.data_len], p.data_ptr[0..p.data_len]);
+        copyPremultiplied(buf[offset + IMAGE_HEADER_BYTES .. offset + IMAGE_HEADER_BYTES + p.data_len], p.data_ptr[0..p.data_len]);
         offset += IMAGE_HEADER_BYTES + p.data_len;
         switch (p.free_mode) {
             .malloc_buf => allocator.free(@constCast(p.data_ptr[0..p.data_len])),
