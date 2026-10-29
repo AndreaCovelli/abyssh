@@ -223,6 +223,8 @@ class AccessoryLogicTest {
         assertTrue("down" in ids)
         assertTrue("ctrl" in ids)
         assertTrue("cmd" in ids)
+        assertTrue("page_up" in ids)
+        assertTrue("page_down" in ids)
     }
 
     @Test

@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
+import android.view.KeyEvent
+
 // Ghostty KeyMods bits, same layout as KeyMapper and ModifierState.terminalMods().
 private const val MOD_SHIFT = 1 shl 0
 private const val MOD_CTRL = 1 shl 1
@@ -58,3 +60,18 @@ internal fun isCopyShortcut(text: String, modifierState: ModifierState, hasSelec
     }
     return isCopyShortcut(GhosttyKey.keyC, modifierState.terminalMods() or extra, hasSelection)
 }
+
+/**
+ * The key a hardware ⌘ chord presses, or null when it isn't one. Holding ⌘ and pressing
+ * a key runs the same Abyssh command as tapping ⌘ in the accessory bar and then the key.
+ * Only plain ⌘ counts: with Shift, Ctrl, or Alt held too, the chord stays the system's.
+ * [plainChar] is what the key types with no modifiers.
+ */
+internal fun metaShortcutKey(metaState: Int, plainChar: Int): Char? {
+    if (metaState and KeyEvent.META_META_ON == 0) return null
+    if (metaState and (KeyEvent.META_SHIFT_ON or KeyEvent.META_CTRL_ON or KeyEvent.META_ALT_ON) != 0) return null
+    if (plainChar <= ' '.code || plainChar > Char.MAX_VALUE.code) return null
+    return plainChar.toChar().lowercaseChar()
+}
+
+internal fun metaShortcutKey(event: KeyEvent): Char? = metaShortcutKey(event.metaState, event.getUnicodeChar(0))

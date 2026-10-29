@@ -1,6 +1,9 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
+import android.view.KeyEvent
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -78,5 +81,26 @@ class TerminalShortcutsTest {
         assertTrue(isCopyShortcut("\u0003", ModifierState(), hasSelection = true))
         assertFalse(isCopyShortcut("c", ModifierState(), hasSelection = true))
         assertFalse(isCopyShortcut("c", ModifierState(ctrl = true), hasSelection = false))
+    }
+
+    @Test
+    fun `plain cmd chord gives its key`() {
+        assertEquals('t', metaShortcutKey(KeyEvent.META_META_ON or KeyEvent.META_META_LEFT_ON, 't'.code))
+        assertEquals('t', metaShortcutKey(KeyEvent.META_META_ON, 'T'.code))
+    }
+
+    @Test
+    fun `cmd chords with other modifiers stay the system's`() {
+        assertNull(metaShortcutKey(KeyEvent.META_META_ON or KeyEvent.META_SHIFT_ON, 't'.code))
+        assertNull(metaShortcutKey(KeyEvent.META_META_ON or KeyEvent.META_CTRL_ON, 't'.code))
+        assertNull(metaShortcutKey(KeyEvent.META_META_ON or KeyEvent.META_ALT_ON, 't'.code))
+    }
+
+    @Test
+    fun `keys without cmd or without a character are not cmd shortcuts`() {
+        assertNull(metaShortcutKey(0, 't'.code))
+        assertNull(metaShortcutKey(KeyEvent.META_META_ON, '\t'.code))
+        assertNull(metaShortcutKey(KeyEvent.META_META_ON, ' '.code))
+        assertNull(metaShortcutKey(KeyEvent.META_META_ON, 0))
     }
 }

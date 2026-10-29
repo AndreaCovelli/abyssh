@@ -32,6 +32,20 @@ class AbysshKeyBindings(
         return true
     }
 
+    /** Whether [key] runs a command after the ⌘ prefix. */
+    fun hasShortcut(key: Char): Boolean = key.lowercaseChar() in handlers
+
+    /**
+     * Runs the command bound to [key] without waiting for the prefix, as a hardware ⌘
+     * chord does. Returns false when nothing is bound to it.
+     */
+    fun runShortcut(key: Char): Boolean {
+        val handler = handlers[key.lowercaseChar()] ?: return false
+        isPrefixActive = false
+        handler()
+        return true
+    }
+
     fun hints(): List<AbysshHint> = hints
 
     companion object {
