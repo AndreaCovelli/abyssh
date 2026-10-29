@@ -11,6 +11,8 @@ concurrency:
 
 jobs:
   nightly:
+    # The release environment holds the signing secrets and admits only main and v* tags.
+    environment: release
     permissions:
       contents: write
     runs-on: ubuntu-26.04
