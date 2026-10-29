@@ -48,9 +48,10 @@ android {
 
     }
 
-    val keystoreFile = file("key.jks")
+    // Release signing comes from the environment. KEYSTORE_PATH points at a keystore kept
+    // outside the repository.
     val signing = mapOf(
-        "key.jks" to keystoreFile.takeIf { it.exists() }?.path,
+        "KEYSTORE_PATH" to System.getenv("KEYSTORE_PATH"),
         "KEYSTORE_PASSWORD" to System.getenv("KEYSTORE_PASSWORD"),
         "KEY_ALIAS" to System.getenv("KEY_ALIAS"),
         "KEY_PASSWORD" to System.getenv("KEY_PASSWORD"),
@@ -66,7 +67,7 @@ android {
     signingConfigs {
         if (releaseSigningConfigured) {
             create("release") {
-                storeFile = keystoreFile
+                storeFile = file(signing.getValue("KEYSTORE_PATH")!!)
                 storePassword = signing.getValue("KEYSTORE_PASSWORD")
                 keyAlias = signing.getValue("KEY_ALIAS")
                 keyPassword = signing.getValue("KEY_PASSWORD")
