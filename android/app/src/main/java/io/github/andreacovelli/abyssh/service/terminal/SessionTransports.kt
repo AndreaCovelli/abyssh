@@ -7,9 +7,11 @@ import io.github.andreacovelli.abyssh.service.mosh.NativeMoshService
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyPolicy
 import io.github.andreacovelli.abyssh.service.ssh.NativeSshService
 import io.github.andreacovelli.abyssh.service.ssh.RemoteTerm
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 
 private const val READ_CHUNK_BYTES = 65536
 
@@ -35,12 +37,38 @@ internal fun idleReadDelayMs(idleForMs: Long): Long = when {
 }
 
 /**
+ * Paces a read loop with [idleReadDelayMs], and cuts the wait short when the user sends
+ * input, so the reply is read at the active cadence instead of after a long idle sleep.
+ */
+internal class ReadPacer(private val clock: () -> Long = System::currentTimeMillis) {
+    private val wake = Channel<Unit>(Channel.CONFLATED)
+    private var lastActivityMs = clock()
+
+    /** Output arrived, or a read loop started. */
+    fun onActivity() {
+        lastActivityMs = clock()
+    }
+
+    /** Input was sent; wakes a loop that is waiting in [idle]. */
+    fun onInput() {
+        onActivity()
+        wake.trySend(Unit)
+    }
+
+    /** Waits for the next poll, or until [onInput]. */
+    suspend fun idle() {
+        withTimeoutOrNull(idleReadDelayMs(clock() - lastActivityMs)) { wake.receive() }
+    }
+}
+
+/**
  * The SSH, Mosh, and local shell services behind one session, and which of them the
  * session uses. Every call must run on the session thread.
  */
 internal class SessionTransports(hostKeyPolicy: HostKeyPolicy, val localShell: NativeLocalShellService) {
     val ssh = NativeSshService(hostKeyPolicy = hostKeyPolicy)
-    val mosh = MoshTransport(ssh, NativeMoshService())
+    private val pacer = ReadPacer()
+    val mosh = MoshTransport(ssh, NativeMoshService(), pacer)
     private var transport: Transport = Transport.SSH
 
     /** Why [transport]'s native library can't run, or null when it can. */
@@ -67,6 +95,7 @@ internal class SessionTransports(hostKeyPolicy: HostKeyPolicy, val localShell: N
     }
 
     fun write(data: ByteArray) {
+        pacer.onInput()
         when (transport) {
             Transport.Mosh -> mosh.sendInput(data)
             Transport.LocalShell -> localShell.write(data)
@@ -85,20 +114,26 @@ internal class SessionTransports(hostKeyPolicy: HostKeyPolicy, val localShell: N
 
     /** Feeds SSH output to [onChunk]; returns true when the remote shell ended on its own (exit, Ctrl+D). */
     suspend fun readSsh(onChunk: (ByteArray) -> Unit): Boolean {
-        var lastActivityMs = System.currentTimeMillis()
+        pacer.onActivity()
         while (currentCoroutineContext().isActive) {
             val chunk = ssh.read(READ_CHUNK_BYTES) ?: break
             when {
                 chunk.isNotEmpty() -> {
-                    lastActivityMs = System.currentTimeMillis()
+                    pacer.onActivity()
                     onChunk(chunk)
+                    // Output can arrive faster than it is read, so give queued input,
+                    // resizes, and disconnects a turn on the session thread.
+                    yield()
                 }
                 // The native read reports a closed channel the same way as "no data
                 // yet", so check EOF here; otherwise a finished shell is polled forever.
                 ssh.isChannelEof() -> return true
-                // Adaptive poll: stay snappy while data is flowing, back off when
-                // idle so a quiet session doesn't spin at 500 wakeups/sec.
-                else -> delay(idleReadDelayMs(System.currentTimeMillis() - lastActivityMs))
+                // Adaptive poll: stay snappy while data is flowing or input waits to
+                // go out, back off when idle so a quiet session doesn't spin.
+                else -> {
+                    if (ssh.hasPendingWrites) pacer.onActivity()
+                    pacer.idle()
+                }
             }
         }
         return false
@@ -106,14 +141,15 @@ internal class SessionTransports(hostKeyPolicy: HostKeyPolicy, val localShell: N
 
     /** Feeds the local shell's output to [onChunk] until the shell ends or the loop is cancelled. */
     suspend fun readLocalShell(onChunk: (ByteArray) -> Unit) {
-        var lastActivityMs = System.currentTimeMillis()
+        pacer.onActivity()
         while (currentCoroutineContext().isActive) {
             val chunk = localShell.read(READ_CHUNK_BYTES) ?: break
             if (chunk.isNotEmpty()) {
-                lastActivityMs = System.currentTimeMillis()
+                pacer.onActivity()
                 onChunk(chunk)
+                yield()
             } else {
-                delay(idleReadDelayMs(System.currentTimeMillis() - lastActivityMs))
+                pacer.idle()
             }
         }
     }

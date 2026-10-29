@@ -21,11 +21,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
-import io.github.andreacovelli.abyssh.service.terminal.GhosttyBridge
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 import kotlin.math.floor
 import kotlin.math.max
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.isActive
 
 /**
@@ -51,7 +51,8 @@ fun TerminalCanvas(
     // and mutate either endpoint independently.
     selection: TerminalSelection? = null,
     onSelectionChange: (TerminalSelection?) -> Unit = {},
-    terminalHandle: Long = 0,
+    // Reads the selected text from the terminal; without one it comes from the snapshot.
+    selectionText: SelectionTextReader? = null,
     onResize: (cols: Int, rows: Int, cellWidth: Int, cellHeight: Int, widthPx: Int, heightPx: Int) -> Unit =
         { _, _, _, _, _, _ -> },
     onTap: () -> Unit = {},
@@ -125,7 +126,7 @@ fun TerminalCanvas(
         selection,
         cell,
         canvasSize,
-        terminalHandle,
+        selectionText,
         gestures,
         onSelectionChange,
         onSelectionChanged,
@@ -191,7 +192,7 @@ private fun TerminalSelectionEffects(
     selection: TerminalSelection?,
     cell: TerminalCellMetrics,
     canvasSize: IntSize,
-    terminalHandle: Long,
+    selectionText: SelectionTextReader?,
     gestures: TerminalCanvasGestures,
     onSelectionChange: (TerminalSelection?) -> Unit,
     onSelectionChanged: (TerminalSelectionState?) -> Unit,
@@ -199,10 +200,12 @@ private fun TerminalSelectionEffects(
     val currentOnSelectionChanged by rememberUpdatedState(onSelectionChanged)
     val currentOnSelectionChange by rememberUpdatedState(onSelectionChange)
     val currentSelection by rememberUpdatedState(selection)
-    val ghosttyBridge = remember { GhosttyBridge() }
+    val currentSelectionText by rememberUpdatedState(selectionText)
     if (selection != null) {
-        LaunchedEffect(selection, cell, canvasSize, terminalHandle) {
-            snapshotFlow { snapshot() }.collect { shown ->
+        LaunchedEffect(selection, cell, canvasSize) {
+            // The text is read on the session thread, which may be busy, so skip to the
+            // newest snapshot rather than queue one read per frame.
+            snapshotFlow { snapshot() }.conflate().collect { shown ->
                 currentOnSelectionChanged(
                     buildSelectionState(
                         snapshot = shown,
@@ -211,8 +214,7 @@ private fun TerminalSelectionEffects(
                         cellHeight = cell.height,
                         canvasWidthPx = canvasSize.width,
                         canvasHeightPx = canvasSize.height,
-                        terminalHandle = terminalHandle,
-                        ghosttyBridge = ghosttyBridge,
+                        text = readSelectionText(shown, selection, currentSelectionText),
                     ),
                 )
             }

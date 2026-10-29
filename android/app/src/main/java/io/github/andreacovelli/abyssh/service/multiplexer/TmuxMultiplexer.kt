@@ -10,7 +10,7 @@ object TmuxMultiplexer : Multiplexer {
     override fun availabilityCommand(): String = "command -v tmux >/dev/null 2>&1"
 
     override fun listSessionsCommand(): String =
-        "if ! command -v tmux >/dev/null 2>&1; then printf 'tmux executable not found\\n' >&2; false; " +
+        "if ! command -v tmux >/dev/null 2>&1; then printf 'tmux executable not found\\n' >&2; (exit 127); " +
             "else tmux list-sessions -F '#{session_attached} #{session_name}' 2>/dev/null; " +
             "status=\$?; if [ \"\$status\" -eq 1 ]; then true; else [ \"\$status\" -eq 0 ]; fi; fi"
 

@@ -127,6 +127,17 @@ class TerminalSessionEngine(
         if (emulator.isOpen) bridge.nativeHyperlinkAt(emulator.handle, col, row) else null
     }
 
+    /**
+     * The text of screen cells [screenStart]..[screenEnd], counted from the oldest
+     * scrollback row, or of visible cells [visibleStart]..[visibleEnd] when that fails.
+     */
+    suspend fun selectionText(screenStart: Int, screenEnd: Int, visibleStart: Int, visibleEnd: Int): String? =
+        withContext(dispatcher) {
+            if (!emulator.isOpen) return@withContext null
+            bridge.nativeFormatSelectionScreenRange(emulator.handle, screenStart, screenEnd)
+                ?: bridge.nativeFormatSelectionRange(emulator.handle, visibleStart, visibleEnd)
+        }
+
     fun respondToHostKey(accepted: Boolean) = hostKeys.respond(accepted)
 
     fun disconnect() {

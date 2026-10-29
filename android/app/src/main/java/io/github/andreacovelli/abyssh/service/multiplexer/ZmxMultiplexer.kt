@@ -8,7 +8,7 @@ object ZmxMultiplexer : Multiplexer {
     override fun availabilityCommand(): String = "command -v zmx >/dev/null 2>&1"
 
     override fun listSessionsCommand(): String =
-        "if ! command -v zmx >/dev/null 2>&1; then printf 'zmx executable not found\\n' >&2; false; " +
+        "if ! command -v zmx >/dev/null 2>&1; then printf 'zmx executable not found\\n' >&2; (exit 127); " +
             "else zmx list 2>/dev/null; fi"
 
     override fun parseSessions(output: String): List<RemoteMultiplexerSession> =
