@@ -4,7 +4,6 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -60,10 +59,12 @@ internal class TerminalEmulator(
     private var lastSnapshotAtMs = 0L
     private var snapshotScheduled = false
 
-    // Kitty animations advance only while the terminal is on screen, so a looping image
-    // in a background tab doesn't keep rebuilding snapshots.
-    private var onScreen = false
-    private var animationFrame: Job? = null
+    private val animationFrames = AnimationFrames(
+        scope = scope,
+        dispatcher = dispatcher,
+        tick = { bridge.nativeAnimationTick(handle) },
+        requestSnapshot = { requestSnapshot() },
+    )
 
     /** The last snapshot built, which the next one reuses for rows that didn't change. */
     private var lastSnapshot: TerminalSnapshot? = null
@@ -78,7 +79,7 @@ internal class TerminalEmulator(
     }
 
     fun destroy() {
-        cancelAnimationFrame()
+        animationFrames.cancel()
         if (!isOpen) return
         bridge.nativeDestroy(handle)
         handle = 0L
@@ -127,11 +128,7 @@ internal class TerminalEmulator(
     fun isImageLoading(): Boolean = isOpen && bridge.nativeIsImageLoading(handle)
 
     /** Plays Kitty animations while [visible], and pauses them on their current frame otherwise. */
-    fun setOnScreen(visible: Boolean) {
-        if (onScreen == visible) return
-        onScreen = visible
-        if (visible) requestSnapshot() else cancelAnimationFrame()
-    }
+    fun setOnScreen(visible: Boolean) = animationFrames.setOnScreen(visible)
 
     fun writeRemote(chunk: ByteArray) {
         if (isOpen) bridge.nativeWriteRemote(handle, chunk)
@@ -171,7 +168,7 @@ internal class TerminalEmulator(
             val previous = lastSnapshot
             lastSnapshot = null
             // Advance animations first, so the image snapshot below shows the frame due now.
-            scheduleAnimationFrame(if (onScreen) bridge.nativeAnimationTick(handle) else -1L)
+            animationFrames.advance()
             val raw = traceSection("Terminal.nativeSnapshot") { bridge.nativeSnapshot(handle, previous == null) }
             val images = traceSection("Terminal.snapshotImages") {
                 TerminalSnapshot.parseImages(bridge.nativeSnapshotImages(handle))
@@ -200,22 +197,6 @@ internal class TerminalEmulator(
         } catch (e: Exception) {
             Log.e(TAG, "emitSnapshot failed", e)
         }
-    }
-
-    /** Takes another snapshot when the next animation frame is due, [delayMs] from now. */
-    private fun scheduleAnimationFrame(delayMs: Long) {
-        cancelAnimationFrame()
-        if (delayMs < 0) return
-        animationFrame = scope.launch(dispatcher) {
-            delay(delayMs)
-            animationFrame = null
-            requestSnapshot()
-        }
-    }
-
-    private fun cancelAnimationFrame() {
-        animationFrame?.cancel()
-        animationFrame = null
     }
 
     private fun publishClipboard(text: String) {
