@@ -10,6 +10,7 @@ import io.github.andreacovelli.abyssh.service.ssh.RemoteTerm
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.yield
 
 private const val READ_CHUNK_BYTES = 65536
 
@@ -92,6 +93,9 @@ internal class SessionTransports(hostKeyPolicy: HostKeyPolicy, val localShell: N
                 chunk.isNotEmpty() -> {
                     lastActivityMs = System.currentTimeMillis()
                     onChunk(chunk)
+                    // Output can arrive faster than it is read, so give queued input,
+                    // resizes, and disconnects a turn on the session thread.
+                    yield()
                 }
                 // The native read reports a closed channel the same way as "no data
                 // yet", so check EOF here; otherwise a finished shell is polled forever.
@@ -112,6 +116,7 @@ internal class SessionTransports(hostKeyPolicy: HostKeyPolicy, val localShell: N
             if (chunk.isNotEmpty()) {
                 lastActivityMs = System.currentTimeMillis()
                 onChunk(chunk)
+                yield()
             } else {
                 delay(idleReadDelayMs(System.currentTimeMillis() - lastActivityMs))
             }
