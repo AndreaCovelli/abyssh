@@ -122,7 +122,6 @@ fun TerminalScreen(
                     routeTabs = routeTabs,
                     tabStrip = tabStrip,
                     onNewConnection = onNewConnection,
-                    onOpenSettings = onOpenSettings,
                     onEndSession = endSession::request,
                 ),
                 modifier = screenModifier,

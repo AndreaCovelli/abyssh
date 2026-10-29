@@ -21,8 +21,8 @@ internal fun switcherKeyFor(engineKey: Int): SwitcherKey? = when (engineKey) {
 
 /**
  * What floats over the terminal: the tab switcher (the command palette in list mode, the
- * tab manager in strip mode), the new-tab host picker, and the custom actions offered
- * for a shortcut bound to several of them.
+ * tab manager in strip mode), the new-tab host picker, the custom actions offered
+ * for a shortcut bound to several of them, and zoom mode.
  */
 @Stable
 internal class TerminalOverlayState {
@@ -31,6 +31,7 @@ internal class TerminalOverlayState {
     var showNewTabPicker by mutableStateOf(false)
     var focusedTabIndex by mutableIntStateOf(0)
     var fabFilteredActions by mutableStateOf<List<TerminalCustomAction>?>(null)
+    val zoom = TerminalZoomState()
 
     val isSwitcherOpen: Boolean get() = showTabSheet || showTabManager
 

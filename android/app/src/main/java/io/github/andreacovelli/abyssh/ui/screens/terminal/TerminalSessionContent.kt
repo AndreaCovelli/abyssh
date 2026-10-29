@@ -71,6 +71,7 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 import io.github.andreacovelli.abyssh.ui.theme.GhosttyTheme
 import io.github.andreacovelli.abyssh.ui.theme.toRgbIntArray
 import io.github.andreacovelli.abyssh.ui.theme.toTerminalPaletteBytes
+import kotlin.math.roundToInt
 
 /**
  * A connected session: the tab strip, the terminal or the file browser, the accessory
@@ -246,45 +247,52 @@ private fun TerminalPane(
         }
         Box(modifier = Modifier.weight(1f)) {
             var pinchZoomSteps by remember { mutableIntStateOf(0) }
-            TerminalCanvas(
-                snapshot = snapshot,
-                fontSizeSp = host.fontSize.floatValue,
-                minFontSizeSp = SettingsRepository.MIN_TERMINAL_FONT_SIZE,
-                maxFontSizeSp = SettingsRepository.MAX_TERMINAL_FONT_SIZE,
-                cursorColor = theme?.cursorColor ?: Color.White.copy(alpha = 0.28f),
-                cursorTextColor = theme?.cursorText,
-                selectionBackgroundColor = theme?.selectionBackground ?: colors.accent.copy(alpha = 0.45f),
-                selectionForegroundColor = theme?.selectionForeground ?: colors.onAccent,
-                selection = input.selection,
-                onSelectionChange = { input.selection = it },
-                selectionText = vm.search::selectionText,
-                modifier = Modifier.fillMaxSize(),
-                onResize = vm.input::onCanvasSizeChanged,
-                onTap = input::requestFocus,
-                onPrimaryClick = vm.input::onPrimaryMouseClick,
-                onLinkTap = vm.search::onLinkTap,
-                onSecondaryClick = vm.input::onSecondaryMouseClick,
-                onMouseButton = vm.input::onMouseButton,
-                onAppSelectionDrag = vm.input::onAppSelectionDrag,
-                shiftActive = input.modifierState.shift,
-                onShiftSelectionStart = input::spendStickyShift,
-                onScroll = vm.input::onScroll,
-                onFontSizeChange = { sizeSp ->
-                    host.fontSize.floatValue = sizeSp
-                    pinchZoomSteps++
-                },
-                onSelectionChanged = { state -> input.selectionState = state },
-                searchMatches = searchState?.matches.orEmpty(),
-                currentSearchMatch = searchState?.currentMatch,
+            TerminalZoomFrame(zoom = host.overlay.zoom, snapshot = snapshot, onTap = input::requestFocus) {
+                TerminalCanvas(
+                    snapshot = snapshot,
+                    fontSizeSp = host.fontSize.floatValue,
+                    minFontSizeSp = SettingsRepository.MIN_TERMINAL_FONT_SIZE,
+                    maxFontSizeSp = SettingsRepository.MAX_TERMINAL_FONT_SIZE,
+                    cursorColor = theme?.cursorColor ?: Color.White.copy(alpha = 0.28f),
+                    cursorTextColor = theme?.cursorText,
+                    selectionBackgroundColor = theme?.selectionBackground ?: colors.accent.copy(alpha = 0.45f),
+                    selectionForegroundColor = theme?.selectionForeground ?: colors.onAccent,
+                    selection = input.selection,
+                    onSelectionChange = { input.selection = it },
+                    selectionText = vm.search::selectionText,
+                    modifier = Modifier.fillMaxSize(),
+                    onResize = vm.input::onCanvasSizeChanged,
+                    onTap = input::requestFocus,
+                    onPrimaryClick = vm.input::onPrimaryMouseClick,
+                    onLinkTap = vm.search::onLinkTap,
+                    onSecondaryClick = vm.input::onSecondaryMouseClick,
+                    onMouseButton = vm.input::onMouseButton,
+                    onAppSelectionDrag = vm.input::onAppSelectionDrag,
+                    shiftActive = input.modifierState.shift,
+                    onShiftSelectionStart = input::spendStickyShift,
+                    onScroll = vm.input::onScroll,
+                    onFontSizeChange = { sizeSp ->
+                        host.fontSize.floatValue = sizeSp
+                        pinchZoomSteps++
+                    },
+                    onSelectionChanged = { state -> input.selectionState = state },
+                    searchMatches = searchState?.matches.orEmpty(),
+                    currentSearchMatch = searchState?.currentMatch,
+                )
+            }
+            TerminalZoomIndicator(
+                text = stringResource(R.string.terminal_zoom_font_size, host.fontSize.floatValue.roundToInt()),
+                changes = pinchZoomSteps,
+                modifier = Modifier.align(Alignment.Center),
             )
-            TerminalZoomIndicator(host.fontSize.floatValue, pinchZoomSteps, Modifier.align(Alignment.Center))
             TerminalLinkPrompt(vm, Modifier.align(Alignment.BottomCenter))
             TerminalStatusBadges(
                 sessionState = sessionState,
                 preparingMultiplexer = multiplexer.duplicateLoading,
                 modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
             )
-            TerminalSelectionOverlay(input)
+            // Its handles and menu sit at unzoomed positions, which zoom mode moves away from.
+            if (!host.overlay.zoom.active) TerminalSelectionOverlay(input)
             AndroidView(
                 modifier = Modifier.align(Alignment.BottomStart).size(1.dp).alpha(0f),
                 factory = input::createInputView,
@@ -435,7 +443,8 @@ private fun TerminalFooter(
             modifierState = input.modifierState,
             capsLockOn = input.capsLockOn,
             onAction = { action -> input.dispatchAccessoryAction(action) },
-            onSettings = host.onOpenSettings,
+            onZoom = host.overlay.zoom::toggle,
+            zoomActive = host.overlay.zoom.active,
             onAbysshKey = {
                 host.abysshKeys.togglePrefix()
                 input.requestFocus()
@@ -485,7 +494,6 @@ private fun TerminalPaletteSheet(
                 modifierState = input.modifierState,
                 capsLockOn = input.capsLockOn,
                 onAction = { action -> input.dispatchAccessoryAction(action, inSwitcher = true) },
-                onSettings = host.onOpenSettings,
                 onAbysshKey = host.abysshKeys::togglePrefix,
                 abysshKeyActive = host.abysshKeys.isPrefixActive,
                 onOpenFiles = { if (files.open()) overlay.showTabSheet = false },
