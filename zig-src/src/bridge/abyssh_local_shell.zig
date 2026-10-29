@@ -1,19 +1,7 @@
 //! JNI bridge for Abyssh's in-app Android local shell PTY backend.
 const std = @import("std");
 
-const c = @cImport({
-    @cInclude("android/log.h");
-    @cInclude("jni.h");
-    @cInclude("errno.h");
-    @cInclude("fcntl.h");
-    @cInclude("poll.h");
-    @cInclude("signal.h");
-    @cInclude("stdlib.h");
-    @cInclude("sys/ioctl.h");
-    @cInclude("sys/wait.h");
-    @cInclude("termios.h");
-    @cInclude("unistd.h");
-});
+const c = @import("c");
 
 const allocator = std.heap.c_allocator;
 const LOG_TAG = "AbyssLocalShell";
@@ -69,7 +57,7 @@ fn isWouldBlock(err: c_int) bool {
 
 fn setError(session: *NativeLocalShellSession, comptime fmt: []const u8, args: anytype) void {
     session.last_error.clearRetainingCapacity();
-    std.fmt.format(session.last_error.writer(allocator), fmt, args) catch return;
+    session.last_error.print(allocator, fmt, args) catch return;
 }
 
 fn setErrnoError(session: *NativeLocalShellSession, prefix: []const u8) void {
@@ -250,8 +238,9 @@ fn childExec(
     _ = c.setenv("SHELL", command, 1);
     _ = c.setenv("PATH", "/system/bin:/system/xbin:/vendor/bin:/product/bin:/apex/com.android.runtime/bin", 1);
 
-    const argv = [_:null][*c]const u8{command};
-    _ = c.execv(command, @ptrCast(&argv));
+    // execv takes char *const argv[]; it does not write through the pointers.
+    var argv = [_:null][*c]u8{@constCast(command)};
+    _ = c.execv(command, &argv);
     c._exit(127);
 }
 

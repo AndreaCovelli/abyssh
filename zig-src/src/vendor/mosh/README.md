@@ -1,0 +1,32 @@
+# Vendored Mosh client
+
+A Mosh client protocol implementation (UDP transport, AES-128-OCB crypto,
+state synchronization) used by `src/bridge/abyssh_mosh.zig`.
+
+Source: [jossephus/zig-mosh-client](https://github.com/jossephus/zig-mosh-client)
+at commit `7ddaa2df217ee2e48106a2c970db4a22403924a8`.
+
+The upstream repository has no license file. It is vendored here because
+upstream supports only Zig 0.15 and Abyssh needs Zig 0.17.
+
+## Local changes
+
+Ported to Zig 0.17:
+
+- `build.zig`: takes a `libc_file` option and translates `src/zlib_c.h` with
+  the ziglang `translate_c` package, which replaces `@cImport`. On Android it
+  defines `BIONIC_IOCTL_NO_SIGNEDNESS_OVERLOAD` so Bionic's overloaded `ioctl`
+  translates.
+- `src/zlib_c.h`: new, includes `<zlib.h>` for the translated `zlib_c` module.
+- `src/compress.zig`: imports `zlib_c` instead of using `@cImport`.
+- `src/socket.zig`: uses `std.c` sockets, since Zig 0.17 removed most of
+  `std.posix`'s socket API and `std.net`.
+- `src/ffi.zig`: reads the clock with `clock_gettime(CLOCK_REALTIME)`.
+- `src/protolite.zig`: `std.enums.fromInt` replaces `std.meta.intToEnum`.
+- `src/core.zig`: `ArrayList.print`, a switch prong without a discarded
+  capture, and `nanosleep` in a test.
+
+Removed: `src/test_live.zig`, a standalone program for testing against a live
+server. Nothing built it, and it did not compile on Zig 0.17.
+
+`build.zig` has no test step, so the `test` blocks don't run.

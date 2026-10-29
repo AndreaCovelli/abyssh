@@ -58,7 +58,7 @@ Abyssh needs Android 7.0 or later. Release builds include the native library onl
 
 You need:
 
-- [mise](https://mise.jdx.dev), which installs the pinned JDK 21, Zig 0.15.2, and
+- [mise](https://mise.jdx.dev), which installs the pinned JDK 21, Zig 0.17.0, and
   actionlint
 - The Android SDK, with `ANDROID_HOME` set and an NDK installed
 
