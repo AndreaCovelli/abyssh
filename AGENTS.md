@@ -163,7 +163,9 @@ Kotlin declares `external fun native*` methods in five bridge classes: `GhosttyB
   requires. Add any new CI job to `Validate`'s
   `needs`. Nightly publishes an APK on every push to `main`; Release builds signed
   artifacts from `v*.*.*` tags; Dependency Submission sends the Gradle dependency graph
-  to GitHub when build files change on `main`. Pin actions to a full commit SHA with a version
+  to GitHub when build files change on `main`. The signing secrets live in the `release`
+  environment, which admits only `main` and `v*` tags; a job that signs must declare
+  `environment: release`. Pin actions to a full commit SHA with a version
   comment, and run `mise run check:actions` after editing workflows.
 - Renovate extends AndreaCovelli/renovate-config: one weekly grouped PR that
   automerges non-breaking updates after CI passes. `forkProcessing` is enabled

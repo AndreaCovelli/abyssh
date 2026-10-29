@@ -13,6 +13,8 @@ name: Release
 
 jobs:
   release:
+    # The release environment holds the signing secrets and admits only main and v* tags.
+    environment: release
     permissions:
       contents: write
       id-token: write
