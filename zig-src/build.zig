@@ -1,11 +1,13 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const ndk = @import("src/ndk.zig");
+const Translator = @import("translate_c").Translator;
 
+// No 32-bit x86: Ghostty 1.4 fails a comptime layout assert there under Zig 0.17
+// (u64 is 4-byte aligned on i386), and x86 devices are not a supported target.
 const default_build_targets: []const std.Target.Query = &.{
     .{ .cpu_arch = .aarch64, .os_tag = .linux, .abi = .android, .android_api_level = 24 },
     .{ .cpu_arch = .arm, .os_tag = .linux, .abi = .androideabi, .android_api_level = 24 },
-    .{ .cpu_arch = .x86, .os_tag = .linux, .abi = .android, .android_api_level = 24 },
     .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .android, .android_api_level = 24 },
 };
 
@@ -48,12 +50,13 @@ fn resolveNdkHome(b: *std.Build, ndk_root: []const u8) []const u8 {
     if (ndk_root.len == 0) return ndk_root;
 
     const toolchains_path = b.pathJoin(&.{ ndk_root, "toolchains", "llvm" });
-    std.fs.cwd().access(toolchains_path, .{}) catch {
-        var dir = std.fs.cwd().openDir(ndk_root, .{ .iterate = true }) catch return ndk_root;
-        defer dir.close();
+    const io = b.graph.io;
+    std.Io.Dir.cwd().access(io, toolchains_path, .{}) catch {
+        var dir = std.Io.Dir.cwd().openDir(io, ndk_root, .{ .iterate = true }) catch return ndk_root;
+        defer dir.close(io);
 
         var iter = dir.iterate();
-        while (iter.next() catch null) |entry| {
+        while (iter.next(io) catch null) |entry| {
             if (entry.kind != .directory) continue;
             return b.pathJoin(&.{ ndk_root, entry.name });
         }
@@ -61,6 +64,29 @@ fn resolveNdkHome(b: *std.Build, ndk_root: []const u8) []const u8 {
     };
 
     return ndk_root;
+}
+
+/// Translates a C header into a Zig module. Zig 0.17 removed @cImport; the
+/// translate-c package replaces it and reads headers from the NDK libc file.
+fn translateCHeader(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    header: std.Build.LazyPath,
+    libc_file: std.Build.LazyPath,
+    include_dirs: []const std.Build.LazyPath,
+) *std.Build.Module {
+    const translator: Translator = .init(b.dependency("translate_c", .{}), .{
+        .c_source_file = header,
+        .target = target,
+        .optimize = optimize,
+        .libc_file = libc_file,
+    });
+    // Bionic declares a second, overloaded ioctl for clang, which translate-c
+    // rejects as a redefinition. This macro drops the overload.
+    translator.defineCMacro("BIONIC_IOCTL_NO_SIGNEDNESS_OVERLOAD", "1");
+    for (include_dirs) |dir| translator.addIncludePath(dir);
+    return translator.mod;
 }
 
 fn buildNativeLibrary(
@@ -77,12 +103,8 @@ fn buildNativeLibrary(
         .target = target,
         .optimize = optimize,
     });
-    const mosh_dep = b.dependency("mosh", .{
-        .target = target,
-        .optimize = optimize,
-    });
 
-    const ndk_root = b.graph.env_map.get("ANDROID_NDK_HOME") orelse b.graph.env_map.get("ANDROID_NDK_ROOT").?;
+    const ndk_root = b.graph.environ_map.get("ANDROID_NDK_HOME") orelse b.graph.environ_map.get("ANDROID_NDK_ROOT").?;
     const ndk_home = resolveNdkHome(b, ndk_root);
 
     const android_target = ndk.getAndroidTriple(target.result) catch {
@@ -136,9 +158,22 @@ fn buildNativeLibrary(
     });
     root_module.addIncludePath(b.path("src/bridge"));
     root_module.addIncludePath(libssh2_upstream.path("include"));
+    root_module.addImport("c", translateCHeader(
+        b,
+        target,
+        optimize,
+        b.path("src/bridge/abyssh_c.h"),
+        libc_config,
+        &.{ b.path("src/bridge"), libssh2_upstream.path("include") },
+    ));
     root_module.addImport("ghostty-vt", ghostty_dep.module("ghostty-vt"));
     root_module.addImport("zigimg", zigimg_dep.module("zigimg"));
 
+    const mosh_dep = b.dependency("mosh", .{
+        .target = target,
+        .optimize = optimize,
+        .libc_file = libc_config,
+    });
     root_module.addImport("mosh", mosh_dep.module("mosh"));
 
     const lib = b.addLibrary(.{
@@ -155,19 +190,18 @@ fn buildNativeLibrary(
     root_module.unwind_tables = .none;
     root_module.omit_frame_pointer = true;
 
-    lib.addIncludePath(.{ .cwd_relative = include_dir });
-    lib.addIncludePath(.{ .cwd_relative = target_include_dir });
+    root_module.addIncludePath(.{ .cwd_relative = include_dir });
+    root_module.addIncludePath(.{ .cwd_relative = target_include_dir });
 
     const api_dir = b.fmt("{d}", .{android_api_version});
     const lib_dir = b.pathJoin(&.{ ndk_sysroot, "usr", "lib", android_target, api_dir });
-    lib.addLibraryPath(.{ .cwd_relative = lib_dir });
+    root_module.addLibraryPath(.{ .cwd_relative = lib_dir });
 
     lib.setLibCFile(libc_config);
-    lib.linkLibrary(libssh2);
-    lib.linkSystemLibrary("log");
-    lib.linkSystemLibrary("z");
-    lib.linkLibC();
-    lib.version_script = b.path("src/bridge/version-script.map");
+    root_module.linkLibrary(libssh2);
+    root_module.linkSystemLibrary("log", .{});
+    root_module.linkSystemLibrary("z", .{});
+    lib.setVersionScript(b.path("src/bridge/version-script.map"));
 
     b.installArtifact(lib);
     return lib;
@@ -176,7 +210,7 @@ fn buildNativeLibrary(
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const build_targets = resolveBuildTargets(b);
-    const has_android_ndk = b.graph.env_map.get("ANDROID_NDK_HOME") != null or b.graph.env_map.get("ANDROID_NDK_ROOT") != null;
+    const has_android_ndk = b.graph.environ_map.get("ANDROID_NDK_HOME") != null or b.graph.environ_map.get("ANDROID_NDK_ROOT") != null;
 
     const native_step = b.step("native", "Build native JNI library");
     const jni_step = b.step("jni", "Build native library and copy to jniLibs");
@@ -221,7 +255,7 @@ pub fn build(b: *std.Build) void {
         openssl_test_step.dependOn(&ssl.step);
     }
 
-    const fmt_check = b.addFmt(.{ .paths = &.{ "src", "build.zig", "build.zig.zon" } });
+    const fmt_check = b.addFmt(.{ .paths = &.{ b.path("src"), b.path("build.zig"), b.path("build.zig.zon") } });
     const fmt_step = b.step("fmt", "Format Zig files");
     fmt_step.dependOn(&fmt_check.step);
 }

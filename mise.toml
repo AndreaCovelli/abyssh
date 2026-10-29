@@ -3,7 +3,7 @@ lockfile = true
 
 [tools]
 java = "temurin-21.0.13+9.0.LTS"
-zig = "0.15.2"
+zig = "0.17.0"
 "github:kjanat/actionlint" = "1.17.0"
 
 # The native build needs ANDROID_NDK_HOME (or ANDROID_NDK_ROOT) set to one

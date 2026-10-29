@@ -7,7 +7,7 @@ backup encryption. It is a fork of jossephus/chuchu.
 
 ## Commands
 
-mise pins JDK 21, Zig 0.15.2, and actionlint; the Gradle wrapper pins Gradle; the
+mise pins JDK 21, Zig 0.17.0, and actionlint; the Gradle wrapper pins Gradle; the
 version catalog pins AGP, Kotlin, and libraries. Run `mise install` once.
 
 | Command | Use |
@@ -34,7 +34,7 @@ android/app/src/main/java/io/github/andreacovelli/abyssh/
   ui/         Navigation, screens/, shared components/, terminal/ rendering and input, theme/
 android/app/schemas/   Committed Room schema JSON, one file per database version
 zig-src/src/bridge/    JNI exports, one file per Kotlin bridge class
-zig-src/src/vendor/    Build scripts for libssh2 and mbedtls
+zig-src/src/vendor/    Vendored Mosh client, build scripts for libssh2 and mbedtls
 ```
 
 ## The native bridge
@@ -127,10 +127,21 @@ Kotlin declares `external fun native*` methods in five bridge classes: `GhosttyB
 
 ## Zig
 
-- The code targets Zig 0.15, whose standard library differs from older docs and
-  examples. `std.ArrayList` is unmanaged: initialize with `.empty` and pass the
-  allocator to every call. Check APIs against the installed source
-  (`zig env` prints `std_dir`) rather than from memory.
+- The code targets Zig 0.17, whose standard library differs from older docs and
+  examples. Check APIs against the installed source (`zig env` prints `std_dir`)
+  rather than from memory.
+  - `std.ArrayList` is unmanaged: initialize with `.empty` and pass the allocator
+    to every call. Format into one with `list.print(gpa, fmt, args)`.
+  - Files, clocks, randomness, and networking moved behind `std.Io`. The bridges
+    have no `Io` of their own, so they call libc through `std.c`: `time.zig` for
+    timestamps and `std.c.arc4random_buf` for random bytes. Ghostty's terminal
+    takes `ghostty.TinyIo.init.io()`.
+- `@cImport` is gone. C headers for the bridges are listed in
+  `src/bridge/abyssh_c.h`, which `build.zig` translates with the `translate_c`
+  package into the `c` module (`const c = @import("c");`). Add new headers there.
+- `zig build` unpacks dependencies into `zig-src/zig-pkg/`, which git ignores.
+  After changing a dependency, `zig fetch <url>` prints the hash for
+  `build.zig.zon`.
 - Pass allocators explicitly and pair allocations with `defer` or `errdefer`.
 - Log through `__android_log_print` with a tag such as `AbyssKittyNative`; stdout and
   stderr are discarded on Android.

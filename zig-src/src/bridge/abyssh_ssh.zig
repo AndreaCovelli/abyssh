@@ -1,18 +1,7 @@
 const std = @import("std");
+const time = @import("time.zig");
 
-const c = @cImport({
-    @cInclude("android/log.h");
-    @cInclude("jni.h");
-    @cInclude("libssh2.h");
-    @cInclude("libssh2_sftp.h");
-    @cInclude("sys/socket.h");
-    @cInclude("netdb.h");
-    @cInclude("arpa/inet.h");
-    @cInclude("unistd.h");
-    @cInclude("fcntl.h");
-    @cInclude("errno.h");
-    @cInclude("poll.h");
-});
+const c = @import("c");
 const ipc = @import("ipc.zig");
 
 const allocator = std.heap.c_allocator;
@@ -67,7 +56,7 @@ fn handleFromSession(session: *NativeSshSession) c.jlong {
 
 fn setError(session: *NativeSshSession, comptime fmt: []const u8, args: anytype) void {
     session.last_error.clearRetainingCapacity();
-    std.fmt.format(session.last_error.writer(allocator), fmt, args) catch return;
+    session.last_error.print(allocator, fmt, args) catch return;
 }
 
 fn setLibssh2Error(session: *NativeSshSession, prefix: []const u8, rc: c_int) void {
@@ -203,7 +192,7 @@ fn trySetChannelEnv(session: *NativeSshSession, channel: *c.LIBSSH2_CHANNEL, nam
 }
 
 fn nowMs() i64 {
-    return std.time.milliTimestamp();
+    return time.milliTimestamp();
 }
 
 fn destroyNativeSshSession(session: *NativeSshSession) void {
@@ -383,7 +372,7 @@ fn connectSocket(host: [:0]const u8, port: u16) !c_int {
     hints.ai_socktype = c.SOCK_STREAM;
 
     var service_buf: [16]u8 = undefined;
-    const service = try std.fmt.bufPrintZ(&service_buf, "{}", .{port});
+    const service = try std.mem.printSentinel(&service_buf, "{d}", .{port}, 0);
 
     var addr_list: ?*c.struct_addrinfo = null;
     const rc = c.getaddrinfo(host.ptr, service.ptr, &hints, &addr_list);
@@ -1171,7 +1160,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
             ipc.appendMessage(allocator, &response, .Data, bytes) catch {};
         },
         else => {
-            setError(session, "Unsupported IPC tag {}", .{@intFromEnum(frame.header.tag)});
+            setError(session, "Unsupported IPC tag {}", .{@backingInt(frame.header.tag)});
             appendErrorFrame(&response, session, "Unsupported IPC tag");
         },
     }
@@ -1863,6 +1852,16 @@ fn formatPublicKeyLine(keytype: []const u8, pub_blob: []const u8, comment: []con
 
 /// Generate an Ed25519 keypair and encode as OpenSSH format.
 /// If passphrase is non-empty, encrypt with bcrypt + aes256-ctr.
+/// A random Ed25519 key pair seeded from arc4random, Bionic's CSPRNG.
+fn generateEd25519KeyPair() Ed25519.KeyPair {
+    var seed: [Ed25519.KeyPair.seed_length]u8 = undefined;
+    defer std.crypto.secureZero(u8, &seed);
+    while (true) {
+        std.c.arc4random_buf(&seed, seed.len);
+        return Ed25519.KeyPair.generateDeterministic(seed) catch continue;
+    }
+}
+
 /// Returns the private key PEM and public key OpenSSH string via out params.
 fn generateEd25519Key(
     comment: []const u8,
@@ -1870,11 +1869,13 @@ fn generateEd25519Key(
     out_private_pem: *[]u8,
     out_public_openssh: *[]u8,
 ) !void {
-    const key_pair = Ed25519.KeyPair.generate();
+    const key_pair = generateEd25519KeyPair();
     const pub_key: [32]u8 = key_pair.public_key.bytes;
     const seed: [32]u8 = key_pair.secret_key.seed();
 
-    const check = std.crypto.random.int(u32);
+    var check_bytes: [4]u8 = undefined;
+    std.c.arc4random_buf(&check_bytes, check_bytes.len);
+    const check = std.mem.readInt(u32, &check_bytes, .little);
 
     // Build private section (plaintext)
     const private_section = try buildPrivateSection(seed, pub_key, comment, check);
@@ -1902,7 +1903,7 @@ fn generateEd25519Key(
         var kdf_opts: std.ArrayListUnmanaged(u8) = .empty;
         defer kdf_opts.deinit(allocator);
         var salt: [openssh_salt_len]u8 = undefined;
-        std.crypto.random.bytes(&salt);
+        std.c.arc4random_buf(&salt, salt.len);
         try sshPutString(&kdf_opts, &salt);
         try sshPutU32(&kdf_opts, openssh_kdf_rounds);
         try sshPutString(&key_data, kdf_opts.items);
