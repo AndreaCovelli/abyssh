@@ -67,6 +67,8 @@ class GhosttyBridge {
     external fun nativeDrainPtyWrites(handle: Long): ByteArray
     external fun nativeSnapshotImages(handle: Long): ByteBuffer
     external fun nativeIsImageLoading(handle: Long): Boolean
+    // Advances Kitty animations; the milliseconds until the next frame, or -1 when none plays.
+    external fun nativeAnimationTick(handle: Long): Long
     external fun nativeFormatSelectionRange(handle: Long, startCell: Int, endCell: Int): String?
     external fun nativeFormatSelectionScreenRange(handle: Long, startScreenCell: Int, endScreenCell: Int): String?
     external fun nativeSelectWordAt(handle: Long, cellX: Int, cellY: Int): String?

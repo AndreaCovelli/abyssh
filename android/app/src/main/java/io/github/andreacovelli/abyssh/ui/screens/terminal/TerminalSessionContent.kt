@@ -51,6 +51,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
@@ -200,6 +201,20 @@ private fun TerminalKeyboardEffect(vm: TerminalViewModel, input: TerminalInputCo
     }
 }
 
+/**
+ * Tells the active tab its terminal is on screen while the pane is shown and the app is
+ * started, so its Kitty animations play only then.
+ */
+@Composable
+private fun TerminalOnScreenEffect(vm: TerminalViewModel) {
+    val activeTab by vm.activeTab.collectAsStateWithLifecycle()
+    val engine = activeTab?.engine
+    LifecycleStartEffect(engine) {
+        engine?.setOnScreen(true)
+        onStopOrDispose { engine?.setOnScreen(false) }
+    }
+}
+
 @Composable
 private fun TerminalPane(
     vm: TerminalViewModel,
@@ -214,6 +229,7 @@ private fun TerminalPane(
     val searchState by vm.search.state.collectAsStateWithLifecycle()
     val multiplexer by vm.multiplexer.state.collectAsStateWithLifecycle()
     TerminalKeyboardEffect(vm, input)
+    TerminalOnScreenEffect(vm)
     Column(modifier = modifier) {
         searchState?.let { search ->
             TerminalSearchBar(
