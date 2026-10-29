@@ -65,7 +65,8 @@ class GhosttyBridge {
     ): ByteArray?
     external fun nativeEncodeFocus(handle: Long, focused: Boolean): ByteArray?
     external fun nativeDrainPtyWrites(handle: Long): ByteArray
-    external fun nativeSnapshotImages(handle: Long): ByteBuffer
+    // Pixels are left out for the image generations in [cached], whose bitmaps the caller holds.
+    external fun nativeSnapshotImages(handle: Long, cached: LongArray): ByteBuffer
     external fun nativeIsImageLoading(handle: Long): Boolean
     // Advances Kitty animations; the milliseconds until the next frame, or -1 when none plays.
     external fun nativeAnimationTick(handle: Long): Long
