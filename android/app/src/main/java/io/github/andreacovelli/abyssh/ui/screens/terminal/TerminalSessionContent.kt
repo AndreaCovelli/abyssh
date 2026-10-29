@@ -78,7 +78,7 @@ import io.github.andreacovelli.abyssh.ui.theme.toTerminalPaletteBytes
 internal fun TerminalSessionContent(
     vm: TerminalViewModel,
     sessionState: SessionState,
-    snapshot: TerminalSnapshot,
+    snapshot: () -> TerminalSnapshot,
     host: TerminalSessionHost,
     modifier: Modifier = Modifier,
 ) {
@@ -204,7 +204,7 @@ private fun TerminalKeyboardEffect(vm: TerminalViewModel, input: TerminalInputCo
 private fun TerminalPane(
     vm: TerminalViewModel,
     sessionState: SessionState,
-    snapshot: TerminalSnapshot,
+    snapshot: () -> TerminalSnapshot,
     host: TerminalSessionHost,
     input: TerminalInputController,
     modifier: Modifier = Modifier,

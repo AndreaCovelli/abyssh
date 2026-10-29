@@ -58,7 +58,8 @@ fun TerminalScreen(
     val tabs by vm.tabs.collectAsStateWithLifecycle()
     val activeTabId by vm.activeTabId.collectAsStateWithLifecycle()
     val activeTab by vm.activeTab.collectAsStateWithLifecycle()
-    val sessionState by vm.sessionState.collectAsStateWithLifecycle()
+    val session = rememberTerminalSessionView(vm.sessionState)
+    val sessionState = session.info
     val hostKeyPrompt by vm.hostKeyPrompt.collectAsStateWithLifecycle()
     val multiplexer by vm.multiplexer.state.collectAsStateWithLifecycle()
     val routeTabs = remember(tabs, route) { route.tabsIn(tabs) }
@@ -84,7 +85,6 @@ fun TerminalScreen(
     val screenModifier = modifier.windowInsetsPadding(WindowInsets.safeDrawing)
     val routeTab = activeTab?.takeIf { route.owns(it.spec) }
     val status = if (multiplexer.preflightLoading) SessionStatus.Connecting else sessionState.status
-    val snapshot = sessionState.snapshot
     Box(Modifier.fillMaxSize()) {
         when {
             status == SessionStatus.Disconnected || status == SessionStatus.Error -> TerminalDisconnectedContent(
@@ -103,7 +103,7 @@ fun TerminalScreen(
                 tabStrip = tabStrip,
                 modifier = screenModifier,
             )
-            snapshot == null -> TerminalPreparingContent(
+            !session.hasSnapshot -> TerminalPreparingContent(
                 message = preparingMessage(status == SessionStatus.Reconnecting, stripMode, activeTab, routeTab),
                 tabStrip = tabStrip,
                 modifier = screenModifier,
@@ -111,7 +111,7 @@ fun TerminalScreen(
             else -> TerminalSessionContent(
                 vm = vm,
                 sessionState = sessionState,
-                snapshot = snapshot,
+                snapshot = session.snapshot.also { session.keepCurrent() },
                 host = TerminalSessionHost(
                     settings = settings,
                     fontSize = fontSize,
