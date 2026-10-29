@@ -46,7 +46,7 @@ class ZmxMultiplexerTest {
         val command = ZmxMultiplexer.listSessionsCommand()
 
         assertEquals(
-            "if ! command -v zmx >/dev/null 2>&1; then printf 'zmx executable not found\\n' >&2; false; else zmx list 2>/dev/null; fi",
+            "if ! command -v zmx >/dev/null 2>&1; then printf 'zmx executable not found\\n' >&2; (exit 127); else zmx list 2>/dev/null; fi",
             command,
         )
     }

@@ -8,6 +8,7 @@ import io.github.andreacovelli.abyssh.model.UiText
 import io.github.andreacovelli.abyssh.model.UiTextException
 import io.github.andreacovelli.abyssh.model.toUiText
 import io.github.andreacovelli.abyssh.service.multiplexer.Multiplexer
+import io.github.andreacovelli.abyssh.service.multiplexer.MULTIPLEXER_MISSING_EXIT_CODE
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerAvailability
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerCommandResult
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerRegistry
@@ -27,16 +28,22 @@ private val EXIT_MARKER = Regex("(?:^|\\n)ABYSSH_EXIT:(\\d+)\\s*$")
 /**
  * Runs multiplexer commands on a host, each over its own short-lived SSH exec channel:
  * whether the multiplexer is installed, which sessions it has, and which one a tab should
- * attach to. The calls block, so run them off the main thread.
+ * attach to. The calls block, so run them off the main thread. A multiplexer found in the
+ * last few minutes, per [availabilityCache], isn't checked again.
  */
-internal class RemoteMultiplexerProbe(private val hostKeyPolicy: HostKeyPolicy) {
+internal class RemoteMultiplexerProbe(
+    private val hostKeyPolicy: HostKeyPolicy,
+    private val availabilityCache: MultiplexerAvailabilityCache = MultiplexerAvailabilityCache.shared,
+) {
     fun availability(spec: TabSpec): MultiplexerAvailability {
         val type = spec.multiplexer ?: return MultiplexerAvailability.Available
         val multiplexer =
             MultiplexerRegistry.forType(type) ?: return MultiplexerAvailability.UnsupportedMultiplexer(type)
         if (!spec.transport.runsRemoteCommands) return MultiplexerAvailability.UnsupportedTransport(spec.transport)
+        if (availabilityCache.isAvailable(spec, type)) return MultiplexerAvailability.Available
         return runCatching {
             if (runCommand(spec, multiplexer.availabilityCommand()).isSuccess) {
+                availabilityCache.recordAvailable(spec, type)
                 MultiplexerAvailability.Available
             } else {
                 MultiplexerAvailability.Missing(type)
@@ -50,11 +57,15 @@ internal class RemoteMultiplexerProbe(private val hostKeyPolicy: HostKeyPolicy) 
         val type = spec.multiplexer ?: error("No multiplexer selected")
         val multiplexer = supportedMultiplexer(type, spec.transport)
         val result = runCommand(spec, multiplexer.listSessionsCommand())
+        if (result.exitCode == MULTIPLEXER_MISSING_EXIT_CODE) {
+            throw UiTextException(UiText.Resource(R.string.multiplexer_missing, type.label), "${type.label} unavailable")
+        }
         if (!result.isSuccess) {
             val stderr = result.stderr.trim()
             val text = if (stderr.isEmpty()) UiText.Resource(R.string.multiplexer_list_failed) else UiText.Raw(stderr)
             throw UiTextException(text, "Failed to list ${type.label} sessions")
         }
+        availabilityCache.recordAvailable(spec, type)
         return multiplexer.parseSessions(result.stdout)
     }
 
@@ -70,9 +81,8 @@ internal class RemoteMultiplexerProbe(private val hostKeyPolicy: HostKeyPolicy) 
     ): String {
         val type = spec.multiplexer ?: MultiplexerRegistry.defaultType
         val multiplexer = supportedMultiplexer(type, spec.transport)
-        val typedSpec = spec.copy(multiplexer = type)
-        availability(typedSpec).errorMessage(type)?.let { throw UiTextException(it, "${type.label} unavailable") }
-        val remoteSessions = listSessions(typedSpec)
+        // Listing fails with the same message when the multiplexer isn't installed.
+        val remoteSessions = listSessions(spec.copy(multiplexer = type))
         val existingName = spec.multiplexerSessionName?.takeIf { it.isNotBlank() }
         if (existingName != null) {
             check(spec.multiplexerCreateIfMissing || remoteSessions.any { it.name == existingName }) {

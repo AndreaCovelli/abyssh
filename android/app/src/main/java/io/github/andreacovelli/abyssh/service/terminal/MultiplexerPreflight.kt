@@ -43,11 +43,13 @@ internal class MultiplexerPreflight(private val hostKeyStore: HostKeyStore) {
         while (true) {
             var untrusted: UntrustedKey? = null
             val probe =
-                RemoteMultiplexerProbe { host, port, algorithm, keyBytes ->
-                    val prompt = hostKeyStore.promptFor(host, port, algorithm, keyBytes)
-                    if (prompt != null) untrusted = UntrustedKey(prompt, keyBytes.copyOf())
-                    prompt == null
-                }
+                RemoteMultiplexerProbe(
+                    hostKeyPolicy = { host, port, algorithm, keyBytes ->
+                        val prompt = hostKeyStore.promptFor(host, port, algorithm, keyBytes)
+                        if (prompt != null) untrusted = UntrustedKey(prompt, keyBytes.copyOf())
+                        prompt == null
+                    },
+                )
             try {
                 return withContext(Dispatchers.IO) { block(probe) }
             } catch (error: IllegalStateException) {
