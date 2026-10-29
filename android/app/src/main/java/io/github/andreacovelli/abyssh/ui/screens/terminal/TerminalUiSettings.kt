@@ -1,8 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
 import android.app.Activity
-import android.os.Build
-import android.view.Window
 import android.view.WindowManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -95,30 +93,6 @@ internal fun KeepScreenOnEffect(enabled: Boolean) {
         if (enabled) window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
-}
-
-/**
- * Asks Android to send keyboard shortcuts to the terminal before handling them itself,
- * so a hardware ⌘ chord such as ⌘+t runs its Abyssh command instead of a system one.
- * Chords the terminal leaves unhandled still reach the system. Needs Android 16 QPR2.
- */
-@Composable
-internal fun KeyboardCaptureEffect() {
-    val view = LocalView.current
-    DisposableEffect(view) {
-        val window = (view.context as? Activity)?.window
-        if (window != null) setKeyboardCapture(window, enabled = true)
-        onDispose { if (window != null) setKeyboardCapture(window, enabled = false) }
-    }
-}
-
-private fun setKeyboardCapture(window: Window, enabled: Boolean) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) return
-    if (Build.VERSION.SDK_INT_FULL < Build.VERSION_CODES_FULL.BAKLAVA_1) return
-    val attributes = window.attributes
-    if (attributes.hasKeyboardCapture() == enabled) return
-    attributes.setKeyboardCaptureEnabled(enabled)
-    window.attributes = attributes
 }
 
 /** The ⌘ prefix bindings: builtin commands first, then the custom actions. */
