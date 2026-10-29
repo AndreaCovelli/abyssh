@@ -11,6 +11,7 @@ import io.github.andreacovelli.abyssh.service.terminal.TerminalRow
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 import io.github.andreacovelli.abyssh.service.terminal.traceSection
 import java.util.IdentityHashMap
+import kotlin.math.abs
 import kotlin.math.max
 
 private const val FAINT_TEXT_ALPHA: Int = 96
@@ -18,6 +19,10 @@ private const val OPAQUE_ALPHA: Int = 255
 private const val ITALIC_SKEW_X: Float = -0.25f
 private const val CURSOR_BAR_FRACTION: Float = 0.15f
 private const val CURSOR_UNDERLINE_FRACTION: Float = 0.15f
+
+// How far a run's measured width may differ from its cells before it is drawn cell by cell.
+private const val RUN_WIDTH_TOLERANCE_PX: Float = 0.5f
+private const val ASCII_MAX: Int = 0x7E
 
 /** Colors the canvas adds to the snapshot's own, as ARGB ints. */
 internal data class TerminalCanvasColors(
@@ -66,6 +71,9 @@ internal data class SnapshotPlacement(val scale: Float = 1f, val offsetX: Float 
  */
 internal class TerminalRenderer(private val fonts: TerminalFonts) {
     private val text = StringBuilder(256)
+
+    // Where each cell of the current run starts in [text]; one entry past the run's end.
+    private var cellOffsets = IntArray(256)
     private val fillPaint = Paint().apply {
         isAntiAlias = false
         style = Paint.Style.FILL
@@ -142,7 +150,7 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
             start = if (codepoint == 0 || codepoint == ' '.code) {
                 start + 1
             } else {
-                drawTextRun(canvas, paints, cells, start, start * frame.cell.width, frame.cell.baseline)
+                drawTextRun(canvas, paints, cells, start, frame.cell.width, frame.cell.baseline)
             }
         }
     }
@@ -153,23 +161,46 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         paints: TerminalTextPaints,
         cells: FrameRow,
         start: Int,
-        x: Float,
+        cellWidth: Float,
         baseline: Float,
     ): Int {
         val row = cells.cells
         val end = cells.textRunEnd(start) { fonts.choiceAt(row, it) }
+        if (cellOffsets.size <= end) cellOffsets = IntArray(cells.cols + 1)
+        val choice = fonts.choiceAt(row, start)
+        // The primary font's ASCII glyphs are one cell wide, so only other runs are measured.
+        var ascii = choice == PAINT_PRIMARY
         text.setLength(0)
-        appendCell(row, start)
-        for (col in cells.textRunBodyStart(start) until end) {
-            if (row.codepoints[col] != ' '.code) appendCell(row, col)
+        for (col in start until end) {
+            cellOffsets[col] = text.length
+            val codepoint = row.codepoints[col]
+            if (codepoint > ASCII_MAX || row.hasGraphemeExtras(col)) ascii = false
+            // Later cells holding a space are the spacer halves of wide characters.
+            if (col == start || codepoint != ' '.code) appendCell(row, col)
         }
-        val paint = paints.forChoice(fonts.choiceAt(row, start))
+        cellOffsets[end] = text.length
+        val paint = paints.forChoice(choice)
         paint.applyTextStyle(cells.foregroundAt(start), cells.textStyleAt(start))
         // Pass the builder, not text.toString(): Canvas copies a CharSequence into a
         // pooled char buffer, so no String is allocated per run per frame.
-        canvas.drawText(text, 0, text.length, x, baseline, paint)
+        if (ascii || fitsCells(paint, (end - start) * cellWidth)) {
+            canvas.drawText(text, 0, text.length, start * cellWidth, baseline, paint)
+        } else {
+            // Paint.hasGlyph() counts system fonts, so a glyph the primary font lacks (a
+            // subscript, a math symbol) can join a primary run and be drawn from a
+            // proportional system font. Its advance would move the rest of the run off
+            // the grid, so each cell's glyph is placed on its own column.
+            for (col in start until end) {
+                val from = cellOffsets[col]
+                val to = cellOffsets[col + 1]
+                if (to > from) canvas.drawText(text, from, to, col * cellWidth, baseline, paint)
+            }
+        }
         return end
     }
+
+    private fun fitsCells(paint: Paint, width: Float): Boolean =
+        abs(paint.measureText(text, 0, text.length) - width) <= RUN_WIDTH_TOLERANCE_PX
 
     private fun appendCell(row: TerminalRow, col: Int) {
         if (row.hasGraphemeExtras(col)) {
