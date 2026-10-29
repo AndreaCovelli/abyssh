@@ -148,22 +148,27 @@ internal class TerminalEmulator(
     @Suppress("TooGenericExceptionCaught")
     private fun emitSnapshot() {
         try {
-            val raw = bridge.nativeSnapshot(handle)
-            val images = TerminalSnapshot.parseImages(bridge.nativeSnapshotImages(handle))
-            val snapshot = TerminalSnapshot.fromByteBuffer(raw, images)
+            val raw = traceSection("Terminal.nativeSnapshot") { bridge.nativeSnapshot(handle) }
+            val images = traceSection("Terminal.snapshotImages") {
+                TerminalSnapshot.parseImages(bridge.nativeSnapshotImages(handle))
+            }
+            val snapshot = traceSection("Terminal.parseSnapshot") { TerminalSnapshot.fromByteBuffer(raw, images) }
             bridge.nativePollTitle(handle)?.let { title = it }
             bridge.nativePollPwd(handle)?.let { pwd = it }
             bridge.nativePollClipboard(handle)?.let { publishClipboard(it.toString(Charsets.UTF_8)) }
             val bellCount = bridge.nativeDrainBellCount(handle)
-            state.update {
-                it.copy(
-                    snapshot = snapshot,
-                    title = title,
-                    pwd = pwd,
-                    bellCount = bellCount,
-                    nativeVersion = nativeVersion,
-                    handle = handle,
-                )
+            // Includes the StateFlow equality check, which compares every cell array.
+            traceSection("Terminal.publishSnapshot") {
+                state.update {
+                    it.copy(
+                        snapshot = snapshot,
+                        title = title,
+                        pwd = pwd,
+                        bellCount = bellCount,
+                        nativeVersion = nativeVersion,
+                        handle = handle,
+                    )
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "emitSnapshot failed", e)

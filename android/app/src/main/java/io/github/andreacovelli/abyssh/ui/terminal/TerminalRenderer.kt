@@ -7,6 +7,7 @@ import android.graphics.Rect
 import android.graphics.RectF
 import androidx.compose.ui.geometry.Offset
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
+import io.github.andreacovelli.abyssh.service.terminal.traceSection
 import kotlin.math.max
 
 private const val FAINT_TEXT_ALPHA: Int = 96
@@ -150,15 +151,17 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
     }
 
     fun draw(canvas: Canvas, frame: TerminalFrame, paints: TerminalTextPaints, placement: SnapshotPlacement) {
-        canvas.withTranslation(placement.offsetX, placement.offsetY) {
-            if (placement.scale != 1f) scale(placement.scale, placement.scale)
-            for (row in 0 until frame.rows) {
-                drawBackgrounds(this, frame, row)
-                drawSearchSpans(this, frame, row)
-                drawText(this, frame, paints, row)
+        traceSection("TerminalRenderer.draw") {
+            canvas.withTranslation(placement.offsetX, placement.offsetY) {
+                if (placement.scale != 1f) scale(placement.scale, placement.scale)
+                for (row in 0 until frame.rows) {
+                    drawBackgrounds(this, frame, row)
+                    drawSearchSpans(this, frame, row)
+                    drawText(this, frame, paints, row)
+                }
+                drawImages(this, frame)
+                drawCursor(this, frame, paints)
             }
-            drawImages(this, frame)
-            drawCursor(this, frame, paints)
         }
     }
 
