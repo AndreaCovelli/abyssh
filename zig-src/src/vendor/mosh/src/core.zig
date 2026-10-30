@@ -564,6 +564,13 @@ pub const Client = struct {
                     try self.network_datagrams.insert(self.allocator, 0, try self.allocator.dupe(u8, datagram));
                     break;
                 }
+                // Losing the network is what Mosh outlasts: drop the datagram and
+                // let retransmission and heartbeats resend once a route is back.
+                // The network timeout, not the circuit breaker, bounds the outage.
+                if (err == socket.SocketError.NetworkUnavailable) {
+                    log.debug("send dropped: network unavailable", .{});
+                    continue;
+                }
                 log.err("send error: {s}", .{@errorName(err)});
                 // Other errors count against circuit breaker
                 self.consecutive_recv_failures += 1;

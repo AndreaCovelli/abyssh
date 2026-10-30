@@ -29,7 +29,11 @@ Ported to Zig 0.17:
 Changed behavior:
 
 - `src/socket.zig`: opens an IPv4 or IPv6 socket to match the remote address,
-  which may carry a numeric scope (`fe80::1%3`).
+  which may carry a numeric scope (`fe80::1%3`). A send that fails because the
+  network is down or unreachable returns `NetworkUnavailable`.
+- `src/core.zig`: drops a datagram that fails with `NetworkUnavailable`
+  without counting it toward the send-failure limit, so losing the network
+  while switching networks doesn't end the session.
 
 Removed: `src/test_live.zig`, a standalone program for testing against a live
 server. Nothing built it, and it did not compile on Zig 0.17.

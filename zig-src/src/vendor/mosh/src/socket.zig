@@ -9,6 +9,9 @@ pub const SocketError = error{
     BindFailed,
     ResolveFailed,
     SendFailed,
+    /// The network is down or unreachable for now, as while the device
+    /// switches networks. The datagram is lost; retransmission resends state.
+    NetworkUnavailable,
     ReceiveFailed,
     WouldBlock,
     NotOpen,
@@ -71,6 +74,16 @@ fn parseRemote(host: []const u8, port: u16) SocketError!RemoteAddress {
             } };
         },
     }
+}
+
+/// Whether a failed send means the network is gone for now rather than that
+/// the socket is broken. Android reports EPERM when a firewall, VPN lockdown,
+/// or data saver blocks the app's traffic.
+fn isTransientSendError(err: std.c.E) bool {
+    return switch (err) {
+        .NETUNREACH, .HOSTUNREACH, .NETDOWN, .ADDRNOTAVAIL, .NOBUFS, .PERM => true,
+        else => false,
+    };
 }
 
 pub const MoshSocket = struct {
@@ -160,6 +173,7 @@ pub const MoshSocket = struct {
         if (rc < 0) {
             const err = std.c.errno(rc);
             if (err == .AGAIN) return SocketError.WouldBlock;
+            if (isTransientSendError(err)) return SocketError.NetworkUnavailable;
             return SocketError.SendFailed;
         }
     }
