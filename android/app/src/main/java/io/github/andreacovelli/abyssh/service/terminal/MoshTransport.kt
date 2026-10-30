@@ -217,8 +217,11 @@ internal class MoshTransport(
     private fun bootstrapFailed(rawOutput: String, execOpened: Boolean): Nothing {
         val eofBeforeClose = !execOpened || ssh.isChannelEof()
         ssh.close()
+        // The output is shown to the user but kept out of the log: it is session output.
         val (reason, text) = when {
-            rawOutput.isNotBlank() -> rawOutput.trim().let { it to UiText.Raw(it) }
+            rawOutput.isNotBlank() ->
+                "Mosh bootstrap output had no MOSH CONNECT line (${rawOutput.length} chars)" to
+                    UiText.Raw(rawOutput.trim())
             execOpened && !eofBeforeClose ->
                 "Mosh bootstrap command still running after timeout (no output, no EOF)" to
                     UiText.Resource(R.string.error_mosh_bootstrap_timeout)
