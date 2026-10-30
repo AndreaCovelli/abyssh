@@ -35,6 +35,8 @@ enum class MoshState(val code: Int) {
     Starting(1),
     Running(2),
     Stopping(3),
+
+    /** Stopped, as after the server ended the session because its shell exited. */
     Stopped(4),
     Failed(5),
 }

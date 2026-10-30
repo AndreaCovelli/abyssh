@@ -30,6 +30,9 @@ private const val BOOTSTRAP_EXTENSION_MS = 15_000L
 private const val SHUTDOWN_WAIT_MS = 1_000L
 private const val SHUTDOWN_POLL_MS = 10L
 
+/** How a Mosh read loop ended: [shellExited] when the server ended the session, or [failureCode] when it failed. */
+internal class MoshReadResult(val shellExited: Boolean = false, val failureCode: Int? = null)
+
 /** What the Mosh read loop reports back to the session. */
 internal class MoshEvents(
     val onHostBytes: (ByteArray) -> Unit,
@@ -122,15 +125,16 @@ internal class MoshTransport(
     }
 
     /**
-     * Drives the client until it fails or the loop is cancelled, reporting through
-     * [events]. Returns the failure code when the session failed.
+     * Drives the client until the server ends the session, the session fails, or the
+     * loop is cancelled, reporting through [events].
      */
-    suspend fun read(events: MoshEvents): Int? {
+    suspend fun read(events: MoshEvents): MoshReadResult {
         Log.d(TAG, "MOSH: read loop started")
         var loopCount = 0
         pacer.onActivity()
         var failure: MoshRuntimeState? = null
-        while (failure == null && currentCoroutineContext().isActive) {
+        var shellExited = false
+        while (failure == null && !shellExited && currentCoroutineContext().isActive) {
             loopCount++
             // Drive retransmissions, acks, heartbeats, and timeout checks, then the UDP socket.
             if (!service.maintenanceTick()) Log.w(TAG, "MOSH: maintenanceTick returned false")
@@ -144,6 +148,10 @@ internal class MoshTransport(
             if (runtime?.state == MoshState.Failed.code) {
                 failure = runtime
                 Log.e(TAG, "MOSH: session FAILED code=${runtime.lastFailureCode}")
+            } else if (runtime?.state == MoshState.Stopped.code) {
+                // The server sends its shutdown once its shell exits; the client acks it and stops.
+                shellExited = true
+                Log.d(TAG, "MOSH: server ended the session")
             } else {
                 // Adaptive cadence: Mosh's retransmit/heartbeat timers are coarse, so
                 // backing the pump off while idle is safe and avoids a 500 Hz spin.
@@ -152,7 +160,7 @@ internal class MoshTransport(
             }
         }
         Log.d(TAG, "MOSH: read loop exited after $loopCount iterations")
-        return failure?.lastFailureCode
+        return MoshReadResult(shellExited = shellExited, failureCode = failure?.lastFailureCode)
     }
 
     /** Handles every queued output event; returns whether there were any. */

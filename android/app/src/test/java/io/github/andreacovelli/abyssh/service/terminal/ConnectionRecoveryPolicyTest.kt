@@ -49,9 +49,9 @@ class ConnectionRecoveryPolicyTest {
     }
 
     @Test
-    fun moshKeepsManualReconnectEvenAfterShellExit() {
+    fun moshShellExitDisconnectsInsteadOfAskingToReconnect() {
         assertEquals(
-            ReadLoopExitAction.RequireManualReconnect,
+            ReadLoopExitAction.Disconnect,
             readLoopExitAction(Transport.Mosh, shellExited = true),
         )
     }

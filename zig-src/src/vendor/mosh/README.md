@@ -35,7 +35,9 @@ Changed behavior:
   without counting it toward the send-failure limit, so losing the network
   while switching networks doesn't end the session. `startShutdown` sends
   Mosh's shutdown (state number `maxInt(u64)`) and resends it until the
-  server acks, which makes `mosh-server` exit.
+  server acks, which makes `mosh-server` exit. When the server sends its own
+  shutdown because its shell exited, the client acks it once, as Mosh's own
+  client does, and moves to `stopped`.
 - `src/ffi.zig`, `src/mosh_ffi.h`: `mosh_client_start_shutdown` and
   `mosh_client_shutdown_acknowledged`.
 

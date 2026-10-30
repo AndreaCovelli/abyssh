@@ -17,8 +17,8 @@ internal enum class ReadLoopExitAction {
 internal fun readLoopExitAction(transport: Transport?, shellExited: Boolean = false): ReadLoopExitAction =
     when {
         transport == Transport.LocalShell -> ReadLoopExitAction.Disconnect
-        transport == Transport.Mosh -> ReadLoopExitAction.RequireManualReconnect
         shellExited -> ReadLoopExitAction.Disconnect
+        transport == Transport.Mosh -> ReadLoopExitAction.RequireManualReconnect
         else -> ReadLoopExitAction.AutomaticReconnect
     }
 

@@ -124,6 +124,8 @@ pub const Client = struct {
     shutdown_started_at_ms: ?u64 = null,
     shutdown_last_sent_at_ms: u64 = 0,
     shutdown_acknowledged: bool = false,
+    // Set when the server sends the reserved final state because its shell exited.
+    server_shutdown_received: bool = false,
 
     // Fragment assembly
     inbound_fragments: std.AutoHashMap(u64, std.ArrayList([]const u8)),
@@ -261,6 +263,12 @@ pub const Client = struct {
 
     pub fn isShutdownAcknowledged(self: *const Self) bool {
         return self.shutdown_acknowledged;
+    }
+
+    /// Whether the server ended the session, as when its shell exits. The
+    /// client is stopped by then.
+    pub fn isServerShutdown(self: *const Self) bool {
+        return self.server_shutdown_received;
     }
 
     pub fn sendInput(self: *Self, bytes: []const u8, now_ms: u64) !void {
@@ -596,7 +604,46 @@ pub const Client = struct {
             log.warn("pumpNetwork: not running (state={s})", .{@tagName(self.state)});
             return;
         }
-        // Send queued datagrams
+        try self.sendQueuedDatagrams();
+
+        // Receive inbound datagrams (best-effort, non-blocking)
+        var recv_buf: [2048]u8 = undefined;
+        while (true) {
+            const received = self.udp_socket.receive(&recv_buf) catch {
+                self.consecutive_recv_failures += 1;
+                if (self.consecutive_recv_failures >= 8) {
+                    self.failSession(.circuit_breaker_tripped);
+                    return error.CircuitBreakerTripped;
+                }
+                break;
+            };
+            const payload = received orelse break;
+            self.processInboundPayload(recv_buf[0..payload], now_ms) catch |err| {
+                log.err("processInboundPayload error: {s}", .{@errorName(err)});
+                self.consecutive_recv_failures += 1;
+                if (self.consecutive_recv_failures >= 8) {
+                    self.failSession(.circuit_breaker_tripped);
+                    return error.CircuitBreakerTripped;
+                }
+                // Don't propagate decode errors; just keep receiving
+                if (err == error.RetryLimitExceeded or err == error.NetworkTimeout) return err;
+            };
+        }
+
+        if (self.server_shutdown_received) try self.finishServerShutdown(now_ms);
+    }
+
+    /// Acknowledges the server's shutdown and stops. Like Mosh's own client,
+    /// this sends the ack once; a server that misses it gives up on its own.
+    fn finishServerShutdown(self: *Self, now_ms: u64) !void {
+        try self.sendAckOnly(now_ms);
+        try self.sendQueuedDatagrams();
+        self.state = .stopped;
+        log.info("server shutdown: acknowledged, session stopped", .{});
+        try self.enqueueStringEvent(.state_changed, "server_shutdown");
+    }
+
+    fn sendQueuedDatagrams(self: *Self) !void {
         while (self.network_datagrams.items.len > 0) {
             const datagram = self.network_datagrams.orderedRemove(0);
             defer self.allocator.free(datagram);
@@ -620,30 +667,6 @@ pub const Client = struct {
                     self.failSession(.circuit_breaker_tripped);
                     return error.CircuitBreakerTripped;
                 }
-            };
-        }
-
-        // Receive inbound datagrams (best-effort, non-blocking)
-        var recv_buf: [2048]u8 = undefined;
-        while (true) {
-            const received = self.udp_socket.receive(&recv_buf) catch {
-                self.consecutive_recv_failures += 1;
-                if (self.consecutive_recv_failures >= 8) {
-                    self.failSession(.circuit_breaker_tripped);
-                    return error.CircuitBreakerTripped;
-                }
-                break;
-            };
-            const payload = received orelse break;
-            self.processInboundPayload(recv_buf[0..payload], now_ms) catch |err| {
-                log.err("processInboundPayload error: {s}", .{@errorName(err)});
-                self.consecutive_recv_failures += 1;
-                if (self.consecutive_recv_failures >= 8) {
-                    self.failSession(.circuit_breaker_tripped);
-                    return error.CircuitBreakerTripped;
-                }
-                // Don't propagate decode errors; just keep receiving
-                if (err == error.RetryLimitExceeded or err == error.NetworkTimeout) return err;
             };
         }
     }
@@ -879,6 +902,10 @@ pub const Client = struct {
     fn applyInboundState(self: *Self, new_num: u64, host_payload: []const u8, now_ms: u64) !void {
         self.latest_received_state_num = @max(self.latest_received_state_num, new_num);
         try self.applied_remote_state_nums.put(new_num, {});
+        if (new_num == shutdown_state_num and !self.server_shutdown_received) {
+            log.info("server shutdown: received", .{});
+            self.server_shutdown_received = true;
+        }
 
         if (self.applied_remote_state_nums.count() > 4096) {
             const floor: u64 = if (self.latest_received_state_num > 2048)
@@ -1394,6 +1421,44 @@ test "shutdown needs a running session" {
     var client = try Client.init(allocator, endpoint, .{});
     defer client.deinit();
     try std.testing.expectError(error.NotStarted, client.startShutdown(0));
+}
+
+test "server shutdown is acknowledged, then the session stops" {
+    const allocator = std.testing.allocator;
+    const endpoint: types.MoshEndpoint = .{
+        .host = "127.0.0.1",
+        .port = 60001,
+        .key_base64_22 = "ABCDEFGHIJKLMNOPQRSTUV",
+    };
+
+    var client = try Client.init(allocator, endpoint, .{ .use_network_crypto = false });
+    defer client.deinit();
+    try client.start(0);
+
+    // The server's shell exited, so it sends the reserved final state.
+    try client.processInboundInstruction(.{
+        .protocol_version = types.PROTOCOL_VERSION,
+        .old_num = 0,
+        .new_num = shutdown_state_num,
+    }, 10);
+    try std.testing.expect(client.isServerShutdown());
+    try std.testing.expectEqual(types.SessionState.running, client.state);
+
+    try client.pumpNetwork(20);
+    try std.testing.expectEqual(types.SessionState.stopped, client.state);
+    try std.testing.expectEqual(shutdown_state_num, client.last_ack_reported_num);
+    try std.testing.expectEqual(@as(usize, 0), client.network_datagrams.items.len);
+    try std.testing.expectError(error.NotStarted, client.startShutdown(30));
+
+    var saw_event = false;
+    var scratch: [64]u8 = undefined;
+    for (0..16) |_| {
+        const event = try client.pollOutput(&scratch);
+        if (event.event_type == .none) break;
+        if (event.event_type == .state_changed and
+            std.mem.eql(u8, scratch[0..event.written], "server_shutdown")) saw_event = true;
+    }
+    try std.testing.expect(saw_event);
 }
 
 test "network timeout fails session" {
