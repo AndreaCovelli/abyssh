@@ -10,6 +10,10 @@ data class MoshOutputEvent(
     val echoAck: Long,
 )
 
+/**
+ * The state numbers are Mosh's unsigned 64-bit values carried in a [Long]; the shutdown
+ * number, the largest unsigned value, reads as -1.
+ */
 data class MoshRuntimeState(
     val state: Int,
     val lastFailureCode: Int,
