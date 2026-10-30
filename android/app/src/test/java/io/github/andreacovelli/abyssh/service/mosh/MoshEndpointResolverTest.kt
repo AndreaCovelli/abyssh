@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.service.mosh
 
+import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.UnknownHostException
 import org.junit.Assert.assertEquals
@@ -31,6 +32,34 @@ class MoshEndpointResolverTest {
         assertEquals(address.hostAddress, result)
         assertTrue(!result.startsWith("["))
         assertTrue(!result.endsWith("]"))
+    }
+
+    @Test
+    fun prefersTheAddressSshConnectedTo() {
+        val result =
+            MoshEndpointResolver.resolve("vps.example", connectedAddress = "2001:db8::7") {
+                throw AssertionError("DNS must not be queried when SSH reported its peer")
+            }
+
+        assertEquals("2001:db8::7", result)
+    }
+
+    @Test
+    fun fallsBackToDnsWithoutAConnectedAddress() {
+        val address = InetAddress.getByName("192.0.2.7")
+
+        val result = MoshEndpointResolver.resolve("vps.example", connectedAddress = " ") { arrayOf(address) }
+
+        assertEquals("192.0.2.7", result)
+    }
+
+    @Test
+    fun keepsALinkLocalScopeAsAnInterfaceIndex() {
+        val address = Inet6Address.getByAddress(null, InetAddress.getByName("fe80::1").address, 3)
+
+        val result = MoshEndpointResolver.resolve("printer.local") { arrayOf(address) }
+
+        assertEquals("fe80:0:0:0:0:0:0:1%3", result)
     }
 
     @Test

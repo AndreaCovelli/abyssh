@@ -188,7 +188,8 @@ export fn Java_io_github_andreacovelli_abyssh_service_mosh_NativeMoshBridge_nati
             meta[1] = @intCast(written);
             meta[2] = out_cols;
             meta[3] = out_rows;
-            meta[4] = @intCast(echo_ack);
+            // State numbers are u64 and reach maxInt(u64) at shutdown; pass the bits through.
+            meta[4] = @bitCast(echo_ack);
             env.*.*.ReleaseLongArrayElements.?(env, j_out_meta, meta, 0);
         }
     }
@@ -211,14 +212,16 @@ export fn Java_io_github_andreacovelli_abyssh_service_mosh_NativeMoshBridge_nati
 
     var runtime_state: mosh.types.RuntimeState = undefined;
     const rc = mosh.ffi.mosh_client_poll_state(raw, &runtime_state);
+    if (rc != 0) return rc;
 
     if (j_out_state != null and env.*.*.GetArrayLength.?(env, j_out_state) >= 7) {
         const state = env.*.*.GetLongArrayElements.?(env, j_out_state, null);
         if (state != null) {
             state[0] = runtime_state.state;
             state[1] = runtime_state.last_failure_code;
-            state[2] = @intCast(runtime_state.last_state_num_sent);
-            state[3] = @intCast(runtime_state.last_state_num_received);
+            // State numbers are u64 and reach maxInt(u64) at shutdown; pass the bits through.
+            state[2] = @bitCast(runtime_state.last_state_num_sent);
+            state[3] = @bitCast(runtime_state.last_state_num_received);
             state[4] = runtime_state.pending_outbound;
             state[5] = runtime_state.pending_host_ops;
             state[6] = runtime_state.current_rto_ms;
@@ -227,6 +230,30 @@ export fn Java_io_github_andreacovelli_abyssh_service_mosh_NativeMoshBridge_nati
     }
 
     return rc;
+}
+
+export fn Java_io_github_andreacovelli_abyssh_service_mosh_NativeMoshBridge_nativeStartShutdown(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+) callconv(.c) c.jint {
+    _ = env;
+    _ = thiz;
+    const raw = clientFromHandle(handle);
+    return mosh.ffi.mosh_client_start_shutdown(raw);
+}
+
+export fn Java_io_github_andreacovelli_abyssh_service_mosh_NativeMoshBridge_nativeIsShutdownAcknowledged(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+) callconv(.c) c.jboolean {
+    _ = env;
+    _ = thiz;
+    const raw = clientFromHandle(handle);
+    var acknowledged: c_int = 0;
+    if (mosh.ffi.mosh_client_shutdown_acknowledged(raw, &acknowledged) != 0) return c.JNI_FALSE;
+    return if (acknowledged != 0) c.JNI_TRUE else c.JNI_FALSE;
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_mosh_NativeMoshBridge_nativeStop(

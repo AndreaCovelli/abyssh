@@ -2,6 +2,7 @@ package io.github.andreacovelli.abyssh.service.terminal
 
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
 
+import android.os.SystemClock
 import android.util.Log
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.UiText
@@ -205,7 +206,10 @@ internal class SessionConnection(
 
     private suspend fun read(transport: Transport): ReadOutcome = try {
         when (transport) {
-            Transport.Mosh -> ReadOutcome(moshFailureCode = transports.mosh.read(moshEvents))
+            Transport.Mosh -> {
+                val result = transports.mosh.read(moshEvents)
+                ReadOutcome(shellExited = result.shellExited, moshFailureCode = result.failureCode)
+            }
             Transport.LocalShell -> {
                 transports.readLocalShell(::feed)
                 ReadOutcome(shellExited = currentCoroutineContext().isActive)
@@ -225,7 +229,11 @@ internal class SessionConnection(
     private fun onReadLoopEnded(transport: Transport, outcome: ReadOutcome) {
         when (readLoopExitAction(transport, outcome.shellExited && !outcome.failed)) {
             ReadLoopExitAction.Disconnect -> {
-                if (transport == Transport.LocalShell) transports.localShell.close() else transports.ssh.close()
+                when (transport) {
+                    Transport.LocalShell -> transports.localShell.close()
+                    Transport.Mosh -> transports.mosh.close()
+                    else -> transports.ssh.close()
+                }
                 if (!disconnectRequested && !outcome.failed) {
                     state.update { it.copy(status = SessionStatus.Disconnected) }
                     if (outcome.shellExited) onShellExited()
@@ -324,7 +332,7 @@ internal class SessionConnection(
 
     private fun onMoshRuntime(runtime: MoshRuntimeState) {
         sessionStatusForMoshState(runtime.state)?.let(::updateStatus)
-        moshStaleness.observe(runtime, System.currentTimeMillis())?.let(::updateStatus)
+        moshStaleness.observe(runtime, SystemClock.elapsedRealtime())?.let(::updateStatus)
     }
 
     private fun updateStatus(status: SessionStatus) {

@@ -21,10 +21,27 @@ Ported to Zig 0.17:
 - `src/compress.zig`: imports `zlib_c` instead of using `@cImport`.
 - `src/socket.zig`: uses `std.c` sockets, since Zig 0.17 removed most of
   `std.posix`'s socket API and `std.net`.
-- `src/ffi.zig`: reads the clock with `clock_gettime(CLOCK_REALTIME)`.
+- `src/ffi.zig`: reads the clock with `clock_gettime`.
 - `src/protolite.zig`: `std.enums.fromInt` replaces `std.meta.intToEnum`.
 - `src/core.zig`: `ArrayList.print`, a switch prong without a discarded
   capture, and `nanosleep` in a test.
+
+Changed behavior:
+
+- `src/socket.zig`: opens an IPv4 or IPv6 socket to match the remote address,
+  which may carry a numeric scope (`fe80::1%3`). A send that fails because the
+  network is down or unreachable returns `NetworkUnavailable`.
+- `src/core.zig`: drops a datagram that fails with `NetworkUnavailable`
+  without counting it toward the send-failure limit, so losing the network
+  while switching networks doesn't end the session. `startShutdown` sends
+  Mosh's shutdown (state number `maxInt(u64)`) and resends it until the
+  server acks, which makes `mosh-server` exit. When the server sends its own
+  shutdown because its shell exited, the client acks it once, as Mosh's own
+  client does, and moves to `stopped`. Like Mosh, it reassembles one
+  fragmented message at a time: a fragment of a new message frees the
+  fragments of an unfinished one, which upstream kept until the session ended.
+- `src/ffi.zig`, `src/mosh_ffi.h`: `mosh_client_start_shutdown` and
+  `mosh_client_shutdown_acknowledged`.
 
 Removed: `src/test_live.zig`, a standalone program for testing against a live
 server. Nothing built it, and it did not compile on Zig 0.17.

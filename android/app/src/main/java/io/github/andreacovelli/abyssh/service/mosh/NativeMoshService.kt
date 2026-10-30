@@ -10,6 +10,10 @@ data class MoshOutputEvent(
     val echoAck: Long,
 )
 
+/**
+ * The state numbers are Mosh's unsigned 64-bit values carried in a [Long]; the shutdown
+ * number, the largest unsigned value, reads as -1.
+ */
 data class MoshRuntimeState(
     val state: Int,
     val lastFailureCode: Int,
@@ -29,12 +33,15 @@ enum class MoshEventType(val code: Int) {
     Diagnostic(5),
 }
 
+/** Mirrors `SessionState` in the vendored Mosh client's `types.zig`. */
 enum class MoshState(val code: Int) {
     Idle(0),
-    Connecting(1),
-    Connected(2),
-    Reconnecting(3),
-    Disconnecting(4),
+    Starting(1),
+    Running(2),
+    Stopping(3),
+
+    /** Stopped, as after the server ended the session because its shell exited. */
+    Stopped(4),
     Failed(5),
 }
 
@@ -124,6 +131,17 @@ class NativeMoshService(
             pendingHostOps = stateBuf[5].toInt(),
             currentRtoMs = stateBuf[6].toInt(),
         )
+    }
+
+    /** Asks the server to end the session. Returns false when the client isn't running. */
+    fun startShutdown(): Boolean {
+        if (handle == 0L) return false
+        return bridge.nativeStartShutdown(handle) == 0
+    }
+
+    fun isShutdownAcknowledged(): Boolean {
+        if (handle == 0L) return false
+        return bridge.nativeIsShutdownAcknowledged(handle)
     }
 
     fun stop() {

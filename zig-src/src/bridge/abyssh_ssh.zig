@@ -689,6 +689,52 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     return jniNewStringOrNull(env, hostkeyAlgorithmName(session.hostkey_type));
 }
 
+/// The numeric address of the host this session's socket connected to, such as
+/// `192.0.2.7` or `2001:db8::7`. A link-local IPv6 peer ends in its numeric
+/// scope (`fe80::1%3`). Mosh sends its UDP traffic to this address, so it
+/// reaches the machine that ran mosh-server even when DNS returns several.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeGetPeerAddress(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jstring {
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return null;
+    if (session.socket_fd < 0) return null;
+
+    var storage: c.struct_sockaddr_storage = std.mem.zeroes(c.struct_sockaddr_storage);
+    var len: c.socklen_t = @sizeOf(c.struct_sockaddr_storage);
+    if (c.getpeername(session.socket_fd, @ptrCast(&storage), &len) != 0) return null;
+
+    var text: [c.INET6_ADDRSTRLEN + 16]u8 = undefined;
+    const formatted = formatPeerAddress(&storage, &text) orelse return null;
+    return jniNewStringOrNull(env, formatted);
+}
+
+fn formatPeerAddress(storage: *const c.struct_sockaddr_storage, out: []u8) ?[]const u8 {
+    // translate-c hides sockaddr_storage's fields in an anonymous union.
+    const family: c_int = @as(*const c.struct_sockaddr, @ptrCast(storage)).sa_family;
+    switch (family) {
+        c.AF_INET => {
+            const addr: *const c.struct_sockaddr_in = @ptrCast(@alignCast(storage));
+            if (c.inet_ntop(c.AF_INET, &addr.sin_addr, out.ptr, @intCast(out.len)) == null) return null;
+            return std.mem.sliceTo(out, 0);
+        },
+        c.AF_INET6 => {
+            const addr: *const c.struct_sockaddr_in6 = @ptrCast(@alignCast(storage));
+            const bytes: *const [16]u8 = @ptrCast(&addr.sin6_addr);
+            // An IPv4 peer reached through an IPv6 socket (::ffff:a.b.c.d).
+            const v4_mapped_prefix = [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff };
+            if (std.mem.eql(u8, bytes[0..12], &v4_mapped_prefix)) {
+                if (c.inet_ntop(c.AF_INET, bytes[12..16], out.ptr, @intCast(out.len)) == null) return null;
+                return std.mem.sliceTo(out, 0);
+            }
+            if (c.inet_ntop(c.AF_INET6, &addr.sin6_addr, out.ptr, @intCast(out.len)) == null) return null;
+            const address = std.mem.sliceTo(out, 0);
+            if (addr.sin6_scope_id == 0) return address;
+            const scoped = std.fmt.bufPrint(out[address.len..], "%{d}", .{addr.sin6_scope_id}) catch return null;
+            return out[0 .. address.len + scoped.len];
+        },
+        else => return null,
+    }
+}
+
 export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeAuthenticatePassword(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, password: c.jstring) callconv(.c) c.jboolean {
     _ = thiz;
     const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;

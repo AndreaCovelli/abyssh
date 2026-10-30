@@ -11,6 +11,13 @@ const socket = @import("socket.zig");
 
 const log = std.log.scoped(.mosh);
 
+/// The state number Mosh reserves for "end the session". A peer that receives
+/// it acknowledges it and exits, which is how mosh-server learns to stop.
+pub const shutdown_state_num: u64 = std.math.maxInt(u64);
+
+/// How often to resend the shutdown request until the server acknowledges it.
+const shutdown_resend_interval_ms: u64 = 200;
+
 pub const OutputEvent = struct {
     event_type: types.OutputEventType,
     payload: []u8,
@@ -113,6 +120,13 @@ pub const Client = struct {
     // Circuit breaker
     consecutive_recv_failures: u32 = 0,
 
+    // Shutdown handshake: set once `startShutdown` sends the reserved final state.
+    shutdown_started_at_ms: ?u64 = null,
+    shutdown_last_sent_at_ms: u64 = 0,
+    shutdown_acknowledged: bool = false,
+    // Set when the server sends the reserved final state because its shell exited.
+    server_shutdown_received: bool = false,
+
     // Fragment assembly
     inbound_fragments: std.AutoHashMap(u64, std.ArrayList([]const u8)),
     next_message_id: u64 = 1,
@@ -205,14 +219,14 @@ pub const Client = struct {
         self.last_received_timestamp = std.math.maxInt(u16);
         self.consecutive_recv_failures = 0;
 
-        self.udp_socket.open(self.config.local_port orelse 0) catch |err| {
-            log.err("udp_socket.open failed: {s}", .{@errorName(err)});
+        // The remote address picks the socket's family, so set it first.
+        self.udp_socket.setRemote(self.endpoint_host, self.endpoint_port) catch |err| {
+            log.err("udp_socket.setRemote failed: {s}", .{@errorName(err)});
             self.failSession(.transport_failure);
             return err;
         };
-        self.udp_socket.setRemote(self.endpoint_host, self.endpoint_port) catch |err| {
-            log.err("udp_socket.setRemote failed: {s}", .{@errorName(err)});
-            self.udp_socket.close();
+        self.udp_socket.open(self.config.local_port orelse 0) catch |err| {
+            log.err("udp_socket.open failed: {s}", .{@errorName(err)});
             self.failSession(.transport_failure);
             return err;
         };
@@ -235,11 +249,34 @@ pub const Client = struct {
         self.state = .stopped;
     }
 
+    /// Starts Mosh's shutdown handshake: tells the server to end the session,
+    /// so mosh-server and its shell exit instead of waiting out their network
+    /// timeout. Keep calling `maintenanceTick` and `pumpNetwork` until
+    /// `isShutdownAcknowledged` or a deadline; input and resizes are refused.
+    pub fn startShutdown(self: *Self, now_ms: u64) !void {
+        if (self.state != .running) return error.NotStarted;
+        if (self.shutdown_started_at_ms != null) return;
+        log.info("shutdown: requesting server exit", .{});
+        self.shutdown_started_at_ms = now_ms;
+        try self.sendShutdown(now_ms);
+    }
+
+    pub fn isShutdownAcknowledged(self: *const Self) bool {
+        return self.shutdown_acknowledged;
+    }
+
+    /// Whether the server ended the session, as when its shell exits. The
+    /// client is stopped by then.
+    pub fn isServerShutdown(self: *const Self) bool {
+        return self.server_shutdown_received;
+    }
+
     pub fn sendInput(self: *Self, bytes: []const u8, now_ms: u64) !void {
         if (self.state != .running) {
             log.warn("sendInput: not running (state={s})", .{@tagName(self.state)});
             return error.NotStarted;
         }
+        if (self.shutdown_started_at_ms != null) return error.ShuttingDown;
         const user_message = try protolite.encodeUserMessage(self.allocator, &.{.{ .keystroke = bytes }});
         defer self.allocator.free(user_message);
 
@@ -251,6 +288,7 @@ pub const Client = struct {
             log.warn("resize: not running (state={s})", .{@tagName(self.state)});
             return error.NotStarted;
         }
+        if (self.shutdown_started_at_ms != null) return error.ShuttingDown;
         if (cols <= 0 or rows <= 0) return error.InvalidResize;
         log.info("resize: {d}x{d}", .{ cols, rows });
 
@@ -378,6 +416,10 @@ pub const Client = struct {
         const header = wire.FragmentHeader.decode(payload[0..wire.FragmentHeader.bytes]);
         const chunk = payload[wire.FragmentHeader.bytes..];
 
+        // Like Mosh, assemble one message at a time: a fragment of another message
+        // abandons the one in progress, whose missing fragments may never arrive.
+        self.dropFragmentsExcept(header.message_id);
+
         // Single-fragment optimization: fragment_num=0 && final means the whole
         // message fits in one fragment. Strip header and process directly.
         if (header.fragment_num == 0 and header.final) {
@@ -418,6 +460,18 @@ pub const Client = struct {
         }
     }
 
+    fn dropFragmentsExcept(self: *Self, message_id: u64) void {
+        while (true) {
+            var iter = self.inbound_fragments.iterator();
+            const stale = while (iter.next()) |entry| {
+                if (entry.key_ptr.* != message_id) break entry;
+            } else return;
+            for (stale.value_ptr.items) |f| self.allocator.free(@constCast(f));
+            stale.value_ptr.deinit(self.allocator);
+            self.inbound_fragments.removeByPtr(stale.key_ptr);
+        }
+    }
+
     pub fn processInboundInstruction(self: *Self, instruction: InboundInstruction, now_ms: u64) !void {
         if (self.state != .running) {
             log.warn("processInboundInstruction: not running (state={s})", .{@tagName(self.state)});
@@ -433,6 +487,11 @@ pub const Client = struct {
 
         if (instruction.ack_num) |ack_num| {
             self.acknowledgePendingOutbound(ack_num);
+            if (ack_num == shutdown_state_num and self.shutdown_started_at_ms != null and !self.shutdown_acknowledged) {
+                self.shutdown_acknowledged = true;
+                log.info("shutdown: acknowledged by server", .{});
+                try self.enqueueStringEvent(.state_changed, "shutdown_acknowledged");
+            }
         }
         if (instruction.throwaway_num) |throwaway_num| self.pruneAppliedRemoteStates(throwaway_num);
 
@@ -529,6 +588,13 @@ pub const Client = struct {
             try self.sendAckOnly(now_ms);
             self.last_outbound_at_ms = now_ms;
         }
+
+        if (self.shutdown_started_at_ms != null and !self.shutdown_acknowledged and
+            now_ms >= self.shutdown_last_sent_at_ms and
+            now_ms - self.shutdown_last_sent_at_ms >= shutdown_resend_interval_ms)
+        {
+            try self.sendShutdown(now_ms);
+        }
     }
 
     pub fn pollNetworkDatagram(self: *Self, out_buf: []u8) !?usize {
@@ -554,25 +620,7 @@ pub const Client = struct {
             log.warn("pumpNetwork: not running (state={s})", .{@tagName(self.state)});
             return;
         }
-        // Send queued datagrams
-        while (self.network_datagrams.items.len > 0) {
-            const datagram = self.network_datagrams.orderedRemove(0);
-            defer self.allocator.free(datagram);
-            self.udp_socket.send(datagram) catch |err| {
-                // On WouldBlock re-queue at front to retry later
-                if (err == socket.SocketError.WouldBlock) {
-                    try self.network_datagrams.insert(self.allocator, 0, try self.allocator.dupe(u8, datagram));
-                    break;
-                }
-                log.err("send error: {s}", .{@errorName(err)});
-                // Other errors count against circuit breaker
-                self.consecutive_recv_failures += 1;
-                if (self.consecutive_recv_failures >= 8) {
-                    self.failSession(.circuit_breaker_tripped);
-                    return error.CircuitBreakerTripped;
-                }
-            };
-        }
+        try self.sendQueuedDatagrams();
 
         // Receive inbound datagrams (best-effort, non-blocking)
         var recv_buf: [2048]u8 = undefined;
@@ -595,6 +643,46 @@ pub const Client = struct {
                 }
                 // Don't propagate decode errors; just keep receiving
                 if (err == error.RetryLimitExceeded or err == error.NetworkTimeout) return err;
+            };
+        }
+
+        if (self.server_shutdown_received) try self.finishServerShutdown(now_ms);
+    }
+
+    /// Acknowledges the server's shutdown and stops. Like Mosh's own client,
+    /// this sends the ack once; a server that misses it gives up on its own.
+    fn finishServerShutdown(self: *Self, now_ms: u64) !void {
+        try self.sendAckOnly(now_ms);
+        try self.sendQueuedDatagrams();
+        self.state = .stopped;
+        log.info("server shutdown: acknowledged, session stopped", .{});
+        try self.enqueueStringEvent(.state_changed, "server_shutdown");
+    }
+
+    fn sendQueuedDatagrams(self: *Self) !void {
+        while (self.network_datagrams.items.len > 0) {
+            const datagram = self.network_datagrams.orderedRemove(0);
+            defer self.allocator.free(datagram);
+            self.udp_socket.send(datagram) catch |err| {
+                // On WouldBlock re-queue at front to retry later
+                if (err == socket.SocketError.WouldBlock) {
+                    try self.network_datagrams.insert(self.allocator, 0, try self.allocator.dupe(u8, datagram));
+                    break;
+                }
+                // Losing the network is what Mosh outlasts: drop the datagram and
+                // let retransmission and heartbeats resend once a route is back.
+                // The network timeout, not the circuit breaker, bounds the outage.
+                if (err == socket.SocketError.NetworkUnavailable) {
+                    log.debug("send dropped: network unavailable", .{});
+                    continue;
+                }
+                log.err("send error: {s}", .{@errorName(err)});
+                // Other errors count against circuit breaker
+                self.consecutive_recv_failures += 1;
+                if (self.consecutive_recv_failures >= 8) {
+                    self.failSession(.circuit_breaker_tripped);
+                    return error.CircuitBreakerTripped;
+                }
             };
         }
     }
@@ -830,6 +918,10 @@ pub const Client = struct {
     fn applyInboundState(self: *Self, new_num: u64, host_payload: []const u8, now_ms: u64) !void {
         self.latest_received_state_num = @max(self.latest_received_state_num, new_num);
         try self.applied_remote_state_nums.put(new_num, {});
+        if (new_num == shutdown_state_num and !self.server_shutdown_received) {
+            log.info("server shutdown: received", .{});
+            self.server_shutdown_received = true;
+        }
 
         if (self.applied_remote_state_nums.count() > 4096) {
             const floor: u64 = if (self.latest_received_state_num > 2048)
@@ -967,6 +1059,34 @@ pub const Client = struct {
         self.last_ack_sent_at_ms = now_ms;
         self.last_ack_reported_num = self.latest_received_state_num;
         self.ack_dirty_at_ms = null;
+    }
+
+    /// Sends the reserved final state, diffed from the newest state sent. The
+    /// server ignores it unless it holds that state, so unacknowledged states
+    /// go out again first: the request can't wait on their retransmit timer.
+    fn sendShutdown(self: *Self, now_ms: u64) !void {
+        for (self.pending_outbound_order.items) |state_num| {
+            const pending = self.pending_outbound.get(state_num) orelse continue;
+            try self.transmitPayload(pending.payload, now_ms);
+        }
+
+        const instruction: protolite.TransportInstruction = .{
+            .protocol_version = types.PROTOCOL_VERSION,
+            .old_num = self.last_state_num_sent,
+            .new_num = shutdown_state_num,
+            .ack_num = self.latest_received_state_num,
+            .throwaway_num = self.computeThrowawayNum(),
+            .diff = null,
+            .chaff = &.{},
+        };
+        const encoded = try instruction.encode(self.allocator);
+        defer self.allocator.free(encoded);
+
+        const compressed = try self.encodeAndCompress(encoded);
+        defer self.allocator.free(compressed);
+
+        try self.transmitPayload(compressed, now_ms);
+        self.shutdown_last_sent_at_ms = now_ms;
     }
 
     fn computeThrowawayNum(self: *const Self) u64 {
@@ -1268,6 +1388,95 @@ test "sendInput produces network datagram" {
     try std.testing.expect(len.? > wire.PacketEnvelope.bytes);
 }
 
+test "shutdown resends pending state, then completes on the server's ack" {
+    const allocator = std.testing.allocator;
+    const endpoint: types.MoshEndpoint = .{
+        .host = "127.0.0.1",
+        .port = 60001,
+        .key_base64_22 = "ABCDEFGHIJKLMNOPQRSTUV",
+    };
+
+    var client = try Client.init(allocator, endpoint, .{ .use_network_crypto = false });
+    defer client.deinit();
+    try client.start(0);
+    try client.sendInput("x", 0);
+
+    var buf: [1024]u8 = undefined;
+    while (try client.pollNetworkDatagram(&buf)) |_| {}
+
+    try client.startShutdown(10);
+    // The unacknowledged keystroke state, then the shutdown request.
+    try std.testing.expect((try client.pollNetworkDatagram(&buf)) != null);
+    try std.testing.expect((try client.pollNetworkDatagram(&buf)) != null);
+    try std.testing.expect((try client.pollNetworkDatagram(&buf)) == null);
+    try std.testing.expectError(error.ShuttingDown, client.sendInput("y", 20));
+    try std.testing.expectError(error.ShuttingDown, client.resize(80, 24, 20));
+
+    // Unacknowledged, the request goes out again after the resend interval.
+    try client.maintenanceTick(10 + shutdown_resend_interval_ms);
+    try std.testing.expect((try client.pollNetworkDatagram(&buf)) != null);
+    while (try client.pollNetworkDatagram(&buf)) |_| {}
+
+    try std.testing.expect(!client.isShutdownAcknowledged());
+    try client.processInboundInstruction(.{ .ack_num = shutdown_state_num }, 300);
+    try std.testing.expect(client.isShutdownAcknowledged());
+    try std.testing.expectEqual(@as(u32, 0), client.runtimeState().pending_outbound);
+
+    try client.maintenanceTick(10 + 4 * shutdown_resend_interval_ms);
+    try std.testing.expect((try client.pollNetworkDatagram(&buf)) == null);
+}
+
+test "shutdown needs a running session" {
+    const allocator = std.testing.allocator;
+    const endpoint: types.MoshEndpoint = .{
+        .host = "127.0.0.1",
+        .port = 60001,
+        .key_base64_22 = "ABCDEFGHIJKLMNOPQRSTUV",
+    };
+
+    var client = try Client.init(allocator, endpoint, .{});
+    defer client.deinit();
+    try std.testing.expectError(error.NotStarted, client.startShutdown(0));
+}
+
+test "server shutdown is acknowledged, then the session stops" {
+    const allocator = std.testing.allocator;
+    const endpoint: types.MoshEndpoint = .{
+        .host = "127.0.0.1",
+        .port = 60001,
+        .key_base64_22 = "ABCDEFGHIJKLMNOPQRSTUV",
+    };
+
+    var client = try Client.init(allocator, endpoint, .{ .use_network_crypto = false });
+    defer client.deinit();
+    try client.start(0);
+
+    // The server's shell exited, so it sends the reserved final state.
+    try client.processInboundInstruction(.{
+        .protocol_version = types.PROTOCOL_VERSION,
+        .old_num = 0,
+        .new_num = shutdown_state_num,
+    }, 10);
+    try std.testing.expect(client.isServerShutdown());
+    try std.testing.expectEqual(types.SessionState.running, client.state);
+
+    try client.pumpNetwork(20);
+    try std.testing.expectEqual(types.SessionState.stopped, client.state);
+    try std.testing.expectEqual(shutdown_state_num, client.last_ack_reported_num);
+    try std.testing.expectEqual(@as(usize, 0), client.network_datagrams.items.len);
+    try std.testing.expectError(error.NotStarted, client.startShutdown(30));
+
+    var saw_event = false;
+    var scratch: [64]u8 = undefined;
+    for (0..16) |_| {
+        const event = try client.pollOutput(&scratch);
+        if (event.event_type == .none) break;
+        if (event.event_type == .state_changed and
+            std.mem.eql(u8, scratch[0..event.written], "server_shutdown")) saw_event = true;
+    }
+    try std.testing.expect(saw_event);
+}
+
 test "network timeout fails session" {
     const allocator = std.testing.allocator;
     const endpoint: types.MoshEndpoint = .{
@@ -1500,4 +1709,56 @@ test "multi-fragment message reassembled out of order" {
     }
     try std.testing.expect(saw_bytes);
     try std.testing.expectEqual(@as(usize, 0), client.inbound_fragments.count());
+}
+
+test "a new fragmented message abandons the one in progress" {
+    const allocator = std.testing.allocator;
+    const endpoint: types.MoshEndpoint = .{
+        .host = "127.0.0.1",
+        .port = 60001,
+        .key_base64_22 = "ABCDEFGHIJKLMNOPQRSTUV",
+    };
+
+    var client = try Client.init(allocator, endpoint, .{ .use_network_crypto = false });
+    defer client.deinit();
+    try client.start(0);
+
+    const host_message = try protolite.encodeHostMessage(allocator, &.{.{ .host_bytes = "abandoned-fragments" }});
+    defer allocator.free(host_message);
+
+    const inbound: protolite.TransportInstruction = .{
+        .protocol_version = types.PROTOCOL_VERSION,
+        .old_num = 0,
+        .new_num = 1,
+        .ack_num = 0,
+        .throwaway_num = 0,
+        .diff = host_message,
+        .chaff = &.{},
+    };
+    const inbound_payload = try inbound.encode(allocator);
+    defer allocator.free(inbound_payload);
+
+    var envelope: wire.PacketEnvelope = .{ .timestamp = 100, .timestamp_reply = 0 };
+    var envelope_buf: [wire.PacketEnvelope.bytes]u8 = undefined;
+    envelope.encode(&envelope_buf);
+
+    // Each message loses its last fragment, so none of them completes.
+    const chunk_size = inbound_payload.len / 3 + 1;
+    for (0..4) |message_id| {
+        var fragments = try wire.fragmentPayload(allocator, message_id, inbound_payload, chunk_size);
+        defer {
+            for (fragments.items) |f| allocator.free(f);
+            fragments.deinit(allocator);
+        }
+        try std.testing.expect(fragments.items.len > 1);
+        for (fragments.items[0 .. fragments.items.len - 1]) |frag| {
+            var full = try allocator.alloc(u8, wire.PacketEnvelope.bytes + frag.len);
+            defer allocator.free(full);
+            @memcpy(full[0..wire.PacketEnvelope.bytes], &envelope_buf);
+            @memcpy(full[wire.PacketEnvelope.bytes..], frag);
+            try client.processInboundPayload(full, 200);
+        }
+        try std.testing.expectEqual(@as(usize, 1), client.inbound_fragments.count());
+        try std.testing.expect(client.inbound_fragments.contains(message_id));
+    }
 }

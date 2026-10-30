@@ -4,6 +4,7 @@ import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.UiText
 import io.github.andreacovelli.abyssh.model.UiTextException
 
+import android.os.SystemClock
 import android.util.Log
 import io.github.andreacovelli.abyssh.service.mosh.MoshBootstrapParser
 import io.github.andreacovelli.abyssh.service.mosh.MoshEndpointResolver
@@ -27,6 +28,11 @@ private const val BOOTSTRAP_READ_BYTES = 4096
 private const val BOOTSTRAP_POLL_MS = 50L
 private const val BOOTSTRAP_WINDOW_MS = 10_000L
 private const val BOOTSTRAP_EXTENSION_MS = 15_000L
+private const val SHUTDOWN_WAIT_MS = 1_000L
+private const val SHUTDOWN_POLL_MS = 10L
+
+/** How a Mosh read loop ended: [shellExited] when the server ended the session, or [failureCode] when it failed. */
+internal class MoshReadResult(val shellExited: Boolean = false, val failureCode: Int? = null)
 
 /** What the Mosh read loop reports back to the session. */
 internal class MoshEvents(
@@ -58,13 +64,36 @@ internal class MoshTransport(
 
     override fun close() = service.close()
 
+    /**
+     * Tells mosh-server to exit and waits up to [SHUTDOWN_WAIT_MS] for its ack, so the
+     * server doesn't outlive the tab. This blocks the session thread on purpose:
+     * [TerminalSessionEngine.dispose] closes that thread right after queueing the
+     * disconnect, which would cut a suspending wait short.
+     */
+    fun shutdown() {
+        if (!service.startShutdown()) return
+        val deadline = SystemClock.elapsedRealtime() + SHUTDOWN_WAIT_MS
+        var acknowledged = false
+        while (SystemClock.elapsedRealtime() < deadline) {
+            service.maintenanceTick()
+            service.pumpNetwork()
+            // The terminal is going away, so output that arrives meanwhile is dropped.
+            runCatching { generateSequence { service.pollOutput() }.forEach { } }
+            acknowledged = service.isShutdownAcknowledged()
+            if (acknowledged || service.pollState()?.state == MoshState.Failed.code) break
+            Thread.sleep(SHUTDOWN_POLL_MS)
+        }
+        Log.d(TAG, "MOSH: shutdown ${if (acknowledged) "acknowledged" else "not acknowledged"}")
+    }
+
     suspend fun open(spec: TabSpec, geometry: TerminalGeometry) {
         Log.d(TAG, "MOSH: Phase 1 — SSH bootstrap start")
         check(ssh.isAvailable()) { "Native SSH unavailable for mosh bootstrap" }
         ssh.connect(spec)
         val endpointHost =
             try {
-                withContext(Dispatchers.IO) { MoshEndpointResolver.resolve(spec.host) }
+                val peer = ssh.peerAddress()
+                withContext(Dispatchers.IO) { MoshEndpointResolver.resolve(spec.host, peer) }
             } catch (error: IllegalStateException) {
                 ssh.close()
                 throw error
@@ -97,15 +126,16 @@ internal class MoshTransport(
     }
 
     /**
-     * Drives the client until it fails or the loop is cancelled, reporting through
-     * [events]. Returns the failure code when the session failed.
+     * Drives the client until the server ends the session, the session fails, or the
+     * loop is cancelled, reporting through [events].
      */
-    suspend fun read(events: MoshEvents): Int? {
+    suspend fun read(events: MoshEvents): MoshReadResult {
         Log.d(TAG, "MOSH: read loop started")
         var loopCount = 0
         pacer.onActivity()
         var failure: MoshRuntimeState? = null
-        while (failure == null && currentCoroutineContext().isActive) {
+        var shellExited = false
+        while (failure == null && !shellExited && currentCoroutineContext().isActive) {
             loopCount++
             // Drive retransmissions, acks, heartbeats, and timeout checks, then the UDP socket.
             if (!service.maintenanceTick()) Log.w(TAG, "MOSH: maintenanceTick returned false")
@@ -119,6 +149,10 @@ internal class MoshTransport(
             if (runtime?.state == MoshState.Failed.code) {
                 failure = runtime
                 Log.e(TAG, "MOSH: session FAILED code=${runtime.lastFailureCode}")
+            } else if (runtime?.state == MoshState.Stopped.code) {
+                // The server sends its shutdown once its shell exits; the client acks it and stops.
+                shellExited = true
+                Log.d(TAG, "MOSH: server ended the session")
             } else {
                 // Adaptive cadence: Mosh's retransmit/heartbeat timers are coarse, so
                 // backing the pump off while idle is safe and avoids a 500 Hz spin.
@@ -127,7 +161,7 @@ internal class MoshTransport(
             }
         }
         Log.d(TAG, "MOSH: read loop exited after $loopCount iterations")
-        return failure?.lastFailureCode
+        return MoshReadResult(shellExited = shellExited, failureCode = failure?.lastFailureCode)
     }
 
     /** Handles every queued output event; returns whether there were any. */
@@ -160,8 +194,8 @@ internal class MoshTransport(
         execOpened: Boolean,
         timeoutMs: Long,
     ): MoshBootstrapParser.MoshEndpoint? {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        while (SystemClock.elapsedRealtime() < deadline) {
             val chunk = ssh.read(BOOTSTRAP_READ_BYTES)
             if (chunk != null && chunk.isNotEmpty()) {
                 output.append(String(chunk, Charsets.UTF_8))
@@ -183,8 +217,11 @@ internal class MoshTransport(
     private fun bootstrapFailed(rawOutput: String, execOpened: Boolean): Nothing {
         val eofBeforeClose = !execOpened || ssh.isChannelEof()
         ssh.close()
+        // The output is shown to the user but kept out of the log: it is session output.
         val (reason, text) = when {
-            rawOutput.isNotBlank() -> rawOutput.trim().let { it to UiText.Raw(it) }
+            rawOutput.isNotBlank() ->
+                "Mosh bootstrap output had no MOSH CONNECT line (${rawOutput.length} chars)" to
+                    UiText.Raw(rawOutput.trim())
             execOpened && !eofBeforeClose ->
                 "Mosh bootstrap command still running after timeout (no output, no EOF)" to
                     UiText.Resource(R.string.error_mosh_bootstrap_timeout)
