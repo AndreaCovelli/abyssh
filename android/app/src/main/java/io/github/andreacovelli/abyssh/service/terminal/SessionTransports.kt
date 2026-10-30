@@ -80,6 +80,7 @@ internal class SessionTransports(hostKeyPolicy: HostKeyPolicy, val localShell: N
 
     fun closeAll() {
         ssh.close()
+        mosh.shutdown()
         mosh.close()
         localShell.close()
     }

@@ -32,6 +32,10 @@ class NativeMoshBridge {
     // Returns 0 on success.
     external fun nativePollState(handle: Long, outState: LongArray): Int
 
+    // Sends Mosh's shutdown so mosh-server exits; nativeIsShutdownAcknowledged reports its ack.
+    external fun nativeStartShutdown(handle: Long): Int
+    external fun nativeIsShutdownAcknowledged(handle: Long): Boolean
+
     external fun nativeStop(handle: Long): Int
     external fun nativeDestroy(handle: Long): Int
 }

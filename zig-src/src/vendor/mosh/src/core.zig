@@ -11,6 +11,13 @@ const socket = @import("socket.zig");
 
 const log = std.log.scoped(.mosh);
 
+/// The state number Mosh reserves for "end the session". A peer that receives
+/// it acknowledges it and exits, which is how mosh-server learns to stop.
+pub const shutdown_state_num: u64 = std.math.maxInt(u64);
+
+/// How often to resend the shutdown request until the server acknowledges it.
+const shutdown_resend_interval_ms: u64 = 200;
+
 pub const OutputEvent = struct {
     event_type: types.OutputEventType,
     payload: []u8,
@@ -112,6 +119,11 @@ pub const Client = struct {
 
     // Circuit breaker
     consecutive_recv_failures: u32 = 0,
+
+    // Shutdown handshake: set once `startShutdown` sends the reserved final state.
+    shutdown_started_at_ms: ?u64 = null,
+    shutdown_last_sent_at_ms: u64 = 0,
+    shutdown_acknowledged: bool = false,
 
     // Fragment assembly
     inbound_fragments: std.AutoHashMap(u64, std.ArrayList([]const u8)),
@@ -235,11 +247,28 @@ pub const Client = struct {
         self.state = .stopped;
     }
 
+    /// Starts Mosh's shutdown handshake: tells the server to end the session,
+    /// so mosh-server and its shell exit instead of waiting out their network
+    /// timeout. Keep calling `maintenanceTick` and `pumpNetwork` until
+    /// `isShutdownAcknowledged` or a deadline; input and resizes are refused.
+    pub fn startShutdown(self: *Self, now_ms: u64) !void {
+        if (self.state != .running) return error.NotStarted;
+        if (self.shutdown_started_at_ms != null) return;
+        log.info("shutdown: requesting server exit", .{});
+        self.shutdown_started_at_ms = now_ms;
+        try self.sendShutdown(now_ms);
+    }
+
+    pub fn isShutdownAcknowledged(self: *const Self) bool {
+        return self.shutdown_acknowledged;
+    }
+
     pub fn sendInput(self: *Self, bytes: []const u8, now_ms: u64) !void {
         if (self.state != .running) {
             log.warn("sendInput: not running (state={s})", .{@tagName(self.state)});
             return error.NotStarted;
         }
+        if (self.shutdown_started_at_ms != null) return error.ShuttingDown;
         const user_message = try protolite.encodeUserMessage(self.allocator, &.{.{ .keystroke = bytes }});
         defer self.allocator.free(user_message);
 
@@ -251,6 +280,7 @@ pub const Client = struct {
             log.warn("resize: not running (state={s})", .{@tagName(self.state)});
             return error.NotStarted;
         }
+        if (self.shutdown_started_at_ms != null) return error.ShuttingDown;
         if (cols <= 0 or rows <= 0) return error.InvalidResize;
         log.info("resize: {d}x{d}", .{ cols, rows });
 
@@ -433,6 +463,11 @@ pub const Client = struct {
 
         if (instruction.ack_num) |ack_num| {
             self.acknowledgePendingOutbound(ack_num);
+            if (ack_num == shutdown_state_num and self.shutdown_started_at_ms != null and !self.shutdown_acknowledged) {
+                self.shutdown_acknowledged = true;
+                log.info("shutdown: acknowledged by server", .{});
+                try self.enqueueStringEvent(.state_changed, "shutdown_acknowledged");
+            }
         }
         if (instruction.throwaway_num) |throwaway_num| self.pruneAppliedRemoteStates(throwaway_num);
 
@@ -528,6 +563,13 @@ pub const Client = struct {
         {
             try self.sendAckOnly(now_ms);
             self.last_outbound_at_ms = now_ms;
+        }
+
+        if (self.shutdown_started_at_ms != null and !self.shutdown_acknowledged and
+            now_ms >= self.shutdown_last_sent_at_ms and
+            now_ms - self.shutdown_last_sent_at_ms >= shutdown_resend_interval_ms)
+        {
+            try self.sendShutdown(now_ms);
         }
     }
 
@@ -976,6 +1018,34 @@ pub const Client = struct {
         self.ack_dirty_at_ms = null;
     }
 
+    /// Sends the reserved final state, diffed from the newest state sent. The
+    /// server ignores it unless it holds that state, so unacknowledged states
+    /// go out again first: the request can't wait on their retransmit timer.
+    fn sendShutdown(self: *Self, now_ms: u64) !void {
+        for (self.pending_outbound_order.items) |state_num| {
+            const pending = self.pending_outbound.get(state_num) orelse continue;
+            try self.transmitPayload(pending.payload, now_ms);
+        }
+
+        const instruction: protolite.TransportInstruction = .{
+            .protocol_version = types.PROTOCOL_VERSION,
+            .old_num = self.last_state_num_sent,
+            .new_num = shutdown_state_num,
+            .ack_num = self.latest_received_state_num,
+            .throwaway_num = self.computeThrowawayNum(),
+            .diff = null,
+            .chaff = &.{},
+        };
+        const encoded = try instruction.encode(self.allocator);
+        defer self.allocator.free(encoded);
+
+        const compressed = try self.encodeAndCompress(encoded);
+        defer self.allocator.free(compressed);
+
+        try self.transmitPayload(compressed, now_ms);
+        self.shutdown_last_sent_at_ms = now_ms;
+    }
+
     fn computeThrowawayNum(self: *const Self) u64 {
         if (self.pending_outbound_order.items.len == 0) return 0;
         return self.pending_outbound_order.items[0];
@@ -1273,6 +1343,57 @@ test "sendInput produces network datagram" {
     const len = try client.pollNetworkDatagram(&buf);
     try std.testing.expect(len != null);
     try std.testing.expect(len.? > wire.PacketEnvelope.bytes);
+}
+
+test "shutdown resends pending state, then completes on the server's ack" {
+    const allocator = std.testing.allocator;
+    const endpoint: types.MoshEndpoint = .{
+        .host = "127.0.0.1",
+        .port = 60001,
+        .key_base64_22 = "ABCDEFGHIJKLMNOPQRSTUV",
+    };
+
+    var client = try Client.init(allocator, endpoint, .{ .use_network_crypto = false });
+    defer client.deinit();
+    try client.start(0);
+    try client.sendInput("x", 0);
+
+    var buf: [1024]u8 = undefined;
+    while (try client.pollNetworkDatagram(&buf)) |_| {}
+
+    try client.startShutdown(10);
+    // The unacknowledged keystroke state, then the shutdown request.
+    try std.testing.expect((try client.pollNetworkDatagram(&buf)) != null);
+    try std.testing.expect((try client.pollNetworkDatagram(&buf)) != null);
+    try std.testing.expect((try client.pollNetworkDatagram(&buf)) == null);
+    try std.testing.expectError(error.ShuttingDown, client.sendInput("y", 20));
+    try std.testing.expectError(error.ShuttingDown, client.resize(80, 24, 20));
+
+    // Unacknowledged, the request goes out again after the resend interval.
+    try client.maintenanceTick(10 + shutdown_resend_interval_ms);
+    try std.testing.expect((try client.pollNetworkDatagram(&buf)) != null);
+    while (try client.pollNetworkDatagram(&buf)) |_| {}
+
+    try std.testing.expect(!client.isShutdownAcknowledged());
+    try client.processInboundInstruction(.{ .ack_num = shutdown_state_num }, 300);
+    try std.testing.expect(client.isShutdownAcknowledged());
+    try std.testing.expectEqual(@as(u32, 0), client.runtimeState().pending_outbound);
+
+    try client.maintenanceTick(10 + 4 * shutdown_resend_interval_ms);
+    try std.testing.expect((try client.pollNetworkDatagram(&buf)) == null);
+}
+
+test "shutdown needs a running session" {
+    const allocator = std.testing.allocator;
+    const endpoint: types.MoshEndpoint = .{
+        .host = "127.0.0.1",
+        .port = 60001,
+        .key_base64_22 = "ABCDEFGHIJKLMNOPQRSTUV",
+    };
+
+    var client = try Client.init(allocator, endpoint, .{});
+    defer client.deinit();
+    try std.testing.expectError(error.NotStarted, client.startShutdown(0));
 }
 
 test "network timeout fails session" {

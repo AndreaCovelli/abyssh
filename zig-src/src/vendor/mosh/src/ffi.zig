@@ -174,6 +174,20 @@ pub export fn mosh_client_pump_network(handle: ?*anyopaque) callconv(.c) c_int {
     return @backingInt(types.ErrorCode.ok);
 }
 
+pub export fn mosh_client_start_shutdown(handle: ?*anyopaque) callconv(.c) c_int {
+    const client = fromHandle(handle) orelse return @backingInt(types.ErrorCode.bad_handle);
+    client.startShutdown(nowMs()) catch |err| return @backingInt(mapCoreError(err));
+    return @backingInt(types.ErrorCode.ok);
+}
+
+/// Sets `out_acknowledged` to 1 once the server has acknowledged the shutdown.
+pub export fn mosh_client_shutdown_acknowledged(handle: ?*anyopaque, out_acknowledged: ?*c_int) callconv(.c) c_int {
+    const client = fromHandle(handle) orelse return @backingInt(types.ErrorCode.bad_handle);
+    const slot = out_acknowledged orelse return @backingInt(types.ErrorCode.invalid_argument);
+    slot.* = @intFromBool(client.isShutdownAcknowledged());
+    return @backingInt(types.ErrorCode.ok);
+}
+
 pub export fn mosh_client_stop(handle: ?*anyopaque) callconv(.c) c_int {
     const client = fromHandle(handle) orelse return @backingInt(types.ErrorCode.bad_handle);
     client.stop() catch |err| return @backingInt(mapCoreError(err));
@@ -208,7 +222,7 @@ fn mapCoreError(err: anyerror) types.ErrorCode {
         error.InvalidPrintableKeyLength,
         error.InvalidPrintableKeyEncoding,
         => .invalid_argument,
-        error.NotStarted => .not_started,
+        error.NotStarted, error.ShuttingDown => .not_started,
         error.AlreadyStarted => .already_started,
         error.OutputBufferTooSmall => .output_buffer_too_small,
         error.OutOfMemory => .alloc_failed,

@@ -33,7 +33,11 @@ Changed behavior:
   network is down or unreachable returns `NetworkUnavailable`.
 - `src/core.zig`: drops a datagram that fails with `NetworkUnavailable`
   without counting it toward the send-failure limit, so losing the network
-  while switching networks doesn't end the session.
+  while switching networks doesn't end the session. `startShutdown` sends
+  Mosh's shutdown (state number `maxInt(u64)`) and resends it until the
+  server acks, which makes `mosh-server` exit.
+- `src/ffi.zig`, `src/mosh_ffi.h`: `mosh_client_start_shutdown` and
+  `mosh_client_shutdown_acknowledged`.
 
 Removed: `src/test_live.zig`, a standalone program for testing against a live
 server. Nothing built it, and it did not compile on Zig 0.17.

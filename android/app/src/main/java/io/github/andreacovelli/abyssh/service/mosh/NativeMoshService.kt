@@ -126,6 +126,17 @@ class NativeMoshService(
         )
     }
 
+    /** Asks the server to end the session. Returns false when the client isn't running. */
+    fun startShutdown(): Boolean {
+        if (handle == 0L) return false
+        return bridge.nativeStartShutdown(handle) == 0
+    }
+
+    fun isShutdownAcknowledged(): Boolean {
+        if (handle == 0L) return false
+        return bridge.nativeIsShutdownAcknowledged(handle)
+    }
+
     fun stop() {
         if (handle == 0L) return
         bridge.nativeStop(handle)

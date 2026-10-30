@@ -27,6 +27,8 @@ private const val BOOTSTRAP_READ_BYTES = 4096
 private const val BOOTSTRAP_POLL_MS = 50L
 private const val BOOTSTRAP_WINDOW_MS = 10_000L
 private const val BOOTSTRAP_EXTENSION_MS = 15_000L
+private const val SHUTDOWN_WAIT_MS = 1_000L
+private const val SHUTDOWN_POLL_MS = 10L
 
 /** What the Mosh read loop reports back to the session. */
 internal class MoshEvents(
@@ -57,6 +59,28 @@ internal class MoshTransport(
     }
 
     override fun close() = service.close()
+
+    /**
+     * Tells mosh-server to exit and waits up to [SHUTDOWN_WAIT_MS] for its ack, so the
+     * server doesn't outlive the tab. This blocks the session thread on purpose:
+     * [TerminalSessionEngine.dispose] closes that thread right after queueing the
+     * disconnect, which would cut a suspending wait short.
+     */
+    fun shutdown() {
+        if (!service.startShutdown()) return
+        val deadline = System.currentTimeMillis() + SHUTDOWN_WAIT_MS
+        var acknowledged = false
+        while (System.currentTimeMillis() < deadline) {
+            service.maintenanceTick()
+            service.pumpNetwork()
+            // The terminal is going away, so output that arrives meanwhile is dropped.
+            runCatching { generateSequence { service.pollOutput() }.forEach { } }
+            acknowledged = service.isShutdownAcknowledged()
+            if (acknowledged || service.pollState()?.state == MoshState.Failed.code) break
+            Thread.sleep(SHUTDOWN_POLL_MS)
+        }
+        Log.d(TAG, "MOSH: shutdown ${if (acknowledged) "acknowledged" else "not acknowledged"}")
+    }
 
     suspend fun open(spec: TabSpec, geometry: TerminalGeometry) {
         Log.d(TAG, "MOSH: Phase 1 — SSH bootstrap start")

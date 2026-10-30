@@ -55,6 +55,8 @@ int32_t mosh_client_poll_output(
     uint64_t* out_echo_ack);
 int32_t mosh_client_poll_state(void* handle, mosh_runtime_state* out_state);
 int32_t mosh_client_pump_network(void* handle);
+int32_t mosh_client_start_shutdown(void* handle);
+int32_t mosh_client_shutdown_acknowledged(void* handle, int32_t* out_acknowledged);
 int32_t mosh_client_stop(void* handle);
 int32_t mosh_client_destroy(void* handle);
 
