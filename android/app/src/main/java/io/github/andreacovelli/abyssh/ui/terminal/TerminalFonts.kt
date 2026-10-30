@@ -45,7 +45,7 @@ internal class TerminalFonts(
     val symbols: Typeface,
     val fallback: Typeface,
     // Icon codepoints the primary font file itself maps (e.g. its own Powerline
-    // arrows). Read from the file because Paint.hasGlyph() also counts system fonts.
+    // branch symbol). Read from the file because Paint.hasGlyph() also counts system fonts.
     private val primaryPuaCoverage: IntArray,
 ) {
     // hasGlyph depends only on the typeface, so these probes never change size.
@@ -104,9 +104,10 @@ internal class TerminalFonts(
 
 /**
  * Icon codepoints use the primary font only when its file really maps them
- * (its own Powerline arrows match the cell metrics best). Everything else goes
- * to the bundled Nerd Font, never to a system font that may map the codepoint
- * to an unrelated glyph.
+ * (its own Powerline branch and lock symbols match its style best). Everything
+ * else goes to the bundled Nerd Font, never to a system font that may map the
+ * codepoint to an unrelated glyph. The Powerline separators never get here:
+ * [TerminalSprites] draws them.
  */
 internal fun privateUseChoice(codepoint: Int, primaryPuaCoverage: IntArray): Int =
     if (primaryPuaCoverage.binarySearch(codepoint) >= 0) PAINT_PRIMARY else PAINT_SYMBOLS
