@@ -43,6 +43,11 @@ dir = "android"
 # hosts, keys, and settings saved on the device.
 run = "./gradlew connectedDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true"
 
+[tasks."test:device:compile"]
+description = "Compile the instrumented tests without running them, so they need no device"
+dir = "android"
+run = "./gradlew compileDebugAndroidTestKotlin"
+
 [tasks.format]
 description = "Format Kotlin sources and Gradle scripts with ktlint"
 dir = "android"
@@ -69,6 +74,7 @@ run = [
   { task = "detekt" },
   { task = "lint" },
   { task = "test" },
+  { task = "test:device:compile" },
   { task = "build" },
   { task = "check:actions" },
 ]

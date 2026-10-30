@@ -15,7 +15,11 @@ import androidx.compose.ui.input.pointer.PointerButtons
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.PointerKeyboardModifiers
 import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.isAltPressed
+import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
@@ -52,11 +56,11 @@ internal data class TerminalScrollDelta(val delta: Int, val x: Float, val y: Flo
 internal class TerminalCanvasCallbacks(
     val onSelectionChange: (TerminalSelection?) -> Unit,
     val onTap: () -> Unit,
-    val onPrimaryClick: (x: Float, y: Float) -> Unit,
+    val onPrimaryClick: (mods: Int, x: Float, y: Float) -> Unit,
     val onLinkTap: (col: Int, row: Int, textUrl: String?, noLink: () -> Unit) -> Unit,
-    val onSecondaryClick: (x: Float, y: Float) -> Unit,
-    val onMouseButton: (button: Int, action: Int, x: Float, y: Float) -> Unit,
-    val onAppSelectionDrag: (action: Int, x: Float, y: Float) -> Unit,
+    val onSecondaryClick: (mods: Int, x: Float, y: Float) -> Unit,
+    val onMouseButton: (button: Int, action: Int, mods: Int, x: Float, y: Float) -> Unit,
+    val onAppSelectionDrag: (action: Int, mods: Int, x: Float, y: Float) -> Unit,
     val onShiftSelectionStart: () -> Unit,
     val onFontSizeChange: (sizeSp: Float) -> Unit,
 )
@@ -73,7 +77,7 @@ internal class TerminalGestureEnv(
     val canvasSize: IntSize,
     val fontSizeSp: Float,
     val fontSizeRange: ClosedFloatingPointRange<Float>,
-    val shiftActive: Boolean,
+    val stickyModifiers: ModifierState,
     val haptics: HapticFeedback,
     val callbacks: TerminalCanvasCallbacks,
 ) {
@@ -93,7 +97,12 @@ internal class TerminalGestureEnv(
     /** The cell under a point in snapshot pixels. */
     fun cellAt(position: Offset): Int? = snapshot.cellAt(position.x, position.y, cell.width, cell.height)
 
-    fun appDrag(action: Int, position: Offset) = callbacks.onAppSelectionDrag(action, position.x, position.y)
+    fun appDrag(action: Int, mods: Int, position: Offset) =
+        callbacks.onAppSelectionDrag(action, mods, position.x, position.y)
+
+    /** Ghostty modifier bits for a mouse event with the [keyboard] keys held; see [mouseModifierBits]. */
+    fun mouseMods(keyboard: PointerKeyboardModifiers, includeShift: Boolean = true): Int =
+        mouseModifierBits(stickyModifiers, keyboard.toModifierState(), includeShift)
 
     fun longPressHaptic() = haptics.performHapticFeedback(HapticFeedbackType.LongPress)
 }
@@ -194,32 +203,35 @@ internal class TerminalCanvasGestures(
 
     private suspend fun AwaitPointerEventScope.gesture() {
         val down = awaitFirstDown(requireUnconsumed = false)
-        val shiftOnDown = env.value.shiftActive || currentEvent.keyboardModifiers.isShiftPressed
+        val held = HeldModifiers.of(env.value, currentEvent.keyboardModifiers)
         val isMouse = down.type == PointerType.Mouse
         val mouseButton = if (isMouse) nonPrimaryMouseButton(currentEvent.buttons) else null
         when {
             mouseButton != null -> forwardMouseButton(down, mouseButton)
-            isMouse -> mouseLeftButton(down, shiftOnDown)
-            else -> touch(down, shiftOnDown)
+            isMouse -> mouseLeftButton(down, held)
+            else -> touch(down, held)
         }
     }
 
-    /** A physical right or middle click, passed through as is with motion while held. */
+    /**
+     * A physical right or middle click, passed through as is with motion while held. The
+     * modifiers held go with it, so tmux sees Alt+right click as M-MouseDown3Pane.
+     */
     private suspend fun AwaitPointerEventScope.forwardMouseButton(down: PointerInputChange, button: Int) {
-        fun send(action: Int, position: Offset) {
+        fun send(action: Int, position: Offset, event: PointerEvent) {
             val p = env.value.toSnapshot(position)
-            env.value.callbacks.onMouseButton(button, action, p.x, p.y)
+            env.value.callbacks.onMouseButton(button, action, env.value.mouseMods(event.keyboardModifiers), p.x, p.y)
         }
-        send(TerminalMouseAction.Press, down.position)
+        send(TerminalMouseAction.Press, down.position, currentEvent)
         down.consume()
         while (true) {
             val event = awaitPointerEvent()
             val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.first()
             if (!change.pressed || nonPrimaryMouseButton(event.buttons) != button) {
-                send(TerminalMouseAction.Release, change.position)
+                send(TerminalMouseAction.Release, change.position, event)
                 return
             }
-            if (change.position != change.previousPosition) send(TerminalMouseAction.Motion, change.position)
+            if (change.position != change.previousPosition) send(TerminalMouseAction.Motion, change.position, event)
             change.consume()
         }
     }
@@ -229,10 +241,10 @@ internal class TerminalCanvasGestures(
      * mouse drags the button goes to it as is; otherwise dragging selects text and a
      * click without moving acts like a tap.
      */
-    private suspend fun AwaitPointerEventScope.mouseLeftButton(down: PointerInputChange, shiftOnDown: Boolean) {
+    private suspend fun AwaitPointerEventScope.mouseLeftButton(down: PointerInputChange, held: HeldModifiers) {
         val start = env.value
-        val toApp = start.snapshot.appHandlesSelectionDrag && !shiftOnDown
-        if (toApp) start.appDrag(TerminalMouseAction.Press, start.toSnapshot(down.position))
+        val toApp = start.snapshot.appHandlesSelectionDrag && !held.shift
+        if (toApp) start.appDrag(TerminalMouseAction.Press, held.primary, start.toSnapshot(down.position))
         down.consume()
         val downCell = start.cellAt(start.toSnapshot(down.position))
         var selecting = false
@@ -244,16 +256,16 @@ internal class TerminalCanvasGestures(
             if (!change.pressed) {
                 when {
                     toApp -> {
-                        current.appDrag(TerminalMouseAction.Release, pos)
+                        current.appDrag(TerminalMouseAction.Release, held.primary, pos)
                         current.callbacks.onTap()
                     }
-                    !selecting -> tap(down.position, change.uptimeMillis, shiftOnDown)
+                    !selecting -> tap(down.position, change.uptimeMillis, held)
                 }
                 return
             }
             if (change.position != change.previousPosition) {
                 if (toApp) {
-                    current.appDrag(TerminalMouseAction.Motion, pos)
+                    current.appDrag(TerminalMouseAction.Motion, held.primary, pos)
                 } else {
                     val cell = current.cellAt(pos)
                     if (!selecting && cell != null && downCell != null && cell != downCell) {
@@ -269,8 +281,8 @@ internal class TerminalCanvasGestures(
         }
     }
 
-    private suspend fun AwaitPointerEventScope.touch(down: PointerInputChange, shiftOnDown: Boolean) {
-        val gesture = TouchGesture(down, shiftOnDown)
+    private suspend fun AwaitPointerEventScope.touch(down: PointerInputChange, held: HeldModifiers) {
+        val gesture = TouchGesture(down, held)
         try {
             while (!gesture.finished) {
                 val timeout = gesture.timeoutMs()
@@ -283,14 +295,14 @@ internal class TerminalCanvasGestures(
     }
 
     /** A tap or click that didn't move: double-tap selects a word, else clear the selection or click. */
-    private fun tap(position: Offset, time: Long, shiftOnDown: Boolean) {
+    private fun tap(position: Offset, time: Long, held: HeldModifiers) {
         val current = env.value
         val tapPos = current.toSnapshot(position)
         when {
             doubleTap.register(tapPos, time, config.doubleTapTimeoutMs, config.doubleTapSlopPx) ->
                 selectWordAt(current, tapPos)
             current.selection != null -> current.callbacks.onSelectionChange(null)
-            else -> click(current, tapPos, shiftOnDown)
+            else -> click(current, tapPos, held)
         }
     }
 
@@ -301,15 +313,15 @@ internal class TerminalCanvasGestures(
         current.longPressHaptic()
     }
 
-    private fun click(current: TerminalGestureEnv, position: Offset, shiftOnDown: Boolean) {
+    private fun click(current: TerminalGestureEnv, position: Offset, held: HeldModifiers) {
         val snapshot = current.snapshot
         val callbacks = current.callbacks
         val click = {
-            callbacks.onPrimaryClick(position.x, position.y)
+            callbacks.onPrimaryClick(held.primary, position.x, position.y)
             callbacks.onTap()
         }
         val cell = current.cellAt(position)
-        if (cell == null || (snapshot.appTracksMouse && !shiftOnDown)) {
+        if (cell == null || (snapshot.appTracksMouse && !held.shift)) {
             click()
             return
         }
@@ -321,7 +333,7 @@ internal class TerminalCanvasGestures(
     }
 
     /** One touch gesture, from the first finger down to the last finger up. */
-    private inner class TouchGesture(private val down: PointerInputChange, private val shiftOnDown: Boolean) {
+    private inner class TouchGesture(private val down: PointerInputChange, private val held: HeldModifiers) {
         var finished = false
             private set
         private var dragMode = DragMode.None
@@ -374,7 +386,7 @@ internal class TerminalCanvasGestures(
             autoScrollingSelection = false
             if (dragMode == DragMode.AppMouseDrag) {
                 val current = env.value
-                current.appDrag(TerminalMouseAction.Release, current.toSnapshot(lastPointerPos))
+                current.appDrag(TerminalMouseAction.Release, held.primary, current.toSnapshot(lastPointerPos))
             }
         }
 
@@ -382,8 +394,8 @@ internal class TerminalCanvasGestures(
             val current = env.value
             val snapshot = current.snapshot
             val downPos = current.toSnapshot(down.position)
-            if (snapshot.appHandlesSelectionDrag && !shiftOnDown) {
-                current.appDrag(TerminalMouseAction.Press, downPos)
+            if (snapshot.appHandlesSelectionDrag && !held.shift) {
+                current.appDrag(TerminalMouseAction.Press, held.primary, downPos)
                 current.longPressHaptic()
                 didDragGesture = true
                 dragMode = DragMode.AppMouseDrag
@@ -417,7 +429,7 @@ internal class TerminalCanvasGestures(
             dragMode = DragMode.None
             val current = env.value
             if (releasedDragMode == DragMode.AppMouseDrag) {
-                current.appDrag(TerminalMouseAction.Release, current.toSnapshot(lastPointerPos))
+                current.appDrag(TerminalMouseAction.Release, held.primary, current.toSnapshot(lastPointerPos))
             }
             if (releasedDragMode != DragMode.None) return
             val heldMs = lastEventUptime - down.uptimeMillis
@@ -428,9 +440,9 @@ internal class TerminalCanvasGestures(
             when {
                 twoFingerTap -> {
                     val tapPos = current.toSnapshot(down.position)
-                    current.callbacks.onSecondaryClick(tapPos.x, tapPos.y)
+                    current.callbacks.onSecondaryClick(held.secondary, tapPos.x, tapPos.y)
                 }
-                !didScroll && !didPinch && !didDragGesture -> tap(down.position, lastEventUptime, shiftOnDown)
+                !didScroll && !didPinch && !didDragGesture -> tap(down.position, lastEventUptime, held)
             }
         }
 
@@ -473,7 +485,7 @@ internal class TerminalCanvasGestures(
             lastPointerPos = change.position
             stopAutoScroll()
             if (change.position != change.previousPosition) {
-                current.appDrag(TerminalMouseAction.Motion, pos)
+                current.appDrag(TerminalMouseAction.Motion, held.primary, pos)
                 change.consume()
             }
         }
@@ -539,3 +551,36 @@ private fun nonPrimaryMouseButton(buttons: PointerButtons): Int? = when {
     buttons.isTertiaryPressed -> TerminalMouseButton.Middle
     else -> null
 }
+
+/**
+ * The modifiers held when a gesture starts. Shift keeps a left click or drag in the
+ * terminal, for selection and links, so it is left out of the bits the app gets for left
+ * button events ([primary]) but kept for a right click ([secondary]).
+ */
+private class HeldModifiers(val shift: Boolean, val primary: Int, val secondary: Int) {
+    companion object {
+        fun of(env: TerminalGestureEnv, keyboard: PointerKeyboardModifiers) = HeldModifiers(
+            shift = env.stickyModifiers.shift || keyboard.isShiftPressed,
+            primary = env.mouseMods(keyboard, includeShift = false),
+            secondary = env.mouseMods(keyboard),
+        )
+    }
+}
+
+/**
+ * Ghostty modifier bits for a mouse event: the accessory bar's [sticky] modifiers and the
+ * [keyboard] keys held, with Shift only when [includeShift].
+ */
+internal fun mouseModifierBits(sticky: ModifierState, keyboard: ModifierState, includeShift: Boolean): Int = ModifierState(
+    ctrl = sticky.ctrl || keyboard.ctrl,
+    alt = sticky.alt || keyboard.alt,
+    shift = includeShift && (sticky.shift || keyboard.shift),
+    cmd = sticky.cmd || keyboard.cmd,
+).terminalMods()
+
+private fun PointerKeyboardModifiers.toModifierState() = ModifierState(
+    ctrl = isCtrlPressed,
+    alt = isAltPressed,
+    shift = isShiftPressed,
+    cmd = isMetaPressed,
+)

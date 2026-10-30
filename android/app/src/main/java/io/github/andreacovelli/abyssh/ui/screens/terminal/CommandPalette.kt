@@ -277,7 +277,7 @@ private fun FocusedTabPreview(tab: TabSession) {
                 selectionBackgroundColor = Color.Transparent,
                 selectionForegroundColor = Color.Transparent,
                 onTap = {},
-                onPrimaryClick = { _, _ -> },
+                onPrimaryClick = { _, _, _ -> },
                 onScroll = { _, _, _ -> },
                 onFontSizeChange = {},
                 onSelectionChanged = {},
