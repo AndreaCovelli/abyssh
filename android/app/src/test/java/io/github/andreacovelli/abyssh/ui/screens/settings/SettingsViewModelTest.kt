@@ -45,9 +45,11 @@ class SettingsViewModelTest {
         vm.setAppLockEnabled(true)
         vm.setFontSize(20f)
         vm.setLocalShellEnabled(false)
+        vm.setScrollbackMb(25)
 
         assertEquals(true, repository.appLockEnabled.value)
         assertEquals(20f, repository.terminalFontSize.value)
         assertEquals(false, repository.localShellEnabled.value)
+        assertEquals(25, repository.terminalScrollbackMb.value)
     }
 }

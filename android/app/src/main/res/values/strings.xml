@@ -152,6 +152,9 @@
     <string name="settings_local_shell_hint">Show the Android local shell shortcut on the server list</string>
     <string name="settings_remote_clipboard">Allow remote clipboard writes</string>
     <string name="settings_remote_clipboard_hint">Lets the remote host set this device\'s clipboard (OSC 52). Only the visible tab can write.</string>
+    <string name="settings_scrollback">Scrollback</string>
+    <string name="settings_scrollback_hint">Memory each tab may use for lines scrolled off the screen. Applies when a tab connects.</string>
+    <string name="settings_scrollback_megabytes">%1$d MB</string>
     <string name="settings_ctrl_v_pastes">Ctrl+V pastes</string>
     <string name="settings_ctrl_v_pastes_hint">Ctrl+Shift+V always pastes. Turn this off to send Ctrl+V to the shell (e.g. vim block select).</string>
     <string name="settings_keep_screen_awake">Keep screen awake</string>

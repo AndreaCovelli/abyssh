@@ -45,6 +45,7 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssCard
 import io.github.andreacovelli.abyssh.ui.components.AbyssExpandIcon
+import io.github.andreacovelli.abyssh.ui.components.AbyssSegmentedControl
 import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
@@ -70,6 +71,7 @@ internal fun TerminalSettings(
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         FontSizeCard(fontSize = state.fontSize, onFontSizeChanged = actions::setFontSize)
+        ScrollbackCard(scrollbackMb = state.scrollbackMb, onScrollbackChanged = actions::setScrollbackMb)
         TabModeCard(tabMode = state.tabMode, onTabModeChanged = actions::setTabMode)
         AccessoryKeysCard(
             layoutIds = state.accessoryLayoutIds,
@@ -176,6 +178,39 @@ private fun FontSizeCard(
                     onClick = { onFontSizeChanged((current + 1).coerceAtMost(MAX_FONT_SIZE).toFloat()) },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun ScrollbackCard(
+    scrollbackMb: Int,
+    onScrollbackChanged: (Int) -> Unit,
+) {
+    val colors = AbyssColors.current
+    val typography = AbyssTypography.current
+    val options = SettingsRepository.TERMINAL_SCROLLBACK_OPTIONS_MB
+    val labels = options.associateWith { stringResource(R.string.settings_scrollback_megabytes, it) }
+
+    AbyssCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                AbyssText(stringResource(R.string.settings_scrollback), style = typography.label)
+                AbyssText(
+                    stringResource(R.string.settings_scrollback_hint),
+                    style = typography.bodySmall,
+                    color = colors.textMuted,
+                )
+            }
+            AbyssSegmentedControl(
+                options = options,
+                labels = labels,
+                selected = scrollbackMb,
+                onSelect = onScrollbackChanged,
+            )
         }
     }
 }

@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val TAG = "TerminalSession"
-private const val MAX_SCROLLBACK = 1000
 private const val SNAPSHOT_INTERVAL_MS = 16L
 
 /** The grid and the pixel sizes behind it. */
@@ -41,7 +40,7 @@ internal fun GhosttyBridge.versionOrNull(): String? =
 /**
  * One session's Ghostty terminal: its native handle, size, and colors, and the snapshots
  * it publishes to [state] at most once a frame. Every call must run on the session
- * thread, [dispatcher].
+ * thread, [dispatcher]. [scrollbackLimitBytes] is read each time a terminal is created.
  */
 internal class TerminalEmulator(
     val bridge: GhosttyBridge,
@@ -50,6 +49,7 @@ internal class TerminalEmulator(
     private val dispatcher: CoroutineDispatcher,
     private val state: MutableStateFlow<SessionState>,
     private val publishClipboardText: (String) -> Unit,
+    private val scrollbackLimitBytes: () -> Int,
 ) {
     var handle: Long = 0L
         private set
@@ -80,7 +80,7 @@ internal class TerminalEmulator(
     /** Replaces the terminal with a blank one of the current size and colors. */
     fun open() {
         destroy()
-        handle = bridge.nativeCreate(geometry.cols, geometry.rows, MAX_SCROLLBACK)
+        handle = bridge.nativeCreate(geometry.cols, geometry.rows, scrollbackLimitBytes())
         applyOptions()
     }
 

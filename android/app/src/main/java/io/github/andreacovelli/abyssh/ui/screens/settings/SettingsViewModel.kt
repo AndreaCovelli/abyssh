@@ -26,6 +26,7 @@ data class GeneralSettingsState(
 /** Terminal behavior settings shown on the Terminal tab. */
 data class TerminalSettingsState(
     val fontSize: Float = SettingsRepository.DEFAULT_TERMINAL_FONT_SIZE,
+    val scrollbackMb: Int = SettingsRepository.DEFAULT_TERMINAL_SCROLLBACK_MB,
     val tabMode: TerminalTabMode = TerminalTabMode.Classic,
     val accessoryLayoutIds: List<String> = emptyList(),
     val accessoryBarSingleRow: Boolean = false,
@@ -56,6 +57,7 @@ interface GeneralSettingsActions {
 
 interface TerminalSettingsActions {
     fun setFontSize(sizeSp: Float)
+    fun setScrollbackMb(megabytes: Int)
     fun setTabMode(mode: TerminalTabMode)
     fun setAccessoryLayout(ids: List<String>)
     fun setAccessoryBarSingleRow(enabled: Boolean)
@@ -78,11 +80,12 @@ class SettingsViewModel(
 
     val uiState: StateFlow<SettingsUiState> =
         // Every source is a StateFlow, so each emission rebuilds the state from their
-        // current values rather than threading nineteen typed arguments through combine.
+        // current values rather than threading twenty typed arguments through combine.
         combine(
             listOf(
                 settings.themeName, settings.lightThemeName, settings.themeMode, settings.fontName,
                 settings.appLockEnabled, settings.requireAuthOnConnect, settings.terminalFontSize,
+                settings.terminalScrollbackMb,
                 settings.terminalTabMode, settings.accessoryLayoutIds, settings.accessoryBarSingleRow,
                 settings.terminalCustomKeyGroups, settings.showCustomActionsFab, settings.builtinShortcuts,
                 settings.localShellEnabled, settings.remoteClipboardWriteEnabled, settings.ctrlVPastes,
@@ -102,6 +105,7 @@ class SettingsViewModel(
         ),
         terminal = TerminalSettingsState(
             fontSize = settings.terminalFontSize.value,
+            scrollbackMb = settings.terminalScrollbackMb.value,
             tabMode = settings.terminalTabMode.value,
             accessoryLayoutIds = settings.accessoryLayoutIds.value,
             accessoryBarSingleRow = settings.accessoryBarSingleRow.value,
@@ -125,6 +129,7 @@ class SettingsViewModel(
     override fun setRequireAuthOnConnect(enabled: Boolean) = settings.setRequireAuthOnConnect(enabled)
 
     override fun setFontSize(sizeSp: Float) = settings.setTerminalFontSize(sizeSp)
+    override fun setScrollbackMb(megabytes: Int) = settings.setTerminalScrollbackMb(megabytes)
     override fun setTabMode(mode: TerminalTabMode) = settings.setTerminalTabMode(mode)
     override fun setAccessoryLayout(ids: List<String>) = settings.setAccessoryLayoutIds(ids)
     override fun setAccessoryBarSingleRow(enabled: Boolean) = settings.setAccessoryBarSingleRow(enabled)

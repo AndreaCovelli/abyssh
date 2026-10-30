@@ -86,6 +86,14 @@ class SettingsRepository(context: Context) {
     )
     val terminalFontSize: StateFlow<Float> = _terminalFontSize.asStateFlow()
 
+    private val _terminalScrollbackMb = MutableStateFlow(
+        prefs.getInt(KEY_TERMINAL_SCROLLBACK_MB, DEFAULT_TERMINAL_SCROLLBACK_MB)
+            .coerceIn(MIN_TERMINAL_SCROLLBACK_MB, MAX_TERMINAL_SCROLLBACK_MB),
+    )
+
+    /** The scrollback each terminal may keep, in megabytes; it applies when a tab connects. */
+    val terminalScrollbackMb: StateFlow<Int> = _terminalScrollbackMb.asStateFlow()
+
     fun setTheme(name: String) {
         prefs.edit { putString(KEY_THEME, name) }
         _themeName.value = name
@@ -190,6 +198,12 @@ class SettingsRepository(context: Context) {
         _terminalFontSize.value = clamped
     }
 
+    fun setTerminalScrollbackMb(megabytes: Int) {
+        val clamped = megabytes.coerceIn(MIN_TERMINAL_SCROLLBACK_MB, MAX_TERMINAL_SCROLLBACK_MB)
+        prefs.edit { putInt(KEY_TERMINAL_SCROLLBACK_MB, clamped) }
+        _terminalScrollbackMb.value = clamped
+    }
+
     private fun loadTerminalFontSize(): Float {
         val stored =
             if (prefs.getBoolean(KEY_TERMINAL_FONT_SIZE_CUSTOMIZED, false)) {
@@ -242,6 +256,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_LIGHT_THEME = "light_theme_name"
         private const val KEY_TERMINAL_FONT_SIZE = "terminal_font_size_sp"
         private const val KEY_TERMINAL_FONT_SIZE_CUSTOMIZED = "terminal_font_size_customized"
+        private const val KEY_TERMINAL_SCROLLBACK_MB = "terminal_scrollback_mb"
         private const val LEGACY_TERMINAL_PREFS = "abyssh_terminal"
         const val DEFAULT_THEME = "Catppuccin Mocha"
         const val DEFAULT_LIGHT_THEME = "Catppuccin Latte"
@@ -250,6 +265,13 @@ class SettingsRepository(context: Context) {
         const val DEFAULT_TERMINAL_FONT_SIZE = 14f
         const val MIN_TERMINAL_FONT_SIZE = 6f
         const val MAX_TERMINAL_FONT_SIZE = 72f
+
+        // Megabytes of 1,000,000 bytes, like Ghostty's scrollback-limit, whose default is 10 MB.
+        const val DEFAULT_TERMINAL_SCROLLBACK_MB = 10
+        const val MIN_TERMINAL_SCROLLBACK_MB = 1
+        const val MAX_TERMINAL_SCROLLBACK_MB = 50
+        val TERMINAL_SCROLLBACK_OPTIONS_MB = listOf(1, 10, 25, 50)
+        const val BYTES_PER_MB = 1_000_000
 
         @Volatile
         private var instance: SettingsRepository? = null

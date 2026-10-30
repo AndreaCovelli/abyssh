@@ -21,7 +21,7 @@ class GhosttyBridge {
     fun isLoaded(): Boolean = loadError == null
 
     external fun nativeVersion(): String
-    external fun nativeCreate(cols: Int, rows: Int, maxScrollback: Int): Long
+    external fun nativeCreate(cols: Int, rows: Int, maxScrollbackBytes: Int): Long
     external fun nativeDestroy(handle: Long)
     external fun nativeWriteRemote(handle: Long, data: ByteArray)
     external fun nativeResize(handle: Long, cols: Int, rows: Int, cellW: Int, cellH: Int)

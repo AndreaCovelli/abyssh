@@ -20,6 +20,8 @@ import kotlinx.coroutines.withContext
  */
 class TerminalSessionEngine(
     publishClipboardText: (String) -> Unit,
+    // The scrollback budget in bytes, read each time the terminal is created.
+    scrollbackLimitBytes: () -> Int,
     private val scope: CoroutineScope,
     localShellService: NativeLocalShellService,
     hostKeyStore: HostKeyStore,
@@ -41,7 +43,7 @@ class TerminalSessionEngine(
     private val hostKeys = HostKeyVerifier(hostKeyStore)
     val hostKeyPrompt: StateFlow<HostKeyPrompt?> = hostKeys.prompt
 
-    private val emulator = TerminalEmulator(bridge, nativeVersion, scope, dispatcher, _state, publishClipboardText)
+    private val emulator = TerminalEmulator(bridge, nativeVersion, scope, dispatcher, _state, publishClipboardText, scrollbackLimitBytes)
     private val transports = SessionTransports(hostKeys, localShellService)
     private val connection =
         SessionConnection(
