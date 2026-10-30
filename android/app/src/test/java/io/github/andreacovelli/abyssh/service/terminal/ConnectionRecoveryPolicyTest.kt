@@ -58,30 +58,19 @@ class ConnectionRecoveryPolicyTest {
 
     @Test
     fun moshStatesUseTheExistingSessionStatusIndicator() {
-        assertEquals(
-            SessionStatus.Disconnected,
-            sessionStatusForMoshState(MoshState.Idle.code),
-        )
-        assertEquals(
-            SessionStatus.Connecting,
-            sessionStatusForMoshState(MoshState.Connecting.code),
-        )
-        assertEquals(
-            SessionStatus.Connected,
-            sessionStatusForMoshState(MoshState.Connected.code),
-        )
-        assertEquals(
-            SessionStatus.Reconnecting,
-            sessionStatusForMoshState(MoshState.Reconnecting.code),
-        )
-        assertEquals(
-            SessionStatus.Disconnected,
-            sessionStatusForMoshState(MoshState.Disconnecting.code),
-        )
-        assertEquals(
-            SessionStatus.Error,
-            sessionStatusForMoshState(MoshState.Failed.code),
-        )
+        assertEquals(SessionStatus.Disconnected, sessionStatusForMoshState(MoshState.Idle.code))
+        assertEquals(SessionStatus.Connecting, sessionStatusForMoshState(MoshState.Starting.code))
+        assertEquals(SessionStatus.Connected, sessionStatusForMoshState(MoshState.Running.code))
+        assertEquals(SessionStatus.Disconnected, sessionStatusForMoshState(MoshState.Stopping.code))
+        assertEquals(SessionStatus.Disconnected, sessionStatusForMoshState(MoshState.Stopped.code))
+        assertEquals(SessionStatus.Error, sessionStatusForMoshState(MoshState.Failed.code))
+        assertEquals(null, sessionStatusForMoshState(MoshState.Failed.code + 1))
+    }
+
+    @Test
+    fun moshStateCodesMatchTheNativeSessionState() {
+        // types.zig: idle = 0, starting = 1, running = 2, stopping = 3, stopped = 4, failed = 5.
+        assertEquals(listOf(0, 1, 2, 3, 4, 5), MoshState.entries.map { it.code })
     }
 
     @Test
@@ -130,7 +119,7 @@ class ConnectionRecoveryPolicyTest {
         pendingOutbound: Int = 0,
     ): MoshRuntimeState =
         MoshRuntimeState(
-            state = MoshState.Connected.code,
+            state = MoshState.Running.code,
             lastFailureCode = 0,
             lastStateNumSent = sent,
             lastStateNumReceived = received,

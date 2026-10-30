@@ -22,13 +22,14 @@ internal fun readLoopExitAction(transport: Transport?, shellExited: Boolean = fa
         else -> ReadLoopExitAction.AutomaticReconnect
     }
 
+// Mosh has no reconnecting state of its own; MoshConnectionStalenessTracker reports one.
 internal fun sessionStatusForMoshState(state: Int): SessionStatus? =
     when (state) {
         MoshState.Idle.code,
-        MoshState.Disconnecting.code -> SessionStatus.Disconnected
-        MoshState.Connecting.code -> SessionStatus.Connecting
-        MoshState.Connected.code -> SessionStatus.Connected
-        MoshState.Reconnecting.code -> SessionStatus.Reconnecting
+        MoshState.Stopping.code,
+        MoshState.Stopped.code -> SessionStatus.Disconnected
+        MoshState.Starting.code -> SessionStatus.Connecting
+        MoshState.Running.code -> SessionStatus.Connected
         MoshState.Failed.code -> SessionStatus.Error
         else -> null
     }
