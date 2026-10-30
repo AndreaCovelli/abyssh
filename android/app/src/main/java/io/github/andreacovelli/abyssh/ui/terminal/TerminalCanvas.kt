@@ -63,8 +63,9 @@ fun TerminalCanvas(
         { _, _, _, noLink -> noLink() },
     // Two-finger tap. Sent as a right click to apps that take mouse input.
     onSecondaryClick: (x: Float, y: Float) -> Unit = { _, _ -> },
-    // Right or middle button of a physical mouse: press, motion and release.
-    onMouseButton: (button: Int, action: Int, x: Float, y: Float) -> Unit = { _, _, _, _ -> },
+    // Right or middle button of a physical mouse: press, motion and release, with the
+    // hardware keyboard modifiers held as Ghostty modifier bits.
+    onMouseButton: (button: Int, action: Int, mods: Int, x: Float, y: Float) -> Unit = { _, _, _, _, _ -> },
     onAppSelectionDrag: (action: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
     // Shift held (accessory bar or hardware keyboard) makes a long-press select text
     // even when the remote app takes mouse input, like Shift+drag in desktop terminals.

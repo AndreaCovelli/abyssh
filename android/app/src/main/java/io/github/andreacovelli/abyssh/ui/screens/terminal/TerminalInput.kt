@@ -43,9 +43,9 @@ class TerminalInput internal constructor(
         sendMouseEvent(TerminalMouseButton.Right, TerminalMouseAction.Release, x, y, trackLastCell = false)
     }
 
-    /** Press, motion or release of a non-left button from a physical mouse. */
-    fun onMouseButton(button: Int, action: Int, x: Float, y: Float) {
-        sendMouseEvent(button, action, x, y, trackLastCell = true, held = action != TerminalMouseAction.Release)
+    /** Press, motion or release of a non-left button from a physical mouse, with [mods] held. */
+    fun onMouseButton(button: Int, action: Int, mods: Int, x: Float, y: Float) {
+        sendMouseEvent(button, action, x, y, trackLastCell = true, held = action != TerminalMouseAction.Release, mods = mods)
     }
 
     fun onAppSelectionDrag(action: Int, x: Float, y: Float) {
@@ -66,11 +66,12 @@ class TerminalInput internal constructor(
         y: Float,
         trackLastCell: Boolean,
         held: Boolean = false,
+        mods: Int = 0,
     ) {
         activeEngine?.sendMouseEvent(
             action = action,
             button = button,
-            mods = 0,
+            mods = mods,
             x = x,
             y = y,
             anyButtonPressed = held,

@@ -15,7 +15,11 @@ import androidx.compose.ui.input.pointer.PointerButtons
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.PointerKeyboardModifiers
 import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.isAltPressed
+import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
@@ -55,7 +59,7 @@ internal class TerminalCanvasCallbacks(
     val onPrimaryClick: (x: Float, y: Float) -> Unit,
     val onLinkTap: (col: Int, row: Int, textUrl: String?, noLink: () -> Unit) -> Unit,
     val onSecondaryClick: (x: Float, y: Float) -> Unit,
-    val onMouseButton: (button: Int, action: Int, x: Float, y: Float) -> Unit,
+    val onMouseButton: (button: Int, action: Int, mods: Int, x: Float, y: Float) -> Unit,
     val onAppSelectionDrag: (action: Int, x: Float, y: Float) -> Unit,
     val onShiftSelectionStart: () -> Unit,
     val onFontSizeChange: (sizeSp: Float) -> Unit,
@@ -204,22 +208,25 @@ internal class TerminalCanvasGestures(
         }
     }
 
-    /** A physical right or middle click, passed through as is with motion while held. */
+    /**
+     * A physical right or middle click, passed through as is with motion while held. The
+     * keyboard modifiers held go with it, so tmux sees Alt+right click as M-MouseDown3Pane.
+     */
     private suspend fun AwaitPointerEventScope.forwardMouseButton(down: PointerInputChange, button: Int) {
-        fun send(action: Int, position: Offset) {
+        fun send(action: Int, position: Offset, event: PointerEvent) {
             val p = env.value.toSnapshot(position)
-            env.value.callbacks.onMouseButton(button, action, p.x, p.y)
+            env.value.callbacks.onMouseButton(button, action, event.keyboardModifiers.terminalMods(), p.x, p.y)
         }
-        send(TerminalMouseAction.Press, down.position)
+        send(TerminalMouseAction.Press, down.position, currentEvent)
         down.consume()
         while (true) {
             val event = awaitPointerEvent()
             val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.first()
             if (!change.pressed || nonPrimaryMouseButton(event.buttons) != button) {
-                send(TerminalMouseAction.Release, change.position)
+                send(TerminalMouseAction.Release, change.position, event)
                 return
             }
-            if (change.position != change.previousPosition) send(TerminalMouseAction.Motion, change.position)
+            if (change.position != change.previousPosition) send(TerminalMouseAction.Motion, change.position, event)
             change.consume()
         }
     }
@@ -539,3 +546,11 @@ private fun nonPrimaryMouseButton(buttons: PointerButtons): Int? = when {
     buttons.isTertiaryPressed -> TerminalMouseButton.Middle
     else -> null
 }
+
+/** Ghostty modifier bits for the keys held on a hardware keyboard. */
+private fun PointerKeyboardModifiers.terminalMods(): Int = ModifierState(
+    ctrl = isCtrlPressed,
+    alt = isAltPressed,
+    shift = isShiftPressed,
+    cmd = isMetaPressed,
+).terminalMods()
