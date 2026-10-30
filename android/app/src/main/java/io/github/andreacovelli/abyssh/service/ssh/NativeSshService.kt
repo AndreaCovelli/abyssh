@@ -223,6 +223,12 @@ class NativeSshService(
         }
     }
 
+    /** The numeric IP address the connection reached, such as `192.0.2.7` or `fe80::1%3`. */
+    fun peerAddress(): String? {
+        if (handle == 0L) return null
+        return bridge.nativeGetPeerAddress(handle)
+    }
+
     fun isChannelEof(): Boolean {
         if (handle == 0L) return true
         return bridge.nativeChannelEof(handle)

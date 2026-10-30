@@ -26,6 +26,11 @@ Ported to Zig 0.17:
 - `src/core.zig`: `ArrayList.print`, a switch prong without a discarded
   capture, and `nanosleep` in a test.
 
+Changed behavior:
+
+- `src/socket.zig`: opens an IPv4 or IPv6 socket to match the remote address,
+  which may carry a numeric scope (`fe80::1%3`).
+
 Removed: `src/test_live.zig`, a standalone program for testing against a live
 server. Nothing built it, and it did not compile on Zig 0.17.
 

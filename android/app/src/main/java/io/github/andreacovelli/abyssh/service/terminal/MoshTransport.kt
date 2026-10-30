@@ -64,7 +64,8 @@ internal class MoshTransport(
         ssh.connect(spec)
         val endpointHost =
             try {
-                withContext(Dispatchers.IO) { MoshEndpointResolver.resolve(spec.host) }
+                val peer = ssh.peerAddress()
+                withContext(Dispatchers.IO) { MoshEndpointResolver.resolve(spec.host, peer) }
             } catch (error: IllegalStateException) {
                 ssh.close()
                 throw error

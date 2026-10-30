@@ -205,14 +205,14 @@ pub const Client = struct {
         self.last_received_timestamp = std.math.maxInt(u16);
         self.consecutive_recv_failures = 0;
 
-        self.udp_socket.open(self.config.local_port orelse 0) catch |err| {
-            log.err("udp_socket.open failed: {s}", .{@errorName(err)});
+        // The remote address picks the socket's family, so set it first.
+        self.udp_socket.setRemote(self.endpoint_host, self.endpoint_port) catch |err| {
+            log.err("udp_socket.setRemote failed: {s}", .{@errorName(err)});
             self.failSession(.transport_failure);
             return err;
         };
-        self.udp_socket.setRemote(self.endpoint_host, self.endpoint_port) catch |err| {
-            log.err("udp_socket.setRemote failed: {s}", .{@errorName(err)});
-            self.udp_socket.close();
+        self.udp_socket.open(self.config.local_port orelse 0) catch |err| {
+            log.err("udp_socket.open failed: {s}", .{@errorName(err)});
             self.failSession(.transport_failure);
             return err;
         };
