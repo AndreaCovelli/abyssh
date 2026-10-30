@@ -416,6 +416,10 @@ pub const Client = struct {
         const header = wire.FragmentHeader.decode(payload[0..wire.FragmentHeader.bytes]);
         const chunk = payload[wire.FragmentHeader.bytes..];
 
+        // Like Mosh, assemble one message at a time: a fragment of another message
+        // abandons the one in progress, whose missing fragments may never arrive.
+        self.dropFragmentsExcept(header.message_id);
+
         // Single-fragment optimization: fragment_num=0 && final means the whole
         // message fits in one fragment. Strip header and process directly.
         if (header.fragment_num == 0 and header.final) {
@@ -453,6 +457,18 @@ pub const Client = struct {
             entry.value_ptr.deinit(self.allocator);
             _ = self.inbound_fragments.remove(header.message_id);
             try self.processInboundProtobuf(a, now_ms, envelope);
+        }
+    }
+
+    fn dropFragmentsExcept(self: *Self, message_id: u64) void {
+        while (true) {
+            var iter = self.inbound_fragments.iterator();
+            const stale = while (iter.next()) |entry| {
+                if (entry.key_ptr.* != message_id) break entry;
+            } else return;
+            for (stale.value_ptr.items) |f| self.allocator.free(@constCast(f));
+            stale.value_ptr.deinit(self.allocator);
+            self.inbound_fragments.removeByPtr(stale.key_ptr);
         }
     }
 
@@ -1693,4 +1709,56 @@ test "multi-fragment message reassembled out of order" {
     }
     try std.testing.expect(saw_bytes);
     try std.testing.expectEqual(@as(usize, 0), client.inbound_fragments.count());
+}
+
+test "a new fragmented message abandons the one in progress" {
+    const allocator = std.testing.allocator;
+    const endpoint: types.MoshEndpoint = .{
+        .host = "127.0.0.1",
+        .port = 60001,
+        .key_base64_22 = "ABCDEFGHIJKLMNOPQRSTUV",
+    };
+
+    var client = try Client.init(allocator, endpoint, .{ .use_network_crypto = false });
+    defer client.deinit();
+    try client.start(0);
+
+    const host_message = try protolite.encodeHostMessage(allocator, &.{.{ .host_bytes = "abandoned-fragments" }});
+    defer allocator.free(host_message);
+
+    const inbound: protolite.TransportInstruction = .{
+        .protocol_version = types.PROTOCOL_VERSION,
+        .old_num = 0,
+        .new_num = 1,
+        .ack_num = 0,
+        .throwaway_num = 0,
+        .diff = host_message,
+        .chaff = &.{},
+    };
+    const inbound_payload = try inbound.encode(allocator);
+    defer allocator.free(inbound_payload);
+
+    var envelope: wire.PacketEnvelope = .{ .timestamp = 100, .timestamp_reply = 0 };
+    var envelope_buf: [wire.PacketEnvelope.bytes]u8 = undefined;
+    envelope.encode(&envelope_buf);
+
+    // Each message loses its last fragment, so none of them completes.
+    const chunk_size = inbound_payload.len / 3 + 1;
+    for (0..4) |message_id| {
+        var fragments = try wire.fragmentPayload(allocator, message_id, inbound_payload, chunk_size);
+        defer {
+            for (fragments.items) |f| allocator.free(f);
+            fragments.deinit(allocator);
+        }
+        try std.testing.expect(fragments.items.len > 1);
+        for (fragments.items[0 .. fragments.items.len - 1]) |frag| {
+            var full = try allocator.alloc(u8, wire.PacketEnvelope.bytes + frag.len);
+            defer allocator.free(full);
+            @memcpy(full[0..wire.PacketEnvelope.bytes], &envelope_buf);
+            @memcpy(full[wire.PacketEnvelope.bytes..], frag);
+            try client.processInboundPayload(full, 200);
+        }
+        try std.testing.expectEqual(@as(usize, 1), client.inbound_fragments.count());
+        try std.testing.expect(client.inbound_fragments.contains(message_id));
+    }
 }

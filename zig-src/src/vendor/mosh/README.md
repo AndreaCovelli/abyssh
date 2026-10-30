@@ -37,7 +37,9 @@ Changed behavior:
   Mosh's shutdown (state number `maxInt(u64)`) and resends it until the
   server acks, which makes `mosh-server` exit. When the server sends its own
   shutdown because its shell exited, the client acks it once, as Mosh's own
-  client does, and moves to `stopped`.
+  client does, and moves to `stopped`. Like Mosh, it reassembles one
+  fragmented message at a time: a fragment of a new message frees the
+  fragments of an unfinished one, which upstream kept until the session ended.
 - `src/ffi.zig`, `src/mosh_ffi.h`: `mosh_client_start_shutdown` and
   `mosh_client_shutdown_acknowledged`.
 
