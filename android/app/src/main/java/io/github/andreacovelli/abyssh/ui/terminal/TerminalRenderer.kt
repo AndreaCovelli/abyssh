@@ -83,6 +83,7 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         style = Paint.Style.FILL
     }
     private val decorations = TerminalDecorations()
+    private val sprites = TerminalSprites()
     private val rowPictures = RowPictureCache()
 
     fun draw(canvas: Canvas, frame: TerminalFrame, paints: TerminalTextPaints, placement: SnapshotPlacement) {
@@ -153,7 +154,7 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
             start = if (codepoint == 0 || codepoint == ' '.code) {
                 start + 1
             } else {
-                drawTextRun(canvas, paints, cells, start, frame.cell.width, frame.cell.baseline)
+                drawTextRun(canvas, paints, cells, start, frame.cell)
             }
         }
     }
@@ -164,13 +165,18 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         paints: TerminalTextPaints,
         cells: FrameRow,
         start: Int,
-        cellWidth: Float,
-        baseline: Float,
+        cell: TerminalCellMetrics,
     ): Int {
         val row = cells.cells
         val end = cells.textRunEnd(start) { fonts.choiceAt(row, it) }
-        if (cellOffsets.size <= end) cellOffsets = IntArray(cells.cols + 1)
         val choice = fonts.choiceAt(row, start)
+        if (choice == PAINT_SPRITE) {
+            drawSpriteRun(canvas, cells, start, end, cell)
+            return end
+        }
+        val cellWidth = cell.width
+        val baseline = cell.baseline
+        if (cellOffsets.size <= end) cellOffsets = IntArray(cells.cols + 1)
         // The primary font's ASCII glyphs are one cell wide, so only other runs are measured.
         var ascii = choice == PAINT_PRIMARY
         text.setLength(0)
@@ -204,6 +210,17 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
             }
         }
         return end
+    }
+
+    /** Draws a run of [TerminalSprites] characters, one per cell, in the text's color. */
+    private fun drawSpriteRun(canvas: Canvas, cells: FrameRow, start: Int, end: Int, cell: TerminalCellMetrics) {
+        // Like overlines, sprites take the text color faded for faint text; bold and
+        // italic don't change them.
+        val color = cells.lineColorAt(start)
+        for (col in start until end) {
+            val codepoint = cells.cells.codepoints[col]
+            if (codepoint != ' '.code) sprites.draw(canvas, codepoint, col * cell.width, 0f, cell, color)
+        }
     }
 
     private fun fitsCells(paint: Paint, width: Float): Boolean =
@@ -288,8 +305,13 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         val col = snapshot.cursorX
         val codepoint = row.codepoints[col]
         if (codepoint == 0 || codepoint == ' '.code) return
+        val choice = fonts.choiceAt(row, col)
+        if (choice == PAINT_SPRITE) {
+            sprites.draw(canvas, codepoint, left, top, frame.cell, color)
+            return
+        }
         val glyph = if (row.hasGraphemeExtras(col)) row.glyphAt(col) else fonts.glyphFor(codepoint)
-        val paint = paints.forChoice(fonts.choiceAt(row, col))
+        val paint = paints.forChoice(choice)
         paint.applyTextStyle(color, style = 0)
         // Set again so the cursor text keeps its own alpha.
         paint.color = color
