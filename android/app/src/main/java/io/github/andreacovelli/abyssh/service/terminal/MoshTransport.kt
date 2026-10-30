@@ -4,6 +4,7 @@ import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.UiText
 import io.github.andreacovelli.abyssh.model.UiTextException
 
+import android.os.SystemClock
 import android.util.Log
 import io.github.andreacovelli.abyssh.service.mosh.MoshBootstrapParser
 import io.github.andreacovelli.abyssh.service.mosh.MoshEndpointResolver
@@ -71,9 +72,9 @@ internal class MoshTransport(
      */
     fun shutdown() {
         if (!service.startShutdown()) return
-        val deadline = System.currentTimeMillis() + SHUTDOWN_WAIT_MS
+        val deadline = SystemClock.elapsedRealtime() + SHUTDOWN_WAIT_MS
         var acknowledged = false
-        while (System.currentTimeMillis() < deadline) {
+        while (SystemClock.elapsedRealtime() < deadline) {
             service.maintenanceTick()
             service.pumpNetwork()
             // The terminal is going away, so output that arrives meanwhile is dropped.
@@ -193,8 +194,8 @@ internal class MoshTransport(
         execOpened: Boolean,
         timeoutMs: Long,
     ): MoshBootstrapParser.MoshEndpoint? {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
+        while (SystemClock.elapsedRealtime() < deadline) {
             val chunk = ssh.read(BOOTSTRAP_READ_BYTES)
             if (chunk != null && chunk.isNotEmpty()) {
                 output.append(String(chunk, Charsets.UTF_8))

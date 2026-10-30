@@ -2,6 +2,7 @@ package io.github.andreacovelli.abyssh.service.terminal
 
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
 
+import android.os.SystemClock
 import android.util.Log
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.UiText
@@ -331,7 +332,7 @@ internal class SessionConnection(
 
     private fun onMoshRuntime(runtime: MoshRuntimeState) {
         sessionStatusForMoshState(runtime.state)?.let(::updateStatus)
-        moshStaleness.observe(runtime, System.currentTimeMillis())?.let(::updateStatus)
+        moshStaleness.observe(runtime, SystemClock.elapsedRealtime())?.let(::updateStatus)
     }
 
     private fun updateStatus(status: SessionStatus) {

@@ -21,7 +21,7 @@ Ported to Zig 0.17:
 - `src/compress.zig`: imports `zlib_c` instead of using `@cImport`.
 - `src/socket.zig`: uses `std.c` sockets, since Zig 0.17 removed most of
   `std.posix`'s socket API and `std.net`.
-- `src/ffi.zig`: reads the clock with `clock_gettime(CLOCK_REALTIME)`.
+- `src/ffi.zig`: reads the clock with `clock_gettime`.
 - `src/protolite.zig`: `std.enums.fromInt` replaces `std.meta.intToEnum`.
 - `src/core.zig`: `ArrayList.print`, a switch prong without a discarded
   capture, and `nanosleep` in a test.

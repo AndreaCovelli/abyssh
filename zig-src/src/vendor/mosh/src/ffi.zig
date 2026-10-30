@@ -27,7 +27,7 @@ const CreateConfigJson = struct {
 
 fn nowMs() u64 {
     var ts: std.c.timespec = undefined;
-    if (std.c.clock_gettime(.REALTIME, &ts) != 0) return 0;
+    if (std.c.clock_gettime(.MONOTONIC, &ts) != 0) return 0;
     const ms = @as(i64, ts.sec) * std.time.ms_per_s + @divTrunc(@as(i64, ts.nsec), std.time.ns_per_ms);
     return @intCast(@max(ms, 0));
 }
