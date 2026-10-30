@@ -268,7 +268,7 @@ private fun TerminalPane(
                     onSecondaryClick = vm.input::onSecondaryMouseClick,
                     onMouseButton = vm.input::onMouseButton,
                     onAppSelectionDrag = vm.input::onAppSelectionDrag,
-                    shiftActive = input.modifierState.shift,
+                    stickyModifiers = input.modifierState,
                     onShiftSelectionStart = input::spendStickyShift,
                     onScroll = vm.input::onScroll,
                     onFontSizeChange = { sizeSp ->

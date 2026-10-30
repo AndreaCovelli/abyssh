@@ -56,20 +56,22 @@ fun TerminalCanvas(
     onResize: (cols: Int, rows: Int, cellWidth: Int, cellHeight: Int, widthPx: Int, heightPx: Int) -> Unit =
         { _, _, _, _, _, _ -> },
     onTap: () -> Unit = {},
-    onPrimaryClick: (x: Float, y: Float) -> Unit = { _, _ -> },
+    onPrimaryClick: (mods: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
     // A tap where a link may be: when the app doesn't take mouse input, or with Shift.
     // textUrl is the URL written at the cell; noLink runs the usual tap when there's none.
     onLinkTap: (col: Int, row: Int, textUrl: String?, noLink: () -> Unit) -> Unit =
         { _, _, _, noLink -> noLink() },
     // Two-finger tap. Sent as a right click to apps that take mouse input.
-    onSecondaryClick: (x: Float, y: Float) -> Unit = { _, _ -> },
-    // Right or middle button of a physical mouse: press, motion and release, with the
-    // hardware keyboard modifiers held as Ghostty modifier bits.
+    onSecondaryClick: (mods: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
+    // Right or middle button of a physical mouse: press, motion and release.
+    // Every mouse callback gets the Ghostty modifier bits held: the sticky modifiers and
+    // the keys held on a hardware keyboard.
     onMouseButton: (button: Int, action: Int, mods: Int, x: Float, y: Float) -> Unit = { _, _, _, _, _ -> },
-    onAppSelectionDrag: (action: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
-    // Shift held (accessory bar or hardware keyboard) makes a long-press select text
-    // even when the remote app takes mouse input, like Shift+drag in desktop terminals.
-    shiftActive: Boolean = false,
+    onAppSelectionDrag: (action: Int, mods: Int, x: Float, y: Float) -> Unit = { _, _, _, _ -> },
+    // The accessory bar's sticky modifiers, which go with mouse events like held keys.
+    // Shift held (here or on a hardware keyboard) makes a long-press select text even
+    // when the remote app takes mouse input, like Shift+drag in desktop terminals.
+    stickyModifiers: ModifierState = ModifierState(),
     onShiftSelectionStart: () -> Unit = {},
     onScroll: (delta: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
     minFontSizeSp: Float = 1f,
@@ -111,7 +113,7 @@ fun TerminalCanvas(
             canvasSize = canvasSize,
             fontSizeSp = fontSizeSp,
             fontSizeRange = minFontSizeSp..maxFontSizeSp,
-            shiftActive = shiftActive,
+            stickyModifiers = stickyModifiers,
             haptics = LocalHapticFeedback.current,
             callbacks = callbacks,
         ),

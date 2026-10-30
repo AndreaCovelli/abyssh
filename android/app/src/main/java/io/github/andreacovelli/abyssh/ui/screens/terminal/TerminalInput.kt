@@ -33,14 +33,14 @@ class TerminalInput internal constructor(
         activeEngine?.scroll(delta, x, y)
     }
 
-    fun onPrimaryMouseClick(x: Float, y: Float) {
-        sendMouseEvent(TerminalMouseButton.Left, TerminalMouseAction.Press, x, y, trackLastCell = false)
-        sendMouseEvent(TerminalMouseButton.Left, TerminalMouseAction.Release, x, y, trackLastCell = false)
+    fun onPrimaryMouseClick(mods: Int, x: Float, y: Float) {
+        sendMouseEvent(TerminalMouseButton.Left, TerminalMouseAction.Press, x, y, trackLastCell = false, mods = mods)
+        sendMouseEvent(TerminalMouseButton.Left, TerminalMouseAction.Release, x, y, trackLastCell = false, mods = mods)
     }
 
-    fun onSecondaryMouseClick(x: Float, y: Float) {
-        sendMouseEvent(TerminalMouseButton.Right, TerminalMouseAction.Press, x, y, trackLastCell = false)
-        sendMouseEvent(TerminalMouseButton.Right, TerminalMouseAction.Release, x, y, trackLastCell = false)
+    fun onSecondaryMouseClick(mods: Int, x: Float, y: Float) {
+        sendMouseEvent(TerminalMouseButton.Right, TerminalMouseAction.Press, x, y, trackLastCell = false, mods = mods)
+        sendMouseEvent(TerminalMouseButton.Right, TerminalMouseAction.Release, x, y, trackLastCell = false, mods = mods)
     }
 
     /** Press, motion or release of a non-left button from a physical mouse, with [mods] held. */
@@ -48,7 +48,7 @@ class TerminalInput internal constructor(
         sendMouseEvent(button, action, x, y, trackLastCell = true, held = action != TerminalMouseAction.Release, mods = mods)
     }
 
-    fun onAppSelectionDrag(action: Int, x: Float, y: Float) {
+    fun onAppSelectionDrag(action: Int, mods: Int, x: Float, y: Float) {
         sendMouseEvent(
             TerminalMouseButton.Left,
             action,
@@ -56,6 +56,7 @@ class TerminalInput internal constructor(
             y,
             trackLastCell = true,
             held = action != TerminalMouseAction.Release,
+            mods = mods,
         )
     }
 

@@ -66,7 +66,7 @@ class TerminalCanvasGestureTest {
                 modifier = Modifier.size(360.dp, 200.dp).testTag("canvas"),
                 onResize = { _, _, w, h, _, _ -> cellWidth = w; cellHeight = h },
                 onLinkTap = { _, _, url, noLink -> if (url == null) noLink() else linkTaps += url },
-                onPrimaryClick = { x, y -> clicks += Offset(x, y) },
+                onPrimaryClick = { _, x, y -> clicks += Offset(x, y) },
                 onScroll = { delta, _, _ -> scrolls += delta },
             )
         }
