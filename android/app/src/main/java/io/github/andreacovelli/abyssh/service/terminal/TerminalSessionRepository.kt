@@ -130,6 +130,9 @@ class TerminalSessionRepository private constructor(application: Application) {
         val engine =
             TerminalSessionEngine(
                 publishClipboardText = { text -> publishTerminalClipboard(id, text) },
+                scrollbackLimitBytes = {
+                    settingsRepository.terminalScrollbackMb.value * SettingsRepository.BYTES_PER_MB
+                },
                 scope = scope,
                 localShellService = NativeLocalShellService(appContext.filesDir, appContext.cacheDir),
                 hostKeyStore = hostKeyStore,

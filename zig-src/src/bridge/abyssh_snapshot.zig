@@ -556,7 +556,12 @@ fn abysshRenderHold(handler: *ghostty.TerminalStream.Handler, held: bool) void {
     }
 }
 
-export fn abyssh_create_terminal(cols: c.jint, rows: c.jint, max_scrollback: c.jint) callconv(.c) c.jlong {
+// Scrollback is a byte budget, as in Ghostty's scrollback-limit, not a line count.
+// Ghostty raises a budget below two pages to two pages. The settings offer up to
+// 50 MB; this bounds what crosses JNI.
+const max_scrollback_limit_bytes: i32 = 100_000_000;
+
+export fn abyssh_create_terminal(cols: c.jint, rows: c.jint, max_scrollback_bytes: c.jint) callconv(.c) c.jlong {
     ghostty.sys.decode_png = abysshDecodePng;
 
     const terminal = allocator.create(AbysshTerminal) catch return 0;
@@ -569,7 +574,7 @@ export fn abyssh_create_terminal(cols: c.jint, rows: c.jint, max_scrollback: c.j
     var inner = ghostty.Terminal.init(ghostty.TinyIo.init.io(), allocator, .{
         .cols = init_cols,
         .rows = init_rows,
-        .max_scrollback_bytes = @intCast(clampI32(max_scrollback, 0, 10000)),
+        .max_scrollback_bytes = @intCast(std.math.clamp(max_scrollback_bytes, 0, max_scrollback_limit_bytes)),
         .kitty_image_storage_limit = 64 * 1024 * 1024,
         .kitty_image_loading_limits = .{
             .file = false,
@@ -648,10 +653,10 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     return jniNewStringUTF(env, "1");
 }
 
-export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeCreate(env: *c.JNIEnv, thiz: c.jobject, cols: c.jint, rows: c.jint, max_scrollback: c.jint) callconv(.c) c.jlong {
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeCreate(env: *c.JNIEnv, thiz: c.jobject, cols: c.jint, rows: c.jint, max_scrollback_bytes: c.jint) callconv(.c) c.jlong {
     _ = env;
     _ = thiz;
-    return abyssh_create_terminal(cols, rows, max_scrollback);
+    return abyssh_create_terminal(cols, rows, max_scrollback_bytes);
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeDestroy(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) void {

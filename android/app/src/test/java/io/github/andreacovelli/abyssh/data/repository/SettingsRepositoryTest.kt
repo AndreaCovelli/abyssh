@@ -54,6 +54,7 @@ class SettingsRepositoryTest {
         assertEquals(true, repo.localShellEnabled.first())
         assertEquals(false, repo.showCustomActionsFab.first())
         assertEquals(true, repo.remoteClipboardWriteEnabled.first())
+        assertEquals(SettingsRepository.DEFAULT_TERMINAL_SCROLLBACK_MB, repo.terminalScrollbackMb.first())
     }
 
     @Test
@@ -90,6 +91,32 @@ class SettingsRepositoryTest {
 
         val reloaded = newRepository()
         assertEquals(SettingsRepository.MIN_TERMINAL_FONT_SIZE, reloaded.terminalFontSize.first())
+    }
+
+    @Test
+    fun `terminal scrollback is clamped and persisted`() = runBlocking {
+        clearPrefs()
+        val repo = newRepository()
+
+        repo.setTerminalScrollbackMb(25)
+        assertEquals(25, newRepository().terminalScrollbackMb.first())
+
+        repo.setTerminalScrollbackMb(10_000)
+        assertEquals(SettingsRepository.MAX_TERMINAL_SCROLLBACK_MB, repo.terminalScrollbackMb.first())
+
+        repo.setTerminalScrollbackMb(0)
+        assertEquals(SettingsRepository.MIN_TERMINAL_SCROLLBACK_MB, repo.terminalScrollbackMb.first())
+    }
+
+    @Test
+    fun `stored scrollback outside the range is clamped on load`() = runBlocking {
+        clearPrefs()
+        context.getSharedPreferences("abyssh_settings", Context.MODE_PRIVATE)
+            .edit()
+            .putInt("terminal_scrollback_mb", 4_000)
+            .commit()
+
+        assertEquals(SettingsRepository.MAX_TERMINAL_SCROLLBACK_MB, newRepository().terminalScrollbackMb.first())
     }
 
     @Test
