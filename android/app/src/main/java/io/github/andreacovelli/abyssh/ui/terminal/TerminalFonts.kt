@@ -18,6 +18,9 @@ internal const val PAINT_SYMBOLS: Int = 1
 private const val PAINT_FALLBACK: Int = 2
 private const val PAINT_EMOJI: Int = 3
 
+/** Drawn by [TerminalSprites] as shapes, not by a font. */
+internal const val PAINT_SPRITE: Int = 4
+
 private const val FALLBACK_CELL_WIDTH_PX = 8f
 private const val BMP_SIZE = 0x10000
 private const val FALLBACK_CELL_HEIGHT_PX = 16f
@@ -27,6 +30,8 @@ private const val FALLBACK_CELL_HEIGHT_PX = 16f
  * depends only on the typefaces, so it is cached for as long as they last.
  *
  * Order of preference:
+ *  0. Box drawing, block elements, and Powerline separators are drawn by
+ *     [TerminalSprites] to fill their cells, not by a font.
  *  1. A codepoint in a Nerd Font private-use range uses the primary font when its
  *     file maps it, else the symbols (Nerd Font) typeface.
  *  2. Else the primary font, when it can draw the glyph (keeps code glyph metrics).
@@ -62,6 +67,7 @@ internal class TerminalFonts(
     fun choiceFor(codepoint: Int): Int {
         // Fast path for the overwhelmingly common command-output ASCII glyphs.
         if (codepoint in 0x21..0x7E) return PAINT_PRIMARY
+        if (isSpriteCodepoint(codepoint)) return PAINT_SPRITE
         if (codepoint in 0 until BMP_SIZE) {
             val cached = bmpChoices[codepoint].toInt()
             if (cached != 0) return cached - 1

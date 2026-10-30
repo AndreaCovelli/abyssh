@@ -7,7 +7,7 @@ import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-private const val LINE_THICKNESS_PER_CELL_HEIGHT: Float = 1f / 16f
+internal const val LINE_THICKNESS_PER_CELL_HEIGHT: Float = 1f / 16f
 
 // How far into the descent the underline sits, and how high on the ascent strikethrough does.
 private const val UNDERLINE_DESCENT_FRACTION: Float = 0.3f
