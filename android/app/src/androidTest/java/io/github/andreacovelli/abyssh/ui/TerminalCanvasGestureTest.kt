@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -19,6 +20,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pinch
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalZoomIndicator
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCanvas
@@ -130,7 +132,10 @@ class TerminalCanvasGestureTest {
                         onResize = { _, _, w, h, _, _ -> cellWidth = w; cellHeight = h },
                         onFontSizeChange = { fontSize = it; steps++ },
                     )
-                    TerminalZoomIndicator(fontSize, steps)
+                    TerminalZoomIndicator(
+                        text = stringResource(R.string.terminal_zoom_font_size, fontSize.roundToInt()),
+                        changes = steps,
+                    )
                 }
             }
         }

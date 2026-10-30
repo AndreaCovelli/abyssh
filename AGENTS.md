@@ -13,11 +13,12 @@ version catalog pins AGP, Kotlin, and libraries. Run `mise install` once.
 | Command | Use |
 | --- | --- |
 | `mise run native` | Build `libabyssh_jni.so` for every ABI into `android/app/src/main/jniLibs/`. Needs `ANDROID_NDK_HOME` set to one NDK version, such as `$ANDROID_HOME/ndk/28.2.13676358`. Add `-Dtarget=aarch64-linux-android` to build arm64 only |
-| `mise run check` | Formatting, Detekt, Android Lint, unit tests, the debug build, and actionlint. Run before every commit |
+| `mise run check` | Formatting, Detekt, Android Lint, unit tests, compiling the instrumented tests, the debug build, and actionlint. Run before every commit |
 | `mise run format` | Format Kotlin sources and Gradle scripts with ktlint through Spotless. `mise run format:check` only reports |
 | `mise run detekt` | Detekt static analysis, configured in `android/config/detekt/detekt.yml`, with no baseline |
 | `mise run test` | Unit tests only. Filter with `cd android && ./gradlew testDebugUnitTest --tests '<pattern>'` |
 | `mise run test:device` | Instrumented tests on a connected device or emulator |
+| `mise run test:device:compile` | Compile the instrumented tests without a device. Part of `mise run check` |
 | `mise run install` | Install the debug APK on a connected device and launch it |
 | `mise run release` | Tag the next version from the commits since the last tag (`mise-tasks/release`). Before 1.0, breaking changes bump minor and everything else bumps patch. Never tag by hand |
 | `cd zig-src && zig build fmt` | Format the Zig sources |
@@ -116,8 +117,10 @@ Kotlin declares `external fun native*` methods in five bridge classes: `GhosttyB
 - `ui/theme/ThemeScreenshotTest` renders components with Roborazzi into
   `android/app/build/outputs/roborazzi/`. Pass `-Proborazzi.test.record=true` to write
   the images; nothing compares them automatically.
-- Instrumented tests in `android/app/src/androidTest/` need a device. Say so when
-  none was available. Without a phone, run them on the Gradle-managed emulator with
+- Instrumented tests in `android/app/src/androidTest/` need a device to run. Say so
+  when none was available. `mise run check` compiles them without one
+  (`mise run test:device:compile`), so a changed signature can't leave them broken.
+  Without a phone, run them on the Gradle-managed emulator with
   `cd android && ./gradlew dev34DebugAndroidTest`, after building the x86_64 native
   library (`mise run native -Dtarget=x86_64-linux-android`).
 - `build.zig` has no test step, so the Zig `test` blocks never run. Test bridge logic
