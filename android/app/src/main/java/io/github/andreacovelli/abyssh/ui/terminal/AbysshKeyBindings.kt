@@ -3,10 +3,12 @@ package io.github.andreacovelli.abyssh.ui.terminal
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import io.github.andreacovelli.abyssh.model.UiText
 
+/** One entry in the shortcut menu: the key typed after the prefix and what it runs. */
 data class AbysshHint(
-    val key: String,
-    val description: String,
+    val key: Char,
+    val description: UiText,
 )
 
 class AbysshKeyBindings(
@@ -80,7 +82,7 @@ class AbysshKeyBindings(
                 val keyChar = shortcut.first().lowercaseChar()
                 if (keyChar in builtinHandlers) return@forEach
                 builtinHandlers[keyChar] = handler
-                builtinHints += AbysshHint(key = shortcut, description = command.label)
+                builtinHints += AbysshHint(key = keyChar, description = UiText.Resource(command.label))
             }
 
             val builtinKeys = builtinHandlers.keys.toSet()
@@ -99,8 +101,8 @@ class AbysshKeyBindings(
             shortcutActionsMap.forEach { (keyChar, actions) ->
                 if (!seenShortcuts.add(keyChar)) return@forEach
                 customHints += AbysshHint(
-                    key = keyChar.toString(),
-                    description = "[${actions.joinToString(", ") { it.label }}]",
+                    key = keyChar,
+                    description = UiText.Raw(actions.joinToString(", ") { it.label }),
                 )
                 customHandlers[keyChar] = {
                     if (actions.size == 1) {

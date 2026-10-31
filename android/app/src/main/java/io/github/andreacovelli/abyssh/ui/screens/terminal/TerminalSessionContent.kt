@@ -4,17 +4,11 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
 import androidx.core.net.toUri
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,9 +17,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -39,7 +30,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -47,7 +37,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -65,7 +54,6 @@ import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
-import io.github.andreacovelli.abyssh.ui.terminal.AbysshKeyBindings
 import io.github.andreacovelli.abyssh.ui.terminal.KeyboardAccessoryBar
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCanvas
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
@@ -318,7 +306,7 @@ private fun TerminalPane(
                     onClearFilter = { host.overlay.fabFilteredActions = null },
                 )
             }
-            AbysshPrefixHints(host.abysshKeys, Modifier.align(Alignment.BottomStart).fillMaxWidth())
+            AbysshShortcutMenu(host.abysshKeys, Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 8.dp))
         }
     }
 }
@@ -378,44 +366,6 @@ private fun TerminalStatusBadges(sessionState: SessionState, preparingMultiplexe
         }
         sessionState.pwd?.takeIf { it.isNotBlank() }?.let { pwd ->
             AbyssText(text = pwd, style = typography.codeSmall, color = colors.textPrimary.copy(alpha = 0.7f))
-        }
-    }
-}
-
-/** While the shortcut prefix waits for its second key, the keys it takes and what they do. */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun AbysshPrefixHints(keys: AbysshKeyBindings, modifier: Modifier = Modifier) {
-    val colors = AbyssColors.current
-    val typography = AbyssTypography.current
-    val shape = MaterialTheme.shapes.medium
-    AnimatedVisibility(visible = keys.isPrefixActive, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
-        Row(
-            modifier = Modifier.fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 4.dp)
-                .clip(shape)
-                .background(colors.surface)
-                .border(1.dp, colors.border, shape)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(modifier = Modifier.width(24.dp)) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_bolt),
-                    contentDescription = null,
-                    tint = colors.accent,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-            FlowRow(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                keys.hints().forEach { hint ->
-                    AbyssText("${hint.key}: ${hint.description}", style = typography.labelSmall, color = colors.textSecondary)
-                }
-            }
         }
     }
 }

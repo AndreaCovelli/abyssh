@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
+import androidx.annotation.StringRes
+import io.github.andreacovelli.abyssh.R
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -11,21 +13,21 @@ import kotlinx.serialization.json.Json
  * Single source of truth for the command id (persisted), the display label, the
  * settings description, and the default shortcut key. Mirrors the label-carrying enum
  * pattern used by [CustomActionModifier]. Enum order is the order shown in settings and
- * in the hint bar.
+ * in the shortcut menu.
  */
 enum class BuiltinCommand(
     val id: String,
-    val label: String,
-    val description: String,
+    @param:StringRes val label: Int,
+    @param:StringRes val description: Int,
     val defaultKey: Char,
 ) {
-    Tabs("tabs", "Tabs", "Show tab manager", 't'),
-    NewTab("new_tab", "New tab", "Open a new tab", 'n'),
-    Actions("actions", "Actions", "Toggle floating custom actions button", 'a'),
-    Settings("settings", "Settings", "Open settings", 's'),
-    Close("close", "Close", "Close the active tab", 'q'),
-    Search("search", "Search", "Search the terminal output", 'f'),
-    Zoom("zoom", "Zoom", "Toggle zoom mode", 'z');
+    Tabs("tabs", R.string.command_tabs, R.string.command_tabs_description, 't'),
+    NewTab("new_tab", R.string.command_new_tab, R.string.command_new_tab_description, 'n'),
+    Actions("actions", R.string.command_actions, R.string.command_actions_description, 'a'),
+    Settings("settings", R.string.command_settings, R.string.command_settings_description, 's'),
+    Close("close", R.string.command_close, R.string.command_close_description, 'q'),
+    Search("search", R.string.command_search, R.string.command_search_description, 'f'),
+    Zoom("zoom", R.string.command_zoom, R.string.command_zoom_description, 'z');
 
     companion object {
         fun fromId(id: String): BuiltinCommand? = entries.find { it.id == id }
