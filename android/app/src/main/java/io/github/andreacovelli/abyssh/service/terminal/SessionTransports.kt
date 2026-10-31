@@ -15,11 +15,6 @@ import kotlinx.coroutines.yield
 
 private const val READ_CHUNK_BYTES = 65536
 
-// The longest one native wait for output blocks. Work dispatched to the session thread
-// ends it early; this bounds how late the loop notices a cancellation that dispatches
-// nothing.
-private const val MAX_OUTPUT_WAIT_MS = 1_000
-
 // Idle thresholds and the poll delay for each tier.
 private const val ACTIVE_WINDOW_MS = 50L
 private const val NEAR_IDLE_WINDOW_MS = 500L

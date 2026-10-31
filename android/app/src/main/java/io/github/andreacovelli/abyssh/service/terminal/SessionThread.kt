@@ -37,6 +37,11 @@ internal class NativeWakeSignal(private val bridge: NativeWakeBridge = NativeWak
     override fun close(fd: Int) = bridge.nativeClose(fd)
 }
 
+// The longest one native wait for output blocks. Work dispatched to the session thread
+// ends it early; this bounds how late a read loop notices a cancellation that dispatches
+// nothing.
+internal const val MAX_OUTPUT_WAIT_MS = 1_000
+
 /** Blocks the session thread until output arrives or other work is dispatched to it. */
 internal interface OutputWaiter {
     /**
@@ -53,13 +58,15 @@ internal interface OutputWaiter {
  * for output through [awaitOutput]; [dispatcher] wakes that wait whenever it queues work,
  * so input, resizes, snapshots, and disconnects still run at once.
  */
-internal class SessionThread(private val wakeSignal: WakeSignal = NativeWakeSignal()) :
-    OutputWaiter,
+internal class SessionThread(
+    private val wakeSignal: WakeSignal = NativeWakeSignal(),
+    name: String = "terminal-session",
+) : OutputWaiter,
     Closeable {
     private val queue = LinkedBlockingQueue<Runnable>()
     private val executor =
         ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, queue) { r ->
-            Thread(r, "terminal-session").apply { isDaemon = true }
+            Thread(r, name).apply { isDaemon = true }
         }
     private val executorDispatcher = executor.asCoroutineDispatcher()
 

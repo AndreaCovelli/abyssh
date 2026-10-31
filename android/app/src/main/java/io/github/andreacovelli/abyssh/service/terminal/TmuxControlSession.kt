@@ -11,12 +11,10 @@ import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlEvent
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSize
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
-import java.util.concurrent.Executors
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExecutorCoroutineDispatcher
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -83,12 +81,11 @@ internal class TmuxControlSession(
     hostKeyStore: HostKeyStore,
     private val localNetwork: LocalNetworkAccess?,
 ) {
-    private val dispatcher: ExecutorCoroutineDispatcher =
-        Executors.newSingleThreadExecutor { r -> Thread(r, "tmux-control").apply { isDaemon = true } }
-            .asCoroutineDispatcher()
+    private val thread = SessionThread(name = "tmux-control")
+    private val dispatcher: CoroutineDispatcher = thread.dispatcher
 
     val hostKeys = HostKeyVerifier(hostKeyStore)
-    private val link = TmuxControlLink(hostKeys)
+    private val link = TmuxControlLink(hostKeys, thread)
 
     /** SFTP over the control session's SSH connection. */
     val sftp = SftpSession(link.ssh, dispatcher)
@@ -187,7 +184,7 @@ internal class TmuxControlSession(
             if (attached) link.detachAndClose() else link.close()
             attached = false
         }
-        dispatcher.close()
+        thread.close()
     }
 
     private fun connect(reconnectAttempt: Int) {

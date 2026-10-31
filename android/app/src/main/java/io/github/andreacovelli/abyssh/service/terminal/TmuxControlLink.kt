@@ -17,9 +17,10 @@ private const val DETACH_WAIT_MS = 20L
 /**
  * The SSH channel that runs `tmux -CC`. Commands go out one per line, and tmux answers
  * each with a reply block in the order they were sent, so each reply goes to the oldest
- * callback still waiting. Every call must run on the control session's thread.
+ * callback still waiting. Every call must run on the control session's thread, which
+ * [outputWaiter] blocks while the read loop waits for output.
  */
-internal class TmuxControlLink(hostKeyPolicy: HostKeyPolicy) {
+internal class TmuxControlLink(hostKeyPolicy: HostKeyPolicy, private val outputWaiter: OutputWaiter) {
     val ssh = NativeSshService(hostKeyPolicy = hostKeyPolicy)
     private val parser = TmuxControlParser()
     private val pacer = ReadPacer()
@@ -74,10 +75,14 @@ internal class TmuxControlLink(hostKeyPolicy: HostKeyPolicy) {
                     yield()
                 }
                 ssh.isChannelEof() -> return
-                else -> {
-                    if (ssh.hasPendingWrites) pacer.onActivity()
+                // Commands the channel hasn't taken yet go out on the next read, so poll
+                // at the active cadence until it has.
+                ssh.hasPendingWrites -> {
+                    pacer.onActivity()
                     pacer.idle()
                 }
+                // Block until output or other work for the thread, or poll when that can't wait.
+                !outputWaiter.awaitOutput { wakeFd -> ssh.waitReadable(wakeFd, MAX_OUTPUT_WAIT_MS) } -> pacer.idle()
             }
         }
     }
