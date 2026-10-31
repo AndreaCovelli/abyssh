@@ -124,7 +124,12 @@ internal class TmuxControlSession(
     fun start() = onThread { connect(reconnectAttempt = 0) }
 
     /** Reconnects now, as when the user taps reconnect. */
-    fun reconnect() = onThread {
+    fun reconnect() {
+        if (_status.value.status != SessionStatus.Connected) link.ssh.cancelConnect()
+        reconnectNow()
+    }
+
+    private fun reconnectNow() = onThread {
         if (_status.value.status == SessionStatus.Connected) return@onThread
         reconnectJob?.cancel()
         reconnectJob = null
@@ -177,6 +182,7 @@ internal class TmuxControlSession(
         if (disposed) return
         disposed = true
         hostKeys.cancel()
+        link.ssh.cancelConnect()
         scope.launch(dispatcher) {
             readJob?.cancel()
             reconnectJob?.cancel()

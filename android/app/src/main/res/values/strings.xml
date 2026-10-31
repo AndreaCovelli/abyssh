@@ -418,6 +418,7 @@
     <string name="error_mosh_session_ended_code">Mosh session ended (failure code %1$d). Reconnect to start a new session.</string>
     <string name="error_resize_failed">Resize failed: %1$s</string>
     <string name="error_reconnect_failed">Reconnect failed: %1$s</string>
+    <string name="error_connection_cancelled">Connection cancelled</string>
     <string name="error_reconnect_timeout">Timed out waiting for the session to reconnect</string>
     <string name="error_session_not_connected">The session is not connected</string>
     <string name="error_host_key_rejected">Host key rejected</string>

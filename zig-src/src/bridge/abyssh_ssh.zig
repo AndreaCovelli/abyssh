@@ -23,6 +23,9 @@ fn logError(comptime fmt: []const u8, args: anytype) void {
     androidLog(6, fmt, args); // ANDROID_LOG_ERROR = 6
 }
 const setup_wait_timeout_ms = 10_000;
+// How long one address may take to accept the TCP connection before the next is tried.
+const tcp_connect_timeout_ms = 15_000;
+const cancelled_message = "Connection cancelled";
 const io_wait_timeout_ms = 120;
 // The most one read returns; Kotlin asks for 64 KiB at most.
 const max_read_bytes = 1024 * 1024;
@@ -44,6 +47,10 @@ const NativeSshSession = struct {
     last_error: std.ArrayListUnmanaged(u8) = .empty,
     // The last error is a status the SFTP server sent back, so the connection still works.
     last_error_is_sftp_status: bool = false,
+    // An eventfd Kotlin signals to cancel the connection; Kotlin owns and closes it. Once
+    // signalled it stays readable, so every later socket wait fails at once.
+    cancel_fd: c_int = -1,
+    cancelled: bool = false,
     // Kept between reads, which the read loop makes for every chunk of output.
     read_buffer: []u8 = &.{},
 };
@@ -62,7 +69,29 @@ fn handleFromSession(session: *NativeSshSession) c.jlong {
 fn setError(session: *NativeSshSession, comptime fmt: []const u8, args: anytype) void {
     session.last_error_is_sftp_status = false;
     session.last_error.clearRetainingCapacity();
+    // After a cancel, the timeouts and failures that follow are only its effects.
+    if (session.cancelled) {
+        session.last_error.appendSlice(allocator, cancelled_message) catch return;
+        return;
+    }
     session.last_error.print(allocator, fmt, args) catch return;
+}
+
+/// Polls `fd` for `events` and the session's cancel eventfd together. Returns the poll
+/// result for `fd`, or null once the cancel eventfd has been signalled.
+fn pollCancellable(session: *NativeSshSession, fd: c_int, events: c_short, timeout_ms: c_int) ?struct { rc: c_int, revents: c_short } {
+    if (session.cancelled) return null;
+    var poll_fds: [2]c.struct_pollfd = .{
+        .{ .fd = fd, .events = events, .revents = 0 },
+        .{ .fd = session.cancel_fd, .events = c.POLLIN, .revents = 0 },
+    };
+    const count: c.nfds_t = if (session.cancel_fd >= 0) 2 else 1;
+    const rc = c.poll(&poll_fds, count, timeout_ms);
+    if (count == 2 and poll_fds[1].revents != 0) {
+        session.cancelled = true;
+        return null;
+    }
+    return .{ .rc = rc, .revents = poll_fds[0].revents };
 }
 
 fn setLibssh2Error(session: *NativeSshSession, prefix: []const u8, rc: c_int) void {
@@ -159,16 +188,11 @@ fn pollSocket(session: *NativeSshSession, timeout_ms: c_int) SocketWait {
         events = c.POLLIN | c.POLLOUT;
     }
 
-    var poll_fds: [1]c.struct_pollfd = .{.{
-        .fd = session.socket_fd,
-        .events = events,
-        .revents = 0,
-    }};
-    const poll_rc = c.poll(&poll_fds, 1, timeout_ms);
-    if (poll_rc < 0) return .failed;
-    if (poll_rc == 0) return .timeout;
+    const polled = pollCancellable(session, session.socket_fd, events, timeout_ms) orelse return .failed;
+    if (polled.rc < 0) return .failed;
+    if (polled.rc == 0) return .timeout;
 
-    const revents = poll_fds[0].revents;
+    const revents = polled.revents;
     if ((revents & (c.POLLIN | c.POLLOUT)) != 0) return .ready;
     if ((revents & (c.POLLERR | c.POLLHUP | c.POLLNVAL)) != 0) return .failed;
     return .ready;
@@ -375,7 +399,7 @@ fn sftpOpenDir(session: *NativeSshSession, sftp: *c.LIBSSH2_SFTP, path_z: [:0]u8
     }
 }
 
-fn connectSocket(host: [:0]const u8, port: u16) !c_int {
+fn connectSocket(session: *NativeSshSession, host: [:0]const u8, port: u16) !c_int {
     var hints: c.struct_addrinfo = std.mem.zeroes(c.struct_addrinfo);
     hints.ai_family = c.AF_UNSPEC;
     hints.ai_socktype = c.SOCK_STREAM;
@@ -390,15 +414,43 @@ fn connectSocket(host: [:0]const u8, port: u16) !c_int {
 
     var cur = addr_list;
     while (cur) |info| : (cur = info.ai_next) {
+        if (session.cancelled) return error.Cancelled;
         const fd = c.socket(info.ai_family, info.ai_socktype, info.ai_protocol);
         if (fd < 0) continue;
-        if (c.connect(fd, info.ai_addr, info.ai_addrlen) == 0) {
+        if (connectWithin(session, fd, info)) {
             disableNagle(fd);
             return fd;
         }
         closeSocket(fd);
     }
-    return error.ConnectFailed;
+    return if (session.cancelled) error.Cancelled else error.ConnectFailed;
+}
+
+/// Connects `fd` without blocking, so a cancel or `tcp_connect_timeout_ms` can end the
+/// attempt, then restores the socket's blocking mode.
+fn connectWithin(session: *NativeSshSession, fd: c_int, info: *c.struct_addrinfo) bool {
+    const flags = c.fcntl(fd, c.F_GETFL, @as(c_int, 0));
+    if (flags < 0 or c.fcntl(fd, c.F_SETFL, flags | c.O_NONBLOCK) != 0) {
+        return c.connect(fd, info.ai_addr, info.ai_addrlen) == 0;
+    }
+    defer _ = c.fcntl(fd, c.F_SETFL, flags);
+    if (c.connect(fd, info.ai_addr, info.ai_addrlen) == 0) return true;
+    if (c.__errno().* != c.EINPROGRESS) return false;
+
+    const deadline_ms = nowMs() + tcp_connect_timeout_ms;
+    while (true) {
+        const left_ms = deadline_ms - nowMs();
+        if (left_ms <= 0) return false;
+        const polled = pollCancellable(session, fd, c.POLLOUT, @intCast(left_ms)) orelse return false;
+        if (polled.rc < 0) {
+            if (c.__errno().* == c.EINTR) continue;
+            return false;
+        }
+        if (polled.rc == 0) return false;
+        var so_error: c_int = 0;
+        var so_len: c.socklen_t = @sizeOf(c_int);
+        return c.getsockopt(fd, c.SOL_SOCKET, c.SO_ERROR, &so_error, &so_len) == 0 and so_error == 0;
+    }
 }
 
 /// Sends each write at once, as OpenSSH does for interactive sessions. With Nagle's
@@ -537,6 +589,15 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     destroyNativeSshSession(session);
 }
 
+/// Sets the eventfd that cancels this session's connection when signalled, or -1 for none.
+/// Kotlin keeps it open until the session is destroyed.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSetCancelFd(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, fd: c.jint) callconv(.c) void {
+    _ = env;
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return;
+    session.cancel_fd = if (fd >= 0) fd else -1;
+}
+
 export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeConnect(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, host: c.jstring, port: c.jint, username: c.jstring) callconv(.c) c.jboolean {
     _ = thiz;
     const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
@@ -566,7 +627,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         return c.JNI_FALSE;
     };
 
-    const fd = connectSocket(host_z, @intCast(@max(port, 0))) catch {
+    const fd = connectSocket(session, host_z, @intCast(@max(port, 0))) catch {
         logError("Socket connect failed host={s} port={}", .{ host_slice, port });
         setError(session, "Socket connect failed host={s} port={}", .{ host_slice, port });
         return c.JNI_FALSE;

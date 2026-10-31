@@ -25,6 +25,7 @@ class NativeSshService(
     }
 
     private var handle: Long = 0L
+    private val cancellation = ConnectionCancel()
 
     fun isAvailable(): Boolean = bridge.isLoaded()
 
@@ -42,11 +43,10 @@ class NativeSshService(
         close()
         handle = bridge.nativeCreateSession()
         check(handle != 0L) { "Failed to create native SSH session" }
+        bridge.nativeSetCancelFd(handle, cancellation.open())
 
         if (!bridge.nativeConnect(handle, host, port, username)) {
-            error(
-                bridge.nativeGetLastError(handle) ?: "Native SSH connect failed"
-            )
+            bridge.connectFailure(handle, cancellation, "Native SSH connect failed")
         }
 
         val algorithm =
@@ -120,9 +120,7 @@ class NativeSshService(
     fun openShell(cols: Int, rows: Int, widthPx: Int, heightPx: Int, term: String = RemoteTerm.SSH) {
         check(handle != 0L) { "Not connected" }
         if (!bridge.nativeOpenShell(handle, cols, rows, widthPx, heightPx, term)) {
-            error(
-                bridge.nativeGetLastError(handle) ?: "Native SSH shell open failed"
-            )
+            bridge.connectFailure(handle, cancellation, "Native SSH shell open failed")
         }
     }
 
@@ -141,11 +139,18 @@ class NativeSshService(
     ) {
         check(handle != 0L) { "Not connected" }
         if (!bridge.nativeOpenExecPty(handle, command, cols, rows, widthPx, heightPx, term)) {
-            error(
-                bridge.nativeGetLastError(handle) ?: "Native SSH exec PTY open failed"
-            )
+            bridge.connectFailure(handle, cancellation, "Native SSH exec PTY open failed")
         }
     }
+
+    /**
+     * Cancels the connection: a TCP connect, handshake, or channel open that is waiting
+     * fails at once with "Connection cancelled". Authentication, which libssh2 runs in
+     * blocking mode, and host name lookup still run to the end. Safe to call from any
+     * thread, and does nothing when no connection was started.
+     */
+    fun cancelConnect() = cancellation.cancel()
+
 
     /** The numeric IP address the connection reached, such as `192.0.2.7` or `fe80::1%3`. */
     fun peerAddress(): String? {
@@ -220,30 +225,30 @@ class NativeSshService(
     fun sftpListDirectory(path: String): List<String> {
         check(handle != 0L) { "Not connected" }
         if (!bridge.nativeSftpInit(handle)) {
-            sftpFailure("Native SFTP init failed")
+            bridge.sftpFailure(handle, "Native SFTP init failed")
         }
         val names =
             bridge.nativeSftpListDirectory(handle, path)
-                ?: sftpFailure("Native SFTP list failed")
+                ?: bridge.sftpFailure(handle, "Native SFTP list failed")
         return names.toList()
     }
 
     fun sftpRealpath(path: String): String {
         check(handle != 0L) { "Not connected" }
         if (!bridge.nativeSftpInit(handle)) {
-            sftpFailure("Native SFTP init failed")
+            bridge.sftpFailure(handle, "Native SFTP init failed")
         }
         return bridge.nativeSftpRealpath(handle, path)
-            ?: sftpFailure("Native SFTP realpath failed")
+            ?: bridge.sftpFailure(handle, "Native SFTP realpath failed")
     }
 
     fun sftpOpenWrite(path: String) {
         check(handle != 0L) { "Not connected" }
         if (!bridge.nativeSftpInit(handle)) {
-            sftpFailure("Native SFTP init failed")
+            bridge.sftpFailure(handle, "Native SFTP init failed")
         }
         if (!bridge.nativeSftpOpenWrite(handle, path)) {
-            sftpFailure("Native SFTP open failed")
+            bridge.sftpFailure(handle, "Native SFTP open failed")
         }
     }
 
@@ -251,7 +256,7 @@ class NativeSshService(
         check(handle != 0L) { "Not connected" }
         val written = bridge.nativeSftpWriteChunk(handle, data)
         if (written < 0) {
-            sftpFailure("Native SFTP write failed")
+            bridge.sftpFailure(handle, "Native SFTP write failed")
         }
         return written
     }
@@ -259,54 +264,65 @@ class NativeSshService(
     fun sftpCloseWrite() {
         check(handle != 0L) { "Not connected" }
         if (!bridge.nativeSftpCloseWrite(handle)) {
-            sftpFailure("Native SFTP close failed")
+            bridge.sftpFailure(handle, "Native SFTP close failed")
         }
     }
 
     fun sftpReadFile(path: String, maxBytes: Int = 4 * 1024 * 1024): ByteArray {
         check(handle != 0L) { "Not connected" }
         if (!bridge.nativeSftpInit(handle)) {
-            sftpFailure("Native SFTP init failed")
+            bridge.sftpFailure(handle, "Native SFTP init failed")
         }
         require(maxBytes > 0) { "maxBytes must be > 0" }
         val boundedMaxBytes = minOf(maxBytes, MAX_SFTP_READ_BYTES)
         return bridge.nativeSftpReadFile(handle, path, boundedMaxBytes)
-            ?: sftpFailure("Native SFTP read failed")
+            ?: bridge.sftpFailure(handle, "Native SFTP read failed")
     }
 
     fun sftpDeleteFile(path: String) {
         check(handle != 0L) { "Not connected" }
         if (!bridge.nativeSftpInit(handle)) {
-            sftpFailure("Native SFTP init failed")
+            bridge.sftpFailure(handle, "Native SFTP init failed")
         }
         if (!bridge.nativeSftpDeleteFile(handle, path)) {
-            sftpFailure("Native SFTP delete file failed")
+            bridge.sftpFailure(handle, "Native SFTP delete file failed")
         }
     }
 
     fun sftpDeleteDirectory(path: String) {
         check(handle != 0L) { "Not connected" }
         if (!bridge.nativeSftpInit(handle)) {
-            sftpFailure("Native SFTP init failed")
+            bridge.sftpFailure(handle, "Native SFTP init failed")
         }
         if (!bridge.nativeSftpDeleteDirectory(handle, path)) {
-            sftpFailure("Native SFTP delete directory failed")
+            bridge.sftpFailure(handle, "Native SFTP delete directory failed")
         }
-    }
-
-    /** Throws the native SFTP error, as [SftpStatusException] when the server sent it. */
-    private fun sftpFailure(fallback: String): Nothing {
-        val message = bridge.nativeGetLastError(handle) ?: fallback
-        if (bridge.nativeLastErrorIsSftpStatus(handle)) throw SftpStatusException(message)
-        error(message)
     }
 
     override fun close() {
         pendingWrites.clear()
         pendingOffset = 0
-        if (handle == 0L) return
-        bridge.nativeClose(handle)
-        bridge.nativeDestroySession(handle)
-        handle = 0L
+        if (handle != 0L) {
+            bridge.nativeClose(handle)
+            bridge.nativeDestroySession(handle)
+            handle = 0L
+        }
+        // Only after the session is gone, since it polls this descriptor.
+        cancellation.close()
     }
+}
+
+/** Throws the native connect error, or "Connection cancelled" when [cancellation] asked for it. */
+private fun NativeSshBridge.connectFailure(handle: Long, cancellation: ConnectionCancel, fallback: String): Nothing {
+    if (cancellation.requested) {
+        throw UiTextException(UiText.Resource(R.string.error_connection_cancelled), "Connection cancelled")
+    }
+    error(nativeGetLastError(handle) ?: fallback)
+}
+
+/** Throws the native SFTP error, as [SftpStatusException] when the server sent it. */
+private fun NativeSshBridge.sftpFailure(handle: Long, fallback: String): Nothing {
+    val message = nativeGetLastError(handle) ?: fallback
+    if (nativeLastErrorIsSftpStatus(handle)) throw SftpStatusException(message)
+    error(message)
 }
