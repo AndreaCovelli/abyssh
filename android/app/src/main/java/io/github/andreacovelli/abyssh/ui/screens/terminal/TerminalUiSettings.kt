@@ -26,6 +26,7 @@ import io.github.andreacovelli.abyssh.ui.terminal.TerminalCustomKeyGroup
 import io.github.andreacovelli.abyssh.ui.theme.GhosttyTheme
 import io.github.andreacovelli.abyssh.ui.theme.GhosttyThemeRegistry
 import io.github.andreacovelli.abyssh.ui.theme.resolveActiveThemeName
+import io.github.andreacovelli.abyssh.ui.theme.withPureBlack
 
 /** The settings the terminal screen reads, collected in one place. */
 @Immutable
@@ -45,11 +46,14 @@ internal data class TerminalUiSettings(
 @Composable
 internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSettings {
     val context = LocalContext.current
-    val darkThemeName by repo.themeName.collectAsStateWithLifecycle()
-    val themeMode by repo.themeMode.collectAsStateWithLifecycle()
-    val lightThemeName by repo.lightThemeName.collectAsStateWithLifecycle()
+    val darkThemeName by repo.theme.darkThemeName.collectAsStateWithLifecycle()
+    val themeMode by repo.theme.mode.collectAsStateWithLifecycle()
+    val lightThemeName by repo.theme.lightThemeName.collectAsStateWithLifecycle()
     val themeName = resolveActiveThemeName(themeMode, darkThemeName, lightThemeName)
-    val ghosttyTheme = remember(context, themeName) { GhosttyThemeRegistry.getTheme(context, themeName) }
+    val pureBlack by repo.theme.pureBlack.collectAsStateWithLifecycle()
+    val ghosttyTheme = remember(context, themeName, pureBlack) {
+        GhosttyThemeRegistry.getTheme(context, themeName)?.let { if (pureBlack) it.withPureBlack() else it }
+    }
     val tabMode by repo.terminalTabMode.collectAsStateWithLifecycle()
     val layoutIds by repo.accessoryLayoutIds.collectAsStateWithLifecycle()
     val accessoryLayout = remember(layoutIds) { TerminalAccessoryLayoutStore.resolveSelectedLayout(layoutIds) }

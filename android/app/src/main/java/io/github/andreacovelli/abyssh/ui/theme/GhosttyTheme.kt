@@ -80,16 +80,50 @@ private fun Color.mix(other: Color, fraction: Float): Color {
 private fun Color.luminance(): Float =
     0.299f * red + 0.587f * green + 0.114f * blue
 
-fun GhosttyTheme.toChuColorPalette(): AbyssColorPalette {
-    val isDark = background.luminance() < 0.5f
+/** Whether the theme has a dark background, the only kind [withPureBlack] changes. */
+val GhosttyTheme.isDark: Boolean get() = background.luminance() < 0.5f
+
+/**
+ * The theme on a pure black background, for OLED screens. Light themes come back
+ * unchanged. Cursor text and selection text that matched the old background
+ * follow it to black, so they keep their contrast.
+ */
+fun GhosttyTheme.withPureBlack(): GhosttyTheme {
+    if (!isDark) return this
+    val oldBackground = background
+    fun Color.followBackground() = if (this == oldBackground) PureBlack else this
+    return copy(
+        background = PureBlack,
+        cursorText = cursorText.followBackground(),
+        selectionForeground = selectionForeground.followBackground(),
+    )
+}
+
+/**
+ * The UI palette for this theme. With [pureBlack], a dark theme gets a black
+ * background and panels close to black, which borders keep apart.
+ */
+fun GhosttyTheme.toChuColorPalette(pureBlack: Boolean = false): AbyssColorPalette {
+    if (pureBlack && isDark) return withPureBlack().toUiPalette(oled = true)
+    return toUiPalette(oled = false)
+}
+
+private fun GhosttyTheme.toUiPalette(oled: Boolean): AbyssColorPalette {
     val white = Color(0xFFFFFFFF)
-    val black = Color(0xFF000000)
-    val contrast = if (isDark) white else black
+    val contrast = if (isDark) white else PureBlack
 
     // Panels: lighter touch on light themes so pale sage/cream backgrounds
-    // don't get muddied; keep the existing weight on dark themes.
-    val surface = background.mix(contrast, if (isDark) 0.15f else 0.06f)
-    val surfaceVariant = background.mix(contrast, if (isDark) 0.04f else 0.02f)
+    // don't get muddied; keep the existing weight on dark themes. On pure
+    // black, panels stay near black so the screen stays mostly off.
+    val surface = background.mix(
+        contrast,
+        when {
+            oled -> 0.08f
+            isDark -> 0.15f
+            else -> 0.06f
+        },
+    )
+    val surfaceVariant = if (oled) background else background.mix(contrast, if (isDark) 0.04f else 0.02f)
     // Borders need more punch on light themes — the eye is less forgiving
     // of low-contrast outlines on bright backgrounds.
     val border = background.mix(contrast, if (isDark) 0.22f else 0.28f)
@@ -195,5 +229,7 @@ private val DEFAULT_ANSI_COLORS = listOf(
     Color(0xFF00FFFF),
     Color(0xFFFFFFFF),
 )
+
+private val PureBlack = Color(0xFF000000)
 
 private val XTERM_CUBE_LEVELS = intArrayOf(0, 95, 135, 175, 215, 255)

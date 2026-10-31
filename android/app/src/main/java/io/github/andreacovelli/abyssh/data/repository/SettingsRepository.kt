@@ -22,8 +22,9 @@ class SettingsRepository(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("abyssh_settings", Context.MODE_PRIVATE)
 
-    private val _themeName = MutableStateFlow(prefs.getString(KEY_THEME, DEFAULT_THEME) ?: DEFAULT_THEME)
-    val themeName: StateFlow<String> = _themeName.asStateFlow()
+    /** The dark and light themes, which one shows, and pure black. */
+    val theme = ThemeSettings(prefs)
+
 
     private val _fontName = MutableStateFlow(
         AbyssFontOption.fromId(prefs.getString(KEY_FONT, DEFAULT_FONT)).id,
@@ -73,14 +74,6 @@ class SettingsRepository(context: Context) {
     )
     val terminalTabMode: StateFlow<TerminalTabMode> = _terminalTabMode.asStateFlow()
 
-    private val _themeMode = MutableStateFlow(parseThemeMode(prefs.getString(KEY_THEME_MODE, DEFAULT_THEME_MODE.name)))
-    val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
-
-    private val _lightThemeName = MutableStateFlow(
-        prefs.getString(KEY_LIGHT_THEME, DEFAULT_LIGHT_THEME) ?: DEFAULT_LIGHT_THEME,
-    )
-    val lightThemeName: StateFlow<String> = _lightThemeName.asStateFlow()
-
     private val _terminalFontSize = MutableStateFlow(
         loadTerminalFontSize(),
     )
@@ -93,11 +86,6 @@ class SettingsRepository(context: Context) {
 
     /** The scrollback each terminal may keep, in megabytes; it applies when a tab connects. */
     val terminalScrollbackMb: StateFlow<Int> = _terminalScrollbackMb.asStateFlow()
-
-    fun setTheme(name: String) {
-        prefs.edit { putString(KEY_THEME, name) }
-        _themeName.value = name
-    }
 
     fun setFont(name: String) {
         val normalized = AbyssFontOption.fromId(name).id
@@ -179,16 +167,6 @@ class SettingsRepository(context: Context) {
         _ctrlVPastes.value = enabled
     }
 
-    fun setThemeMode(mode: ThemeMode) {
-        prefs.edit { putString(KEY_THEME_MODE, mode.name) }
-        _themeMode.value = mode
-    }
-
-    fun setLightTheme(name: String) {
-        prefs.edit { putString(KEY_LIGHT_THEME, name) }
-        _lightThemeName.value = name
-    }
-
     fun setTerminalFontSize(sizeSp: Float) {
         val clamped = sizeSp.coerceIn(MIN_TERMINAL_FONT_SIZE, MAX_TERMINAL_FONT_SIZE)
         prefs.edit {
@@ -236,7 +214,6 @@ class SettingsRepository(context: Context) {
     }
 
     companion object {
-        private const val KEY_THEME = "theme_name"
         private const val KEY_FONT = "font_name"
         private const val KEY_ACCESSORY_LAYOUT = "terminal_accessory_layout"
         private const val KEY_TERMINAL_CUSTOM_ACTIONS = "terminal_custom_actions"
@@ -252,8 +229,6 @@ class SettingsRepository(context: Context) {
         private const val KEY_DISABLE_AUTOCORRECT = "disable_autocorrect"
         private const val KEY_REMOTE_CLIPBOARD_WRITE_ENABLED = "remote_clipboard_write_enabled"
         private const val KEY_CTRL_V_PASTES = "ctrl_v_pastes"
-        private const val KEY_THEME_MODE = "theme_mode"
-        private const val KEY_LIGHT_THEME = "light_theme_name"
         private const val KEY_TERMINAL_FONT_SIZE = "terminal_font_size_sp"
         private const val KEY_TERMINAL_FONT_SIZE_CUSTOMIZED = "terminal_font_size_customized"
         private const val KEY_TERMINAL_SCROLLBACK_MB = "terminal_scrollback_mb"
@@ -279,9 +254,6 @@ class SettingsRepository(context: Context) {
         fun getInstance(context: Context): SettingsRepository = instance ?: synchronized(this) {
                 instance ?: SettingsRepository(context.applicationContext).also { instance = it }
             }
-
-        private fun parseThemeMode(value: String?): ThemeMode =
-            ThemeMode.entries.find { it.name == value } ?: DEFAULT_THEME_MODE
 
         private fun parseTabMode(value: String?): TerminalTabMode =
             try {

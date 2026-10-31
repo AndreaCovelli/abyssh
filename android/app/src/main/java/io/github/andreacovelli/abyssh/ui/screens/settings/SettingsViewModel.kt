@@ -18,6 +18,7 @@ data class GeneralSettingsState(
     val darkThemeName: String = SettingsRepository.DEFAULT_THEME,
     val lightThemeName: String = SettingsRepository.DEFAULT_LIGHT_THEME,
     val themeMode: ThemeMode = SettingsRepository.DEFAULT_THEME_MODE,
+    val pureBlack: Boolean = false,
     val fontName: String = SettingsRepository.DEFAULT_FONT,
     val appLockEnabled: Boolean = false,
     val requireAuthOnConnect: Boolean = false,
@@ -50,6 +51,7 @@ interface GeneralSettingsActions {
     fun setDarkTheme(name: String)
     fun setLightTheme(name: String)
     fun setThemeMode(mode: ThemeMode)
+    fun setPureBlack(enabled: Boolean)
     fun setFont(name: String)
     fun setAppLockEnabled(enabled: Boolean)
     fun setRequireAuthOnConnect(enabled: Boolean)
@@ -83,7 +85,8 @@ class SettingsViewModel(
         // current values rather than threading twenty typed arguments through combine.
         combine(
             listOf(
-                settings.themeName, settings.lightThemeName, settings.themeMode, settings.fontName,
+                settings.theme.darkThemeName, settings.theme.lightThemeName, settings.theme.mode, settings.theme.pureBlack,
+                settings.fontName,
                 settings.appLockEnabled, settings.requireAuthOnConnect, settings.terminalFontSize,
                 settings.terminalScrollbackMb,
                 settings.terminalTabMode, settings.accessoryLayoutIds, settings.accessoryBarSingleRow,
@@ -96,9 +99,10 @@ class SettingsViewModel(
 
     private fun currentState() = SettingsUiState(
         general = GeneralSettingsState(
-            darkThemeName = settings.themeName.value,
-            lightThemeName = settings.lightThemeName.value,
-            themeMode = settings.themeMode.value,
+            darkThemeName = settings.theme.darkThemeName.value,
+            lightThemeName = settings.theme.lightThemeName.value,
+            themeMode = settings.theme.mode.value,
+            pureBlack = settings.theme.pureBlack.value,
             fontName = settings.fontName.value,
             appLockEnabled = settings.appLockEnabled.value,
             requireAuthOnConnect = settings.requireAuthOnConnect.value,
@@ -121,9 +125,10 @@ class SettingsViewModel(
         ),
     )
 
-    override fun setDarkTheme(name: String) = settings.setTheme(name)
-    override fun setLightTheme(name: String) = settings.setLightTheme(name)
-    override fun setThemeMode(mode: ThemeMode) = settings.setThemeMode(mode)
+    override fun setDarkTheme(name: String) = settings.theme.setDarkTheme(name)
+    override fun setLightTheme(name: String) = settings.theme.setLightTheme(name)
+    override fun setThemeMode(mode: ThemeMode) = settings.theme.setMode(mode)
+    override fun setPureBlack(enabled: Boolean) = settings.theme.setPureBlack(enabled)
     override fun setFont(name: String) = settings.setFont(name)
     override fun setAppLockEnabled(enabled: Boolean) = settings.setAppLockEnabled(enabled)
     override fun setRequireAuthOnConnect(enabled: Boolean) = settings.setRequireAuthOnConnect(enabled)

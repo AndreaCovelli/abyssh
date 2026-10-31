@@ -185,6 +185,8 @@ private fun GeneralSettings(
         onLightThemeSelected = actions::setLightTheme,
         themeMode = state.themeMode,
         onThemeModeChanged = actions::setThemeMode,
+        pureBlack = state.pureBlack,
+        onPureBlackChanged = actions::setPureBlack,
     )
     Spacer(modifier = Modifier.height(16.dp))
     FontSelectorSection(currentFont = state.fontName, onFontSelected = actions::setFont)

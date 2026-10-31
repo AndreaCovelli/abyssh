@@ -45,9 +45,10 @@ class SettingsRepositoryTest {
         clearPrefs()
         val repo = newRepository()
 
-        assertEquals(SettingsRepository.DEFAULT_THEME, repo.themeName.first())
-        assertEquals(SettingsRepository.DEFAULT_LIGHT_THEME, repo.lightThemeName.first())
-        assertEquals(SettingsRepository.DEFAULT_THEME_MODE, repo.themeMode.first())
+        assertEquals(SettingsRepository.DEFAULT_THEME, repo.theme.darkThemeName.first())
+        assertEquals(SettingsRepository.DEFAULT_LIGHT_THEME, repo.theme.lightThemeName.first())
+        assertEquals(SettingsRepository.DEFAULT_THEME_MODE, repo.theme.mode.first())
+        assertEquals(false, repo.theme.pureBlack.first())
         assertEquals(SettingsRepository.DEFAULT_TERMINAL_FONT_SIZE, repo.terminalFontSize.first())
         assertEquals(TerminalTabMode.Classic, repo.terminalTabMode.first())
         assertEquals(false, repo.appLockEnabled.first())
@@ -62,8 +63,9 @@ class SettingsRepositoryTest {
         clearPrefs()
         val repo = newRepository()
 
-        repo.setTheme("Dracula")
-        repo.setLightTheme("Nord Light")
+        repo.theme.setDarkTheme("Dracula")
+        repo.theme.setLightTheme("Nord Light")
+        repo.theme.setPureBlack(true)
         repo.setTerminalTabMode(TerminalTabMode.Strip)
         repo.setAppLockEnabled(true)
         repo.setLocalShellEnabled(false)
@@ -71,8 +73,9 @@ class SettingsRepositoryTest {
         // Simulate a process restart: a brand-new instance over the same pref files.
         val reloaded = newRepository()
 
-        assertEquals("Dracula", reloaded.themeName.first())
-        assertEquals("Nord Light", reloaded.lightThemeName.first())
+        assertEquals("Dracula", reloaded.theme.darkThemeName.first())
+        assertEquals("Nord Light", reloaded.theme.lightThemeName.first())
+        assertEquals(true, reloaded.theme.pureBlack.first())
         assertEquals(TerminalTabMode.Strip, reloaded.terminalTabMode.first())
         assertEquals(true, reloaded.appLockEnabled.first())
         assertEquals(false, reloaded.localShellEnabled.first())
@@ -144,6 +147,6 @@ class SettingsRepositoryTest {
 
         val repo = newRepository()
         assertEquals(TerminalTabMode.Classic, repo.terminalTabMode.first())
-        assertEquals(SettingsRepository.DEFAULT_THEME_MODE, repo.themeMode.first())
+        assertEquals(SettingsRepository.DEFAULT_THEME_MODE, repo.theme.mode.first())
     }
 }

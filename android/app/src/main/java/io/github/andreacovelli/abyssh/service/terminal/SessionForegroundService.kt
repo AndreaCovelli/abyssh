@@ -132,7 +132,7 @@ class SessionForegroundService : Service() {
     }
 
     private fun resolveNotificationColor(): Int? {
-        val selectedTheme = SettingsRepository.getInstance(applicationContext).themeName.value
+        val selectedTheme = SettingsRepository.getInstance(applicationContext).theme.darkThemeName.value
         GhosttyThemeRegistry.init(applicationContext)
         val theme = GhosttyThemeRegistry.getTheme(applicationContext, selectedTheme) ?: return null
         return theme.background.toArgb()

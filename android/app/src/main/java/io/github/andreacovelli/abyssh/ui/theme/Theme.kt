@@ -15,12 +15,13 @@ import androidx.core.view.WindowCompat
 fun AbyssTheme(
     themeName: String? = null,
     fontName: String? = null,
+    pureBlack: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
     val palette = themeName
         ?.let { GhosttyThemeRegistry.getTheme(context, it) }
-        ?.toChuColorPalette()
+        ?.toChuColorPalette(pureBlack)
         ?: AbyssDarkColors
 
     val fontOption = remember(fontName) { AbyssFontOption.fromId(fontName) }

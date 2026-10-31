@@ -298,6 +298,8 @@
     <string name="theme_dark">Dark</string>
     <string name="theme_light">Light</string>
     <string name="theme_show_preview">Show preview</string>
+    <string name="settings_pure_black">Pure black</string>
+    <string name="settings_pure_black_hint">Use a black background with dark themes, to save power on OLED screens</string>
     <string name="theme_search_label">Search themes</string>
     <string name="theme_search_placeholder">Type to filter</string>
     <string name="custom_actions_add">Add</string>

@@ -52,16 +52,17 @@ fun AppRoot() {
     GhosttyThemeRegistry.init(context)
     val settings = SettingsRepository.getInstance(context)
     val fontName by settings.fontName.collectAsStateWithLifecycle()
-    val themeName by settings.themeName.collectAsStateWithLifecycle()
-    val themeMode by settings.themeMode.collectAsStateWithLifecycle()
-    val lightThemeName by settings.lightThemeName.collectAsStateWithLifecycle()
+    val themeName by settings.theme.darkThemeName.collectAsStateWithLifecycle()
+    val themeMode by settings.theme.mode.collectAsStateWithLifecycle()
+    val lightThemeName by settings.theme.lightThemeName.collectAsStateWithLifecycle()
+    val pureBlack by settings.theme.pureBlack.collectAsStateWithLifecycle()
     val resolvedThemeName = resolveActiveThemeName(
         themeMode = themeMode,
         darkThemeName = themeName,
         lightThemeName = lightThemeName,
     )
 
-    AbyssTheme(themeName = resolvedThemeName, fontName = fontName) {
+    AbyssTheme(themeName = resolvedThemeName, fontName = fontName, pureBlack = pureBlack) {
         Box(
             modifier = Modifier
                 .fillMaxSize()

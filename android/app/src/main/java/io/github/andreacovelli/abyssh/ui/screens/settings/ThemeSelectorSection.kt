@@ -66,6 +66,8 @@ internal fun ThemeSelectorSection(
     onLightThemeSelected: (String) -> Unit,
     themeMode: ThemeMode,
     onThemeModeChanged: (ThemeMode) -> Unit,
+    pureBlack: Boolean,
+    onPureBlackChanged: (Boolean) -> Unit,
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
@@ -80,6 +82,17 @@ internal fun ThemeSelectorSection(
 
     ThemeModePills(themeMode = themeMode, onThemeModeChanged = onThemeModeChanged)
     Spacer(modifier = Modifier.height(16.dp))
+
+    // Pure black only changes dark themes, so it has nothing to do in light mode.
+    if (themeMode != ThemeMode.Light) {
+        SettingSwitchRow(
+            title = stringResource(R.string.settings_pure_black),
+            hint = stringResource(R.string.settings_pure_black_hint),
+            checked = pureBlack,
+            onCheckedChange = onPureBlackChanged,
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+    }
 
     when (themeMode) {
         ThemeMode.Dark -> SingleThemePicker(
