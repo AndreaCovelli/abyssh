@@ -96,14 +96,15 @@ private fun ShortcutRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val label = stringResource(command.label)
         Column(modifier = Modifier.weight(1f)) {
-            AbyssText(command.label, style = typography.label)
-            AbyssText(command.description, style = typography.bodySmall, color = colors.textMuted)
+            AbyssText(label, style = typography.label)
+            AbyssText(stringResource(command.description), style = typography.bodySmall, color = colors.textMuted)
         }
         AbyssTextField(
             value = key,
             onValueChange = onKeyChange,
-            label = command.label,
+            label = label,
             showLabel = false,
             placeholder = stringResource(R.string.settings_shortcut_key_placeholder),
             singleLine = true,
