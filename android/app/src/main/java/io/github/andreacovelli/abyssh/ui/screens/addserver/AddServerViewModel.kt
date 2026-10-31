@@ -118,6 +118,7 @@ class AddServerViewModel(
                         requireAuthOnConnect = profile.requireAuthOnConnect,
                         postConnectCommand = profile.postConnectCommand.orEmpty(),
                         multiplexer = profile.multiplexer,
+                        tmuxControlMode = profile.tmuxControlMode,
                     )
             }
         }
@@ -237,6 +238,10 @@ class AddServerViewModel(
             )
     }
 
+    fun updateTmuxControlMode(enabled: Boolean) {
+        _form.value = _form.value.copy(tmuxControlMode = enabled)
+    }
+
     fun testConnection() {
         val current = _form.value
         val host = current.host.filterNot { it.isWhitespace() }
@@ -334,6 +339,7 @@ class AddServerViewModel(
                         current.multiplexer.takeIf {
                             current.transport != Transport.Mosh && it?.runtimeSupported == true
                         },
+                    tmuxControlMode = current.tmuxControlMode,
                 )
             hostRepository.upsert(profile)
             val stale = if (current.id != null) applyToOpenTabs(profile) else emptyList()
@@ -386,6 +392,7 @@ data class AddServerForm(
     val requireAuthOnConnect: Boolean = false,
     val postConnectCommand: String = "",
     val multiplexer: MultiplexerType? = null,
+    val tmuxControlMode: Boolean = false,
 )
 
 fun AddServerForm.canSave(): Boolean {

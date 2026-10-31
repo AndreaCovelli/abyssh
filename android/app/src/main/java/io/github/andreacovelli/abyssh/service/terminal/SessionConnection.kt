@@ -57,7 +57,7 @@ internal class SessionConnection(
     private val multiplexers: RemoteMultiplexerProbe,
     private val localNetwork: LocalNetworkAccess?,
     private val onShellExited: () -> Unit,
-) {
+) : TabConnection {
     private val moshStaleness = MoshConnectionStalenessTracker()
     private val moshEvents =
         MoshEvents(
@@ -74,7 +74,7 @@ internal class SessionConnection(
 
     @Volatile private var reconnectJob: Job? = null
 
-    fun connect(spec: TabSpec, sessionKey: String) {
+    override fun connect(spec: TabSpec, sessionKey: String) {
         disconnectRequested = false
         this.spec = spec
         scope.launch(dispatcher) {
@@ -92,8 +92,7 @@ internal class SessionConnection(
         }
     }
 
-    /** Closes the session; [onClosed] runs on the session thread once everything is closed. */
-    fun disconnect(onClosed: () -> Unit) {
+    override fun disconnect(onClosed: () -> Unit) {
         disconnectRequested = true
         reconnectJob?.cancel()
         reconnectJob = null
@@ -106,8 +105,7 @@ internal class SessionConnection(
         }
     }
 
-    /** Applies [geometry] to the terminal and the far end. */
-    fun resize(geometry: TerminalGeometry) {
+    override fun resize(geometry: TerminalGeometry) {
         try {
             emulator.geometry = geometry
             if (!emulator.isOpen) return
@@ -126,12 +124,11 @@ internal class SessionConnection(
 
     // User input is best-effort: a dropped transport ends the read loop, which then
     // reports the error or reconnects, so a failed write needs no handling here.
-    fun writeBestEffort(data: ByteArray) {
+    override fun writeBestEffort(data: ByteArray) {
         runCatching { transports.write(data) }
     }
 
-    /** Sends the terminal's replies to the far end, such as answers to size queries. */
-    fun flushPtyWrites() {
+    override fun flushPtyWrites() {
         repeat(MAX_PTY_DRAINS) {
             val ptyWrites = emulator.drainPtyWrites()
             if (ptyWrites.isEmpty()) return

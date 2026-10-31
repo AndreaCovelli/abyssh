@@ -16,7 +16,7 @@ import kotlinx.coroutines.withContext
  * connection that feeds it. Calls return at once and run in order on the session's own
  * thread; the suspending queries wait for that thread.
  */
-class TerminalSessionEngine(
+class TerminalSessionEngine internal constructor(
     publishClipboardText: (String) -> Unit,
     // The scrollback budget in bytes, read each time the terminal is created.
     scrollbackLimitBytes: () -> Int,
@@ -26,6 +26,9 @@ class TerminalSessionEngine(
     localNetwork: LocalNetworkAccess? = null,
     // Called when the shell ends on its own (exit, Ctrl+D), so the owner can close the tab.
     onShellExited: () -> Unit = {},
+    // The tmux control session whose window this tab shows, or null when the tab has its own connection.
+    internal val tmuxControl: TmuxControlSession? = null,
+    tmuxWindowId: Int? = null,
 ) {
     private val thread = SessionThread()
     private val dispatcher: CoroutineDispatcher = thread.dispatcher
@@ -37,25 +40,40 @@ class TerminalSessionEngine(
     private val _state = MutableStateFlow(SessionState(nativeVersion = nativeVersion))
     val state: StateFlow<SessionState> = _state.asStateFlow()
 
-    private val hostKeys = HostKeyVerifier(hostKeyStore)
+    private val hostKeys = tmuxControl?.hostKeys ?: HostKeyVerifier(hostKeyStore)
     val hostKeyPrompt: StateFlow<HostKeyPrompt?> = hostKeys.prompt
 
     private val emulator = TerminalEmulator(bridge, nativeVersion, scope, dispatcher, _state, publishClipboardText, scrollbackLimitBytes)
-    private val transports = SessionTransports(hostKeys, localShellService, thread)
-    private val connection =
-        SessionConnection(
-            scope = scope,
-            dispatcher = dispatcher,
-            state = _state,
-            emulator = emulator,
-            transports = transports,
-            multiplexers = RemoteMultiplexerProbe(hostKeys),
-            localNetwork = localNetwork,
-            onShellExited = onShellExited,
-        )
+    private val connection: TabConnection
 
-    /** SFTP over this session's SSH connection. */
-    val sftp = SftpSession(transports.ssh, dispatcher)
+    /** SFTP over this session's SSH connection, which a tmux window's tab shares with its control session. */
+    val sftp: SftpSession
+
+    init {
+        if (tmuxControl != null) {
+            connection = TmuxPaneConnection(scope, dispatcher, _state, emulator, tmuxControl, tmuxWindowId)
+            sftp = tmuxControl.sftp
+        } else {
+            val transports = SessionTransports(hostKeys, localShellService, thread)
+            connection =
+                SessionConnection(
+                    scope = scope,
+                    dispatcher = dispatcher,
+                    state = _state,
+                    emulator = emulator,
+                    transports = transports,
+                    multiplexers = RemoteMultiplexerProbe(hostKeys),
+                    localNetwork = localNetwork,
+                    onShellExited = onShellExited,
+                )
+            sftp = SftpSession(transports.ssh, dispatcher)
+        }
+    }
+
+    /** The tmux window this tab shows, when it is part of a control session. */
+    internal val tmuxWindowId: Int? get() = (connection as? TmuxPaneConnection)?.windowId
+
+    internal fun showsTmuxView(view: TmuxPaneView): Boolean = connection === view
 
     /** Opens [spec], replacing whatever this session had open. */
     fun connect(spec: TabSpec, sessionKey: String) = connection.connect(spec, sessionKey)
@@ -149,7 +167,8 @@ class TerminalSessionEngine(
     fun respondToHostKey(accepted: Boolean) = hostKeys.respond(accepted)
 
     fun disconnect() {
-        hostKeys.cancel()
+        // A tmux window's tab shares the prompt with the other windows' tabs.
+        if (tmuxControl == null) hostKeys.cancel()
         connection.disconnect {
             emulator.reset()
             _state.value =

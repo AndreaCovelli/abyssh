@@ -19,9 +19,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -53,6 +56,11 @@ class TerminalSessionRepository private constructor(application: Application) {
     private val preflight = MultiplexerPreflight(hostKeyStore)
     private val foreground = SessionForegroundTracker(appContext)
     private var attachedClients = 0
+
+    private val _notices = MutableSharedFlow<UiText>(extraBufferCapacity = 4)
+
+    /** Messages for the user about how tabs opened, such as a host falling back from tmux control mode. */
+    val notices: SharedFlow<UiText> = _notices.asSharedFlow()
 
     private val _tabs = MutableStateFlow<List<TabSession>>(emptyList())
     val tabs: StateFlow<List<TabSession>> = _tabs.asStateFlow()
@@ -95,6 +103,17 @@ class TerminalSessionRepository private constructor(application: Application) {
             .map { tabs -> tabs.mapNotNullTo(mutableSetOf()) { it.spec.hostId } }
             .stateIn(scope, SharingStarted.Eagerly, emptySet())
 
+    private val tmuxTabs =
+        TmuxControlTabs(
+            scope = scope,
+            hostKeyStore = hostKeyStore,
+            localNetwork = localNetwork,
+            tabs = { _tabs.value },
+            addTab = { spec, control, windowId, select -> addTab(spec, control, windowId, select) },
+            removeTab = ::removeTab,
+            selectTab = ::selectTab,
+        )
+
     init {
         scope.launch {
             combine(liveTabs, activeTab) { live, active ->
@@ -125,7 +144,27 @@ class TerminalSessionRepository private constructor(application: Application) {
     suspend fun listMultiplexerSessions(spec: TabSpec): List<RemoteMultiplexerSession> =
         preflight.run { probe -> probe.listSessions(spec) }
 
+    /**
+     * Opens a tab for [spec]. A tmux control-mode tab joins its host's control session,
+     * which opens a tab for each tmux window; a host whose tmux is too old for control
+     * mode gets a plain tmux tab and a notice.
+     */
     fun openTab(spec: TabSpec): TabSession {
+        if (!spec.usesTmuxControlMode) return addTab(spec)
+        if (!TmuxControlSupport.isUnsupported(spec)) return tmuxTabs.open(spec)
+        _notices.tryEmit(UiText.Resource(R.string.tmux_control_unsupported))
+        return addTab(spec.copy(tmuxControlMode = false))
+    }
+
+    /** Opens a new tmux window, and so a tab, on the control session for [spec]'s host; false when there is none. */
+    fun openTmuxWindow(spec: TabSpec): Boolean = spec.usesTmuxControlMode && tmuxTabs.openWindow(spec)
+
+    private fun addTab(
+        spec: TabSpec,
+        tmuxControl: TmuxControlSession? = null,
+        tmuxWindowId: Int? = null,
+        select: Boolean = true,
+    ): TabSession {
         val id = UUID.randomUUID().toString()
         val engine =
             TerminalSessionEngine(
@@ -138,10 +177,12 @@ class TerminalSessionRepository private constructor(application: Application) {
                 hostKeyStore = hostKeyStore,
                 localNetwork = localNetwork,
                 onShellExited = { scope.launch { closeTab(id) } },
+                tmuxControl = tmuxControl,
+                tmuxWindowId = tmuxWindowId,
             )
         val tab = TabSession(id, spec, engine, number = nextTabNumber(_tabs.value, spec))
         _tabs.value += tab
-        _activeTabId.value = id
+        if (select || _activeTabId.value == null) _activeTabId.value = id
         reconnectTab(tab)
         return tab
     }
@@ -150,10 +191,21 @@ class TerminalSessionRepository private constructor(application: Application) {
         if (_tabs.value.any { it.id == id }) _activeTabId.value = id
     }
 
+    /**
+     * Closes tab [id]. A tmux window's tab ends its window, unless it is the session's
+     * last tab, which detaches and leaves the session running.
+     */
     fun closeTab(id: String) {
+        val tab = _tabs.value.firstOrNull { it.id == id } ?: return
+        val windowId = tab.engine.tmuxWindowId
+        removeTab(tab)
+        tmuxTabs.tabClosed(tab, windowId)
+    }
+
+    private fun removeTab(tab: TabSession) {
         val tabs = _tabs.value
-        val tab = tabs.firstOrNull { it.id == id } ?: return
-        _activeTabId.value = tabAfterClose(tabs, id, _activeTabId.value)
+        if (tab !in tabs) return
+        _activeTabId.value = tabAfterClose(tabs, tab.id, _activeTabId.value)
         _tabs.value = tabs - tab
         tab.engine.dispose()
     }
@@ -164,6 +216,7 @@ class TerminalSessionRepository private constructor(application: Application) {
 
     fun switchActiveMultiplexerSession(sessionName: String): Boolean {
         val tab = activeTab.value ?: return false
+        if (tab.engine.tmuxControl != null) return tmuxTabs.switchSession(tab, sessionName)
         val type = tab.spec.multiplexer ?: MultiplexerRegistry.defaultType
         MultiplexerRegistry.forType(type) ?: return false
         tab.spec =
@@ -173,6 +226,7 @@ class TerminalSessionRepository private constructor(application: Application) {
     }
 
     fun reconnectTab(tab: TabSession) {
+        tab.engine.tmuxControl?.spec = tab.spec
         // One key per tab, so parallel sessions to a host never share reconnect state.
         tab.engine.connect(tab.spec, "${tab.spec.sessionKey}:${tab.id}")
     }
@@ -201,10 +255,11 @@ class TerminalSessionRepository private constructor(application: Application) {
 
     /** Reconnects tabs after [applyHostUpdate], picking a multiplexer session where needed. */
     fun reconnectTabs(tabs: List<TabSession>) {
-        tabs.forEach { tab ->
+        // The tabs of one tmux control session share its connection.
+        tabs.distinctBy { it.engine.tmuxControl ?: it }.forEach { tab ->
             val spec = tab.spec
             if (!spec.usesRuntimeMultiplexer || !spec.multiplexerSessionName.isNullOrBlank()) {
-                reconnectTab(tab)
+                reopenOrReconnect(tab)
                 return@forEach
             }
             // The host just got a multiplexer, or a different one: find a session first.
@@ -212,14 +267,27 @@ class TerminalSessionRepository private constructor(application: Application) {
                 val name = runCatching { resolveMultiplexerSessionName(spec) }.getOrNull()
                 if (_tabs.value.none { it.id == tab.id } || tab.spec != spec) return@launch
                 tab.spec = if (name != null) spec.copy(multiplexerSessionName = name) else spec.copy(multiplexer = null)
-                reconnectTab(tab)
+                reopenOrReconnect(tab)
             }
         }
+    }
+
+    /** Reconnects [tab], or opens it again when it is or becomes a tmux control-mode tab, which reconnects as a group. */
+    private fun reopenOrReconnect(tab: TabSession) {
+        val control = tab.engine.tmuxControl
+        if (control == null && !tab.spec.usesTmuxControlMode) {
+            reconnectTab(tab)
+            return
+        }
+        val spec = tab.spec
+        if (control != null) tmuxTabs.end(control) else removeTab(tab)
+        openTab(spec)
     }
 
     /** Closes every tab and any multiplexer check that is waiting on the user. */
     fun disconnect() {
         preflight.cancel()
+        tmuxTabs.endAll()
         val tabs = _tabs.value
         _tabs.value = emptyList()
         _activeTabId.value = null

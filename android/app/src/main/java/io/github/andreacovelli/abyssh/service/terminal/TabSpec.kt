@@ -24,6 +24,7 @@ data class TabSpec(
     val multiplexer: MultiplexerType? = null,
     val multiplexerSessionName: String? = null,
     val multiplexerCreateIfMissing: Boolean = true,
+    val tmuxControlMode: Boolean = false,
 ) {
     /**
      * The same for every tab to one host: a saved host, the local shell, or an unsaved
@@ -61,6 +62,10 @@ data class TabSpec(
                 transport != Transport.Mosh &&
                 transport != Transport.LocalShell
 
+    /** Whether this tab attaches to tmux in control mode, where each tmux window is a tab. */
+    val usesTmuxControlMode: Boolean
+        get() = tmuxControlMode && multiplexer == MultiplexerType.Tmux && usesRuntimeMultiplexer
+
     companion object {
         fun fromHostProfile(
             host: HostProfile,
@@ -85,6 +90,7 @@ data class TabSpec(
                     host.transport != Transport.Mosh &&
                     host.transport != Transport.LocalShell
             },
+            tmuxControlMode = host.tmuxControlMode,
         )
     }
 }
