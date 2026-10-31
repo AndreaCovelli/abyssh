@@ -14,6 +14,7 @@ import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerCommandResu
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerRegistry
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerSessionAllocator
 import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSession
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlCommands
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyPolicy
 import io.github.andreacovelli.abyssh.service.ssh.NativeSshService
 
@@ -56,7 +57,13 @@ internal class RemoteMultiplexerProbe(
     fun listSessions(spec: TabSpec): List<RemoteMultiplexerSession> {
         val type = spec.multiplexer ?: error("No multiplexer selected")
         val multiplexer = supportedMultiplexer(type, spec.transport)
-        val result = runCommand(spec, multiplexer.listSessionsCommand())
+        // A control-mode host also reports its tmux version, which says whether control mode works there.
+        val withVersion = type == MultiplexerType.Tmux && spec.usesTmuxControlMode
+        val listCommand = multiplexer.listSessionsCommand()
+        val result = runCommand(
+            spec,
+            if (withVersion) TmuxControlCommands.listSessionsWithVersion(listCommand) else listCommand,
+        )
         if (result.exitCode == MULTIPLEXER_MISSING_EXIT_CODE) {
             throw UiTextException(UiText.Resource(R.string.multiplexer_missing, type.label), "${type.label} unavailable")
         }
@@ -66,7 +73,10 @@ internal class RemoteMultiplexerProbe(
             throw UiTextException(text, "Failed to list ${type.label} sessions")
         }
         availabilityCache.recordAvailable(spec, type)
-        return multiplexer.parseSessions(result.stdout)
+        if (!withVersion) return multiplexer.parseSessions(result.stdout)
+        val (version, sessions) = TmuxControlCommands.splitVersion(result.stdout)
+        TmuxControlSupport.record(spec, version)
+        return multiplexer.parseSessions(sessions)
     }
 
     /**

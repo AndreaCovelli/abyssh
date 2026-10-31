@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.Flow
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.service.terminal.SessionStatus
@@ -71,7 +72,7 @@ fun TerminalScreen(
     val hasTabsToShow = if (stripMode && !route.localShell) tabs.isNotEmpty() else routeTabs.isNotEmpty()
     TerminalRouteEffects(vm, route, launcher, newSession, hasTabsToShow, onBack)
     TerminalSwitcherEffects(vm, overlay, routeTabs, activeTabId, activeTab)
-    TerminalNoticeEffects(sessionState.status, sessionState.error, multiplexer.preflightError)
+    TerminalNoticeEffects(sessionState.status, sessionState.error, multiplexer.preflightError, vm.notices)
 
     TerminalPassphraseDialog(launcher, onBack)
     TerminalEndSessionDialog(endSession, tabs)
@@ -257,9 +258,9 @@ private fun TerminalSwitcherEffects(
     }
 }
 
-/** Toasts a connection that just failed and a multiplexer check that failed. */
+/** Toasts a connection that just failed, a multiplexer check that failed, and the repository's [notices]. */
 @Composable
-private fun TerminalNoticeEffects(status: SessionStatus, error: UiText?, preflightError: UiText?) {
+private fun TerminalNoticeEffects(status: SessionStatus, error: UiText?, preflightError: UiText?, notices: Flow<UiText>) {
     val context = LocalContext.current
     val resources = LocalResources.current
     var lastStatus by remember { mutableStateOf<SessionStatus?>(null) }
@@ -273,5 +274,8 @@ private fun TerminalNoticeEffects(status: SessionStatus, error: UiText?, preflig
     }
     LaunchedEffect(preflightError) {
         if (preflightError != null) Toast.makeText(context, preflightError.resolve(resources), Toast.LENGTH_LONG).show()
+    }
+    LaunchedEffect(notices) {
+        notices.collect { notice -> Toast.makeText(context, notice.resolve(resources), Toast.LENGTH_LONG).show() }
     }
 }

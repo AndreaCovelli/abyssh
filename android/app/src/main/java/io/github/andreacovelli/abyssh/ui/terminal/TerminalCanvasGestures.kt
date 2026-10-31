@@ -71,7 +71,7 @@ internal class TerminalCanvasCallbacks(
  */
 internal class TerminalGestureEnv(
     private val snapshotSource: () -> TerminalSnapshot,
-    private val fitSnapshotToCanvas: Boolean,
+    private val fitSnapshotToWidth: Boolean,
     val selection: TerminalSelection?,
     val cell: TerminalCellMetrics,
     val canvasSize: IntSize,
@@ -85,7 +85,7 @@ internal class TerminalGestureEnv(
 
     private val placement: SnapshotPlacement
         get() = SnapshotPlacement.of(
-            fitSnapshotToCanvas,
+            fitSnapshotToWidth,
             snapshot,
             cell,
             canvasSize.width.toFloat(),

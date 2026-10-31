@@ -11,7 +11,7 @@ import io.github.andreacovelli.abyssh.model.Transport
 
 object AbysshBackupCodec {
     const val FORMAT_VERSION: Int = 1
-    const val PAYLOAD_VERSION: Int = 2
+    const val PAYLOAD_VERSION: Int = 3
     const val KDF_ID_PBKDF2_HMAC_SHA1: Int = 1
     const val CIPHER_ID_AES_256_GCM: Int = 1
     const val KDF_ITERATIONS: Int = 210_000
@@ -101,6 +101,7 @@ object AbysshBackupCodec {
             writer.writeBoolean(host.requireAuthOnConnect)
             writeNullableStringField(host.postConnectCommand, "post-connect command")
             writeNullableStringField(host.multiplexer?.id, "multiplexer")
+            writer.writeBoolean(host.tmuxControlMode)
         }
 
         val encoded = writer.toByteArray()
@@ -172,6 +173,7 @@ object AbysshBackupCodec {
                 } else {
                     null
                 }
+                val tmuxControlMode = version >= 3 && reader.readBoolean()
                 if (transport != Transport.LocalShell) {
                     add(
                         BackupHostProfile(
@@ -188,6 +190,7 @@ object AbysshBackupCodec {
                             requireAuthOnConnect = requireAuthOnConnect,
                             postConnectCommand = postConnectCommand,
                             multiplexer = multiplexer,
+                            tmuxControlMode = tmuxControlMode,
                         ),
                     )
                 }

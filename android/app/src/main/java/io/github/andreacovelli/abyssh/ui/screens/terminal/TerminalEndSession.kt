@@ -60,9 +60,16 @@ internal fun TerminalEndSessionDialog(endSession: TerminalEndSession, tabs: List
         onDismiss = endSession::dismiss,
     ) {
         AbyssText(
-            stringResource(R.string.terminal_end_session_body),
+            stringResource(endSessionBody(tab, tabs)),
             style = AbyssTypography.current.body,
             color = AbyssColors.current.textSecondary,
         )
     }
+}
+
+/** What ending [tab] does: a tmux window's tab ends the window, or detaches when it is the session's last tab. */
+private fun endSessionBody(tab: TabSession, tabs: List<TabSession>): Int {
+    val control = tab.engine.tmuxControl ?: return R.string.terminal_end_session_body
+    val lastTab = tabs.none { it !== tab && it.engine.tmuxControl === control }
+    return if (lastTab) R.string.terminal_end_session_body_tmux_detach else R.string.terminal_end_session_body_tmux_window
 }

@@ -25,4 +25,7 @@ data class HostProfile(
     val postConnectCommand: String? = null,
     @ColumnInfo(defaultValue = "NULL")
     val multiplexer: MultiplexerType? = null,
+    // Attach to tmux in control mode, so each tmux window is a tab with local scrollback.
+    @ColumnInfo(defaultValue = "0")
+    val tmuxControlMode: Boolean = false,
 )

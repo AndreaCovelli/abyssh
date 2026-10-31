@@ -60,9 +60,11 @@ class TerminalMultiplexer internal constructor(
     private var sessionListGeneration = 0L
     private var duplicateInFlight = false
 
-    /** Opens another tab on the host of [spec], in a new multiplexer session. */
+    /** Opens another tab on the host of [spec], in a new multiplexer session or a new tmux control-mode window. */
     fun duplicate(spec: TabSpec) {
         if (duplicateInFlight) return
+        // A host in tmux control mode gets a new window in its session, which opens as a tab.
+        if (sessionRepository.openTmuxWindow(spec)) return
         duplicateInFlight = true
         _state.update { it.copy(duplicateLoading = true, preflightError = null) }
         val duplicateSpec = spec.withNewSession()

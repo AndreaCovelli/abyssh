@@ -34,6 +34,8 @@
     <string name="auth_none_hint" tools:ignore="TypographyDashes">No SSH auth uses Tailscale SSH policy (`tailscale up --ssh`) on the server. Connect through Tailscale SSH instead of regular sshd credentials.</string>
     <string name="server_additional_settings">Additional settings</string>
     <string name="server_require_biometric">Require biometric auth</string>
+    <string name="server_tmux_control_mode">tmux control mode</string>
+    <string name="server_tmux_control_mode_description">Shows each tmux window as a tab with local scrollback, search, and selection. Needs tmux 3.2 or later.</string>
     <string name="connection_test">Test connection</string>
     <string name="connection_testing">Testing…</string>
     <string name="connection_connected">Connected</string>
@@ -371,6 +373,8 @@
     <string name="terminal_end_session">End session</string>
     <string name="terminal_end_session_title">End %1$s?</string>
     <string name="terminal_end_session_body">This closes the session. To leave it running, go back instead.</string>
+    <string name="terminal_end_session_body_tmux_window">This closes the tmux window and the programs running in it.</string>
+    <string name="terminal_end_session_body_tmux_detach">This detaches from tmux. The tmux session keeps running.</string>
     <string name="files_go_up">Parent folder</string>
     <string name="files_sort">Sort</string>
     <string name="files_upload">Upload file</string>
@@ -386,6 +390,8 @@
     <string name="error_username_required">Username required</string>
     <string name="error_connection_lost">Connection lost: %1$s</string>
     <string name="error_connection_interrupted">Connection interrupted</string>
+    <string name="tmux_control_not_started">tmux did not start in control mode</string>
+    <string name="tmux_control_unsupported">This host\'s tmux is older than 3.2, so it opened without control mode</string>
     <string name="error_connection_interrupted_reason">Connection interrupted: %1$s</string>
     <string name="error_local_shell_failed">Local shell failed: %1$s</string>
     <string name="error_mosh_session_ended">Mosh session ended. Reconnect to start a new session.</string>

@@ -342,7 +342,12 @@ private fun AdditionalSettingsSection(form: AddServerForm, vm: AddServerViewMode
         )
     }
     SectionDivider()
-    MultiplexerSection(selected = form.multiplexer, onSelect = vm::updateMultiplexer)
+    MultiplexerSection(
+        selected = form.multiplexer,
+        onSelect = vm::updateMultiplexer,
+        tmuxControlMode = form.tmuxControlMode,
+        onTmuxControlModeChange = vm::updateTmuxControlMode,
+    )
     SectionDivider()
     PostConnectActionSection(
         command = form.postConnectCommand,
@@ -517,7 +522,12 @@ private enum class MultiplexerOption(val type: MultiplexerType?) {
 }
 
 @Composable
-private fun MultiplexerSection(selected: MultiplexerType?, onSelect: (MultiplexerType?) -> Unit) {
+private fun MultiplexerSection(
+    selected: MultiplexerType?,
+    onSelect: (MultiplexerType?) -> Unit,
+    tmuxControlMode: Boolean,
+    onTmuxControlModeChange: (Boolean) -> Unit,
+) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
     AbyssSectionHeader(stringResource(R.string.server_section_persistence))
@@ -536,6 +546,26 @@ private fun MultiplexerSection(selected: MultiplexerType?, onSelect: (Multiplexe
         onSelect = { onSelect(it.type) },
         disabledOptions = setOf(MultiplexerOption.Zellij),
     )
+    if (selected == MultiplexerType.Tmux) TmuxControlModeRow(tmuxControlMode, onTmuxControlModeChange)
+}
+
+@Composable
+private fun TmuxControlModeRow(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            AbyssText(stringResource(R.string.server_tmux_control_mode), style = AbyssTypography.current.label)
+            AbyssText(
+                stringResource(R.string.server_tmux_control_mode_description),
+                style = AbyssTypography.current.bodySmall,
+                color = AbyssColors.current.textSecondary,
+            )
+        }
+        AbyssSwitch(checked = checked, onCheckedChange = onCheckedChange)
+    }
 }
 
 @Composable

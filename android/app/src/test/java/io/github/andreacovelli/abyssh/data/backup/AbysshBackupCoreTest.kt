@@ -14,6 +14,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 
+private const val ENCODED_BOOLEAN_SIZE = 1
+
 class AbysshBackupCoreTest {
     @Test
     fun encryptedBackupRoundTripPreservesAllCurrentFields() {
@@ -208,10 +210,32 @@ class AbysshBackupCoreTest {
     }
 
     @Test
+    fun payloadV3PreservesTmuxControlMode() {
+        val payload = samplePayload(tmuxControlMode = true)
+
+        val decoded = AbysshBackupCodec.decodePayload(AbysshBackupCodec.encodePayload(payload))
+
+        assertEquals(payload, decoded)
+        assertTrue(decoded.hosts.single().tmuxControlMode)
+    }
+
+    @Test
+    fun payloadV2DefaultsTmuxControlModeToOff() {
+        val v3 = AbysshBackupCodec.encodePayload(samplePayload(tmuxControlMode = true))
+        writeIntAt(v3, offset = Int.SIZE_BYTES, value = 2)
+        val v2 = v3.copyOf(v3.size - ENCODED_BOOLEAN_SIZE)
+
+        val decoded = AbysshBackupCodec.decodePayload(v2)
+
+        assertEquals(MultiplexerType.Tmux, decoded.hosts.single().multiplexer)
+        assertFalse(decoded.hosts.single().tmuxControlMode)
+    }
+
+    @Test
     fun payloadV1DefaultsMultiplexerToNull() {
-        val v2 = AbysshBackupCodec.encodePayload(samplePayload())
-        writeIntAt(v2, offset = Int.SIZE_BYTES, value = 1)
-        val v1 = v2.copyOf(v2.size - encodedNullableStringSize(MultiplexerType.Tmux.id))
+        val v3 = AbysshBackupCodec.encodePayload(samplePayload())
+        writeIntAt(v3, offset = Int.SIZE_BYTES, value = 1)
+        val v1 = v3.copyOf(v3.size - ENCODED_BOOLEAN_SIZE - encodedNullableStringSize(MultiplexerType.Tmux.id))
 
         val decoded = AbysshBackupCodec.decodePayload(v1)
 
@@ -228,9 +252,9 @@ class AbysshBackupCoreTest {
         assumeTrue("native backup bridge unavailable in this JVM", NativeBackupBridge().isLoaded())
     }
 
-    private fun samplePayload(): BackupPayload = BackupPayload(
+    private fun samplePayload(tmuxControlMode: Boolean = false): BackupPayload = BackupPayload(
         keys = listOf(BackupSshKey.fromEntity(sampleKey())),
-        hosts = listOf(BackupHostProfile.fromEntity(sampleHost())),
+        hosts = listOf(BackupHostProfile.fromEntity(sampleHost().copy(tmuxControlMode = tmuxControlMode))),
     )
 
     private fun sampleKey(

@@ -2,6 +2,7 @@ package io.github.andreacovelli.abyssh.ui.screens.terminal
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.shape.CircleShape
 import io.github.andreacovelli.abyssh.ui.components.AbyssCloseButton
 import io.github.andreacovelli.abyssh.R
@@ -270,14 +271,16 @@ private fun FocusedTabPreview(tab: TabSession) {
                 Modifier.fillMaxWidth(0.68f)
                     .height(104.dp)
                     .clip(MaterialTheme.shapes.small)
-                    .background(colors.background.copy(alpha = 0.86f))
+                    // The terminal's own background, so the inset around the screen matches it.
+                    .background(Color(shown.defaultBgArgb))
                     .border(1.dp, colors.border.copy(alpha = 0.8f), MaterialTheme.shapes.small)
+                    .padding(6.dp)
                     .align(Alignment.Center),
         ) {
             TerminalCanvas(
                 snapshot = { shown },
                 fontSizeSp = 10.5f,
-                fitSnapshotToCanvas = true,
+                fitSnapshotToWidth = true,
                 enableGestures = false,
                 cursorColor = Color.Transparent,
                 selectionBackgroundColor = Color.Transparent,
@@ -287,7 +290,8 @@ private fun FocusedTabPreview(tab: TabSession) {
                 onScroll = { _, _, _ -> },
                 onFontSizeChange = {},
                 onSelectionChanged = {},
-                modifier = Modifier.fillMaxSize(),
+                // A screen taller than the preview is drawn shifted up; only the part in view shows.
+                modifier = Modifier.fillMaxSize().clipToBounds(),
             )
         }
     }

@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.data.db
 
 import android.content.Context
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -12,7 +13,8 @@ import io.github.andreacovelli.abyssh.model.SshKey
 
 @Database(
     entities = [HostProfile::class, SshKey::class],
-    version = 11,
+    version = 12,
+    autoMigrations = [AutoMigration(from = 11, to = 12)],
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {

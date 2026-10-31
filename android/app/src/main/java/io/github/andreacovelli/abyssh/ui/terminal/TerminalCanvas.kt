@@ -41,7 +41,7 @@ fun TerminalCanvas(
     snapshot: () -> TerminalSnapshot,
     modifier: Modifier = Modifier,
     fontSizeSp: Float = 14f,
-    fitSnapshotToCanvas: Boolean = false,
+    fitSnapshotToWidth: Boolean = false,
     enableGestures: Boolean = true,
     cursorColor: Color = Color.White.copy(alpha = 0.28f),
     cursorTextColor: Color? = null,
@@ -107,7 +107,7 @@ fun TerminalCanvas(
     val env = rememberUpdatedState(
         TerminalGestureEnv(
             snapshotSource = snapshotSource,
-            fitSnapshotToCanvas = fitSnapshotToCanvas,
+            fitSnapshotToWidth = fitSnapshotToWidth,
             selection = selection,
             cell = cell,
             canvasSize = canvasSize,
@@ -153,7 +153,7 @@ fun TerminalCanvas(
     ) {
         val shown = snapshotSource()
         drawRect(color = Color(shown.defaultBgArgb))
-        val placement = SnapshotPlacement.of(fitSnapshotToCanvas, shown, cell, size.width, size.height)
+        val placement = SnapshotPlacement.of(fitSnapshotToWidth, shown, cell, size.width, size.height)
         val frame = TerminalFrame(
             snapshot = shown,
             cell = cell,
