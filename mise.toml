@@ -11,7 +11,7 @@ zig = "0.17.0"
 [tasks.native]
 description = "Build libabyssh_jni.so into android/app/src/main/jniLibs"
 dir = "zig-src"
-run = "zig build -Doptimize=ReleaseSmall jni"
+run = "zig build -Doptimize=ReleaseFast jni"
 
 [tasks.build]
 description = "Assemble the debug APK"

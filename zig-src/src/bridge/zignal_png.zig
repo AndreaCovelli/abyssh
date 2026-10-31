@@ -9,6 +9,7 @@ comptime {
     _ = @import("abyssh_mosh.zig");
     _ = @import("abyssh_local_shell.zig");
     _ = @import("abyssh_backup.zig");
+    _ = @import("abyssh_wake.zig");
 }
 
 const c_allocator = std.heap.c_allocator;

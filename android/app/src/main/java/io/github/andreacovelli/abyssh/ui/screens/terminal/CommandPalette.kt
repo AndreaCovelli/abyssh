@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
 import io.github.andreacovelli.abyssh.service.terminal.sessionLabel
@@ -254,6 +255,11 @@ private fun PaletteTabRow(
 @Composable
 private fun FocusedTabPreview(tab: TabSession) {
     val colors = AbyssColors.current
+    // The focused tab may be in the background, where it builds no snapshots unless shown.
+    LifecycleStartEffect(tab) {
+        tab.engine.addViewer()
+        onStopOrDispose { tab.engine.removeViewer() }
+    }
     val snapshot by remember(tab) { tab.sessionState.map { it.snapshot } }
         .collectAsStateWithLifecycle(initialValue = null)
     val shown = snapshot ?: return

@@ -9,6 +9,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <sys/eventfd.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/wait.h>

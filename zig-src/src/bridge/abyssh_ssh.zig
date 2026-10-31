@@ -2,7 +2,7 @@ const std = @import("std");
 const time = @import("time.zig");
 
 const c = @import("c");
-const ipc = @import("ipc.zig");
+const wake = @import("abyssh_wake.zig");
 
 const allocator = std.heap.c_allocator;
 const LOG_TAG = "AbyssKittySSH";
@@ -24,7 +24,7 @@ fn logError(comptime fmt: []const u8, args: anytype) void {
 }
 const setup_wait_timeout_ms = 10_000;
 const io_wait_timeout_ms = 120;
-// The most one IPC read returns; Kotlin asks for 64 KiB at most.
+// The most one read returns; Kotlin asks for 64 KiB at most.
 const max_read_bytes = 1024 * 1024;
 // SFTP servers may make progress between short 120ms socket waits; use a
 // longer idle cap before failing directory listing/realpath as truly stalled.
@@ -42,10 +42,8 @@ const NativeSshSession = struct {
     hostkey_type: c_int = 0,
     hostkey_copy: ?[]u8 = null,
     last_error: std.ArrayListUnmanaged(u8) = .empty,
-    empty_reads: u32 = 0,
-    // Kept between IPC calls, which the read loop makes hundreds of times a second.
+    // Kept between reads, which the read loop makes for every chunk of output.
     read_buffer: []u8 = &.{},
-    ipc_response: std.ArrayList(u8) = .empty,
 };
 
 fn sessionFromHandle(handle: c.jlong) ?*NativeSshSession {
@@ -222,7 +220,6 @@ fn destroyNativeSshSession(session: *NativeSshSession) void {
     clearHostKeyCopy(session);
     session.last_error.deinit(allocator);
     allocator.free(session.read_buffer);
-    session.ipc_response.deinit(allocator);
     allocator.destroy(session);
 }
 
@@ -439,11 +436,6 @@ fn hostkeyAlgorithmName(kind: c_int) []const u8 {
     };
 }
 
-fn appendErrorFrame(response: *std.ArrayList(u8), session: *NativeSshSession, fallback: []const u8) void {
-    const message = if (session.last_error.items.len > 0) session.last_error.items else fallback;
-    ipc.appendMessage(allocator, response, .Error, message) catch {};
-}
-
 /// Writes what the channel takes without waiting, and returns how many bytes that was,
 /// possibly 0. libssh2 keeps a packet it couldn't finish sending, so the caller must
 /// retry with the bytes from where this left off.
@@ -471,10 +463,16 @@ fn writeChannel(session: *NativeSshSession, bytes: []const u8) c.jint {
 /// Reads stdout and stderr into the session's read buffer. The bytes stay valid until
 /// the next read.
 fn readChannel(session: *NativeSshSession, max_bytes: usize) ?[]const u8 {
-    const channel = session.channel orelse return null;
+    const channel = session.channel orelse {
+        setError(session, "Shell not open", .{});
+        return null;
+    };
     const cap = std.math.clamp(max_bytes, 1, max_read_bytes);
     if (session.read_buffer.len < cap) {
-        const grown = allocator.alloc(u8, cap) catch return null;
+        const grown = allocator.alloc(u8, cap) catch {
+            setError(session, "Out of memory", .{});
+            return null;
+        };
         allocator.free(session.read_buffer);
         session.read_buffer = grown;
     }
@@ -487,10 +485,7 @@ fn readChannel(session: *NativeSshSession, max_bytes: usize) ?[]const u8 {
         while (true) {
             if (total_read >= buf.len) break;
             const rc = c.libssh2_channel_read_ex(channel, stream_id, @ptrCast(buf.ptr + total_read), @intCast(buf.len - total_read));
-            if (rc == c.LIBSSH2_ERROR_EAGAIN) {
-                session.empty_reads +%= 1;
-                break;
-            }
+            if (rc == c.LIBSSH2_ERROR_EAGAIN) break;
             if (rc == 0) {
                 break;
             }
@@ -499,19 +494,9 @@ fn readChannel(session: *NativeSshSession, max_bytes: usize) ?[]const u8 {
                 return null;
             }
             total_read += @intCast(rc);
-            session.empty_reads = 0;
         }
     }
     return buf[0..total_read];
-}
-
-fn readJByteArray(env: *c.JNIEnv, array: c.jbyteArray) ?[]u8 {
-    if (array == null) return null;
-    const len = env.*.*.GetArrayLength.?(env, array);
-    if (len <= 0) return &.{};
-    const out = allocator.alloc(u8, @intCast(len)) catch return null;
-    env.*.*.GetByteArrayRegion.?(env, array, 0, len, @ptrCast(out.ptr));
-    return out;
 }
 
 comptime {
@@ -1169,51 +1154,62 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     }
 }
 
-export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeIpcExchange(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, request: c.jbyteArray) callconv(.c) c.jbyteArray {
+/// Reads what stdout and stderr hold now, without waiting: an empty array when there is
+/// nothing yet, null with the last error set when the read fails.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeRead(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, max_bytes: c.jint) callconv(.c) c.jbyteArray {
     _ = thiz;
     const session = sessionFromHandle(handle) orelse return null;
-    const req_bytes = readJByteArray(env, request) orelse return null;
-    defer if (req_bytes.len > 0) allocator.free(req_bytes);
+    const bytes = readChannel(session, @intCast(@max(max_bytes, 1))) orelse return null;
+    return jniNewByteArrayOrNull(env, bytes);
+}
 
-    const response = &session.ipc_response;
-    response.clearRetainingCapacity();
-
-    const frame = ipc.parse(req_bytes) catch {
-        setError(session, "Invalid IPC frame", .{});
-        appendErrorFrame(response, session, "Invalid IPC frame");
-        return jniNewByteArrayOrNull(env, response.items);
-    };
-
-    switch (frame.header.tag) {
-        .Write => {
-            const written = writeChannel(session, frame.payload);
-            if (written < 0) {
-                appendErrorFrame(response, session, "Write failed");
-                return jniNewByteArrayOrNull(env, response.items);
-            }
-            const written_u32: u32 = @intCast(written);
-            ipc.appendMessage(allocator, response, .Ack, std.mem.asBytes(&written_u32)) catch {};
-        },
-        .Read => {
-            if (frame.payload.len != @sizeOf(u32)) {
-                setError(session, "Invalid read request payload", .{});
-                appendErrorFrame(response, session, "Invalid read request payload");
-                return jniNewByteArrayOrNull(env, response.items);
-            }
-            const max_bytes = std.mem.bytesToValue(u32, frame.payload[0..@sizeOf(u32)]);
-            const bytes = readChannel(session, max_bytes) orelse {
-                appendErrorFrame(response, session, "Read failed");
-                return jniNewByteArrayOrNull(env, response.items);
-            };
-            ipc.appendMessage(allocator, response, .Data, bytes) catch {};
-        },
-        else => {
-            setError(session, "Unsupported IPC tag {}", .{@backingInt(frame.header.tag)});
-            appendErrorFrame(response, session, "Unsupported IPC tag");
-        },
+/// Waits up to `timeout_ms` for output, or for `wake_fd` to be signalled; returns one of
+/// the `wake.wait_*` values. Returns `wait_cannot` while libssh2 waits to send, because
+/// the socket must then be polled for writing too.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeWaitReadable(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, wake_fd: c.jint, timeout_ms: c.jint) callconv(.c) c.jint {
+    _ = env;
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return wake.wait_cannot;
+    const ssh_session = session.session orelse return wake.wait_cannot;
+    const channel = session.channel orelse return wake.wait_cannot;
+    // A read can leave packets in libssh2's queue, such as stderr pulled in while
+    // reading stdout, or data beyond what fit in the buffer; the socket won't show them.
+    if (c.libssh2_poll_channel_read(channel, 1) != 0) return wake.wait_ready;
+    if (c.libssh2_channel_eof(channel) != 0) return wake.wait_ready;
+    if ((c.libssh2_session_block_directions(ssh_session) & c.LIBSSH2_SESSION_BLOCK_OUTBOUND) != 0) {
+        return wake.wait_cannot;
     }
+    return wake.waitReadable(session.socket_fd, wake_fd, timeout_ms);
+}
 
-    return jniNewByteArrayOrNull(env, response.items);
+// The most one write copies out of the Java array at a time.
+const write_chunk_bytes = 16 * 1024;
+
+/// Writes `data[offset..offset+length]` as far as the channel takes it now, and returns
+/// how many bytes that was, possibly 0, or -1 with the last error set.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeWrite(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, data: c.jbyteArray, offset: c.jint, length: c.jint) callconv(.c) c.jint {
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return -1;
+    if (data == null) {
+        setError(session, "Missing write data", .{});
+        return -1;
+    }
+    const array_len = env.*.*.GetArrayLength.?(env, data);
+    if (offset < 0 or length < 0 or offset > array_len or length > array_len - offset) {
+        setError(session, "Write range out of bounds", .{});
+        return -1;
+    }
+    var chunk: [write_chunk_bytes]u8 = undefined;
+    var total: c.jint = 0;
+    while (total < length) {
+        const n: c.jint = @min(length - total, write_chunk_bytes);
+        env.*.*.GetByteArrayRegion.?(env, data, offset + total, n, @ptrCast(&chunk));
+        const written = writeChannel(session, chunk[0..@intCast(n)]);
+        if (written < 0) return -1;
+        total += written;
+        if (written < n) break;
+    }
+    return total;
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeClose(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) void {

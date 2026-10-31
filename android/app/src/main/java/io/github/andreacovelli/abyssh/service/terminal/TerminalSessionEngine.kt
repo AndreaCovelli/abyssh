@@ -3,10 +3,8 @@ package io.github.andreacovelli.abyssh.service.terminal
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
 
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
-import java.util.concurrent.Executors
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExecutorCoroutineDispatcher
-import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,9 +27,8 @@ class TerminalSessionEngine(
     // Called when the shell ends on its own (exit, Ctrl+D), so the owner can close the tab.
     onShellExited: () -> Unit = {},
 ) {
-    private val dispatcher: ExecutorCoroutineDispatcher =
-        Executors.newSingleThreadExecutor { r -> Thread(r, "terminal-session").apply { isDaemon = true } }
-            .asCoroutineDispatcher()
+    private val thread = SessionThread()
+    private val dispatcher: CoroutineDispatcher = thread.dispatcher
 
     @Volatile private var disposed = false
 
@@ -44,7 +41,7 @@ class TerminalSessionEngine(
     val hostKeyPrompt: StateFlow<HostKeyPrompt?> = hostKeys.prompt
 
     private val emulator = TerminalEmulator(bridge, nativeVersion, scope, dispatcher, _state, publishClipboardText, scrollbackLimitBytes)
-    private val transports = SessionTransports(hostKeys, localShellService)
+    private val transports = SessionTransports(hostKeys, localShellService, thread)
     private val connection =
         SessionConnection(
             scope = scope,
@@ -88,9 +85,18 @@ class TerminalSessionEngine(
         bridge.nativeEncodeMouse(handle, action, button, mods, x, y, anyButtonPressed, trackLastCell)
     }
 
-    /** Whether this tab's terminal is on screen; Kitty animations play only while it is. */
-    fun setOnScreen(onScreen: Boolean) {
-        scope.launch(dispatcher) { emulator.setOnScreen(onScreen) }
+    /**
+     * Something now shows this tab's terminal, such as its pane or the tab switcher's
+     * preview; pair each call with [removeViewer]. While nothing shows it, output builds
+     * no snapshots, the title and bell update about once a second, and Kitty animations
+     * pause.
+     */
+    fun addViewer() {
+        scope.launch(dispatcher) { emulator.addViewer() }
+    }
+
+    fun removeViewer() {
+        scope.launch(dispatcher) { emulator.removeViewer() }
     }
 
     fun setColorScheme(isDark: Boolean) {
@@ -159,7 +165,7 @@ class TerminalSessionEngine(
         if (disposed) return
         disposed = true
         disconnect()
-        dispatcher.close()
+        thread.close()
     }
 
     /** Sends the bytes [encode] returns for the open terminal, when there are any. */

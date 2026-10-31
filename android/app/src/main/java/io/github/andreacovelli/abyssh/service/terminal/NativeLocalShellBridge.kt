@@ -35,6 +35,9 @@ class NativeLocalShellBridge {
 
     external fun nativeWrite(handle: Long, data: ByteArray): Int
 
+    /** Waits for output or for `wakeFd`; returns a `NativeWait` value. */
+    external fun nativeWaitReadable(handle: Long, wakeFd: Int, timeoutMs: Int): Int
+
     external fun nativeResize(
         handle: Long,
         cols: Int,

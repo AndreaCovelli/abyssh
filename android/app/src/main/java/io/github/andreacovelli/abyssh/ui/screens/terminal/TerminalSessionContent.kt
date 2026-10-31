@@ -205,15 +205,15 @@ private fun TerminalKeyboardEffect(vm: TerminalViewModel, input: TerminalInputCo
 
 /**
  * Tells the active tab its terminal is on screen while the pane is shown and the app is
- * started, so its Kitty animations play only then.
+ * started, so it builds snapshots and plays Kitty animations only then.
  */
 @Composable
 private fun TerminalOnScreenEffect(vm: TerminalViewModel) {
     val activeTab by vm.activeTab.collectAsStateWithLifecycle()
     val engine = activeTab?.engine
     LifecycleStartEffect(engine) {
-        engine?.setOnScreen(true)
-        onStopOrDispose { engine?.setOnScreen(false) }
+        engine?.addViewer()
+        onStopOrDispose { engine?.removeViewer() }
     }
 }
 

@@ -42,6 +42,10 @@ class NativeLocalShellService(
         return bridge.nativeRead(handle, maxBytes.coerceAtLeast(1))
     }
 
+    /** Waits up to [timeoutMs] for output or for [wakeFd] to be signalled; -1 when it can't wait. */
+    fun waitReadable(wakeFd: Int, timeoutMs: Int): Int =
+        if (handle == 0L) -1 else bridge.nativeWaitReadable(handle, wakeFd, timeoutMs)
+
     fun write(data: ByteArray) {
         check(handle != 0L) { "Local shell not open" }
         if (data.isEmpty()) return
