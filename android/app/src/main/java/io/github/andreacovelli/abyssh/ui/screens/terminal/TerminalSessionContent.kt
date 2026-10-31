@@ -5,6 +5,11 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.core.net.toUri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -315,20 +320,28 @@ private fun TerminalPane(
 private fun TerminalLinkPrompt(vm: TerminalViewModel, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val tappedLink by vm.search.tappedLink.collectAsStateWithLifecycle()
-    val url = tappedLink ?: return
-    TerminalLinkBar(
-        url = url,
-        onOpen = {
-            vm.search.dismissLink()
-            openLink(context, url)
-        },
-        onCopy = {
-            vm.search.dismissLink()
-            copyToClipboard(context, "link", url, R.string.terminal_copied_link)
-        },
-        onDismiss = vm.search::dismissLink,
+    // Keeps showing the last link while the bar slides away after a dismiss.
+    var url by remember { mutableStateOf("") }
+    tappedLink?.let { url = it }
+    AnimatedVisibility(
+        visible = tappedLink != null,
+        enter = fadeIn() + slideInVertically { it },
+        exit = fadeOut() + slideOutVertically { it },
         modifier = modifier,
-    )
+    ) {
+        TerminalLinkBar(
+            url = url,
+            onOpen = {
+                vm.search.dismissLink()
+                openLink(context, url)
+            },
+            onCopy = {
+                vm.search.dismissLink()
+                copyToClipboard(context, "link", url, R.string.terminal_copied_link)
+            },
+            onDismiss = vm.search::dismissLink,
+        )
+    }
 }
 
 private fun openLink(context: Context, url: String) {
