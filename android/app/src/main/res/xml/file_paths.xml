@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <cache-path name="cache" path="." />
+    <!-- Only remote files opened from the file browser; see REMOTE_FILES_DIR. -->
+    <cache-path name="remote_files" path="remote-files/" />
 </paths>
