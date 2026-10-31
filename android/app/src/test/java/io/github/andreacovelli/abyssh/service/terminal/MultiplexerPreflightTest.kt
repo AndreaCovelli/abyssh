@@ -78,6 +78,23 @@ class MultiplexerPreflightTest {
     }
 
     @Test
+    fun `a cancel between attempts raises no prompt`() {
+        val error = assertThrows(IllegalStateException::class.java) {
+            runBlocking {
+                preflight.run {
+                    policy.verify(HOST, PORT, ALGORITHM, KEY)
+                    preflight.cancel()
+                    error("connect failed")
+                }
+            }
+        }
+
+        assertEquals("Disconnected while preparing the connection", error.message)
+        assertNull(preflight.hostKeyPrompt.value)
+        assertNull(store.loadKey(HOST, PORT, ALGORITHM))
+    }
+
+    @Test
     fun `a failure with no untrusted key is reported as it is`() {
         val error = assertThrows(UiTextException::class.java) {
             runBlocking {
