@@ -69,6 +69,16 @@ internal class TerminalEmulator(
         requestSnapshot = { requestSnapshot() },
     )
 
+    private val viewers = SessionViewers(
+        scope = scope,
+        dispatcher = dispatcher,
+        // Starting the animations takes a snapshot, which shows the output that arrived
+        // while nothing showed the terminal.
+        onShown = { animationFrames.setOnScreen(true) },
+        onHidden = { animationFrames.setOnScreen(false) },
+        publishMetadata = { if (isOpen) publishMetadata() },
+    )
+
     /** The last snapshot built, which the next one reuses for rows that didn't change. */
     private var lastSnapshot: TerminalSnapshot? = null
 
@@ -86,6 +96,7 @@ internal class TerminalEmulator(
 
     fun destroy() {
         animationFrames.cancel()
+        viewers.cancel()
         syncHoldTimeout?.cancel()
         syncHoldTimeout = null
         if (!isOpen) return
@@ -136,8 +147,13 @@ internal class TerminalEmulator(
 
     fun isImageLoading(): Boolean = isOpen && bridge.nativeIsImageLoading(handle)
 
-    /** Plays Kitty animations while [visible], and pauses them on their current frame otherwise. */
-    fun setOnScreen(visible: Boolean) = animationFrames.setOnScreen(visible)
+    /**
+     * Something now shows this terminal, such as its pane or a preview. While nothing
+     * does, output builds no snapshots and Kitty animations pause on their current frame.
+     */
+    fun addViewer() = viewers.add()
+
+    fun removeViewer() = viewers.remove()
 
     fun writeRemote(chunk: ByteArray) {
         if (isOpen) bridge.nativeWriteRemote(handle, chunk)
@@ -149,6 +165,12 @@ internal class TerminalEmulator(
     /** Publishes a snapshot now when [force] or a frame has passed, and otherwise schedules one. */
     fun requestSnapshot(force: Boolean = false) {
         if (!isOpen) return
+        // Nothing shows the terminal, so publish only its title and bell, now and then.
+        // The first snapshot still goes out, because the pane appears only once there is one.
+        if (!viewers.isShown && lastSnapshot != null) {
+            viewers.onHiddenOutput()
+            return
+        }
         watchSyncHold()
         val now = System.currentTimeMillis()
         val elapsed = now - lastSnapshotAtMs
@@ -209,10 +231,7 @@ internal class TerminalEmulator(
                 TerminalSnapshot.fromByteBuffer(raw, images, previous)
             }
             lastSnapshot = snapshot
-            bridge.nativePollTitle(handle)?.let { title = it }
-            bridge.nativePollPwd(handle)?.let { pwd = it }
-            bridge.nativePollClipboard(handle)?.let { publishClipboard(it.toString(Charsets.UTF_8)) }
-            val bellCount = bridge.nativeDrainBellCount(handle)
+            val bellCount = pollMetadata()
             // Includes the StateFlow equality check, which compares only the rows that changed.
             traceSection("Terminal.publishSnapshot") {
                 state.update {
@@ -229,6 +248,20 @@ internal class TerminalEmulator(
         } catch (e: Exception) {
             Log.e(TAG, "emitSnapshot failed", e)
         }
+    }
+
+    /** Reads the title, directory, and clipboard the output set, and returns the bells since the last call. */
+    private fun pollMetadata(): Int {
+        bridge.nativePollTitle(handle)?.let { title = it }
+        bridge.nativePollPwd(handle)?.let { pwd = it }
+        bridge.nativePollClipboard(handle)?.let { publishClipboard(it.toString(Charsets.UTF_8)) }
+        return bridge.nativeDrainBellCount(handle)
+    }
+
+    /** Publishes what [pollMetadata] reads and keeps the last snapshot. */
+    private fun publishMetadata() {
+        val bellCount = pollMetadata()
+        state.update { it.copy(title = title, pwd = pwd, bellCount = bellCount) }
     }
 
     private fun publishClipboard(text: String) {

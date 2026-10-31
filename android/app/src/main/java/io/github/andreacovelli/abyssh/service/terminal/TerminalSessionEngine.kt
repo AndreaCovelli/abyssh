@@ -85,9 +85,18 @@ class TerminalSessionEngine(
         bridge.nativeEncodeMouse(handle, action, button, mods, x, y, anyButtonPressed, trackLastCell)
     }
 
-    /** Whether this tab's terminal is on screen; Kitty animations play only while it is. */
-    fun setOnScreen(onScreen: Boolean) {
-        scope.launch(dispatcher) { emulator.setOnScreen(onScreen) }
+    /**
+     * Something now shows this tab's terminal, such as its pane or the tab switcher's
+     * preview; pair each call with [removeViewer]. While nothing shows it, output builds
+     * no snapshots, the title and bell update about once a second, and Kitty animations
+     * pause.
+     */
+    fun addViewer() {
+        scope.launch(dispatcher) { emulator.addViewer() }
+    }
+
+    fun removeViewer() {
+        scope.launch(dispatcher) { emulator.removeViewer() }
     }
 
     fun setColorScheme(isDark: Boolean) {
