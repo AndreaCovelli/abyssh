@@ -74,7 +74,9 @@ internal class TerminalInputController(
         onTerminalText = ::onText
         onTerminalKey = ::onKey
         onShortcutChord = ::onShortcutChord
-        onPrefixChord = abysshKeys::togglePrefix
+        // A lambda, not abysshKeys::togglePrefix: the view is created before the real
+        // bindings are set, and they're rebuilt when settings change.
+        onPrefixChord = { abysshKeys.togglePrefix() }
         onCapsLockChanged = { capsLockOn = it }
         setOnFocusChangeListener { _, hasFocus -> onFocusChanged(hasFocus) }
         inputView = this
