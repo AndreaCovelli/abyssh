@@ -41,9 +41,9 @@ zig-src/src/vendor/    Vendored Mosh client, build scripts for libssh2 and mbedt
 
 ## The native bridge
 
-Kotlin declares `external fun native*` methods in five bridge classes: `GhosttyBridge`,
-`NativeLocalShellBridge`, `NativeSshBridge`, `NativeMoshBridge`, and
-`NativeBackupBridge`. Zig implements each one as
+Kotlin declares `external fun native*` methods in six bridge classes: `GhosttyBridge`,
+`NativeLocalShellBridge`, `NativeSshBridge`, `NativeMoshBridge`, `NativeBackupBridge`,
+and `NativeWakeBridge`. Zig implements each one as
 `export fn Java_io_github_andreacovelli_abyssh_<package>_<Class>_<method>` in
 `zig-src/src/bridge/abyssh_*.zig`.
 

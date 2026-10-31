@@ -210,6 +210,13 @@ class NativeSshService(
             ?: error(bridge.nativeGetLastError(handle) ?: "Native SSH read failed")
     }
 
+    /**
+     * Waits up to [timeoutMs] for output or for [wakeFd] to be signalled; returns -1 when
+     * it can't wait, such as while libssh2 still has data to send.
+     */
+    fun waitReadable(wakeFd: Int, timeoutMs: Int): Int =
+        if (handle == 0L) -1 else bridge.nativeWaitReadable(handle, wakeFd, timeoutMs)
+
     fun sftpListDirectory(path: String): List<String> {
         check(handle != 0L) { "Not connected" }
         if (!bridge.nativeSftpInit(handle)) {

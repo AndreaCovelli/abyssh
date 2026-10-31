@@ -15,6 +15,11 @@ import kotlinx.coroutines.yield
 
 private const val READ_CHUNK_BYTES = 65536
 
+// The longest one native wait for output blocks. Work dispatched to the session thread
+// ends it early; this bounds how late the loop notices a cancellation that dispatches
+// nothing.
+private const val MAX_OUTPUT_WAIT_MS = 1_000
+
 // Idle thresholds and the poll delay for each tier.
 private const val ACTIVE_WINDOW_MS = 50L
 private const val NEAR_IDLE_WINDOW_MS = 500L
@@ -63,9 +68,14 @@ internal class ReadPacer(private val clock: () -> Long = System::currentTimeMill
 
 /**
  * The SSH, Mosh, and local shell services behind one session, and which of them the
- * session uses. Every call must run on the session thread.
+ * session uses. Every call must run on the session thread, which [outputWaiter] blocks
+ * while the SSH or local shell read loop waits for output.
  */
-internal class SessionTransports(hostKeyPolicy: HostKeyPolicy, val localShell: NativeLocalShellService) {
+internal class SessionTransports(
+    hostKeyPolicy: HostKeyPolicy,
+    val localShell: NativeLocalShellService,
+    private val outputWaiter: OutputWaiter,
+) {
     val ssh = NativeSshService(hostKeyPolicy = hostKeyPolicy)
     private val pacer = ReadPacer()
     val mosh = MoshTransport(ssh, NativeMoshService(), pacer)
@@ -129,12 +139,13 @@ internal class SessionTransports(hostKeyPolicy: HostKeyPolicy, val localShell: N
                 // The native read reports a closed channel the same way as "no data
                 // yet", so check EOF here; otherwise a finished shell is polled forever.
                 ssh.isChannelEof() -> return true
-                // Adaptive poll: stay snappy while data is flowing or input waits to
-                // go out, back off when idle so a quiet session doesn't spin.
-                else -> {
-                    if (ssh.hasPendingWrites) pacer.onActivity()
+                // Input the channel hasn't taken yet goes out on the next read, so poll
+                // at the active cadence until it has.
+                ssh.hasPendingWrites -> {
+                    pacer.onActivity()
                     pacer.idle()
                 }
+                else -> awaitOutput { wakeFd -> ssh.waitReadable(wakeFd, MAX_OUTPUT_WAIT_MS) }
             }
         }
         return false
@@ -150,9 +161,14 @@ internal class SessionTransports(hostKeyPolicy: HostKeyPolicy, val localShell: N
                 onChunk(chunk)
                 yield()
             } else {
-                pacer.idle()
+                awaitOutput { wakeFd -> localShell.waitReadable(wakeFd, MAX_OUTPUT_WAIT_MS) }
             }
         }
+    }
+
+    /** Blocks until output or other work for the session thread, or polls when it can't. */
+    private suspend fun awaitOutput(wait: (wakeFd: Int) -> Int) {
+        if (!outputWaiter.awaitOutput(wait)) pacer.idle()
     }
 
     private fun openSsh(spec: TabSpec, geometry: TerminalGeometry) {

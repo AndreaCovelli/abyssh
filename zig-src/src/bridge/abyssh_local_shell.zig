@@ -2,6 +2,7 @@
 const std = @import("std");
 
 const c = @import("c");
+const wake = @import("abyssh_wake.zig");
 
 const allocator = std.heap.c_allocator;
 const LOG_TAG = "AbyssLocalShell";
@@ -455,6 +456,16 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_NativeLocalShellB
     }
     setErrnoError(session, "local shell read failed");
     return null;
+}
+
+/// Waits up to `timeout_ms` for output, or for `wake_fd` to be signalled; returns one of
+/// the `wake.wait_*` values. A hung-up PTY returns `wait_cannot`, and the next read
+/// reports that the shell ended.
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_NativeLocalShellBridge_nativeWaitReadable(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, wake_fd: c.jint, timeout_ms: c.jint) callconv(.c) c.jint {
+    _ = env;
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return wake.wait_cannot;
+    return wake.waitReadable(session.master_fd, wake_fd, timeout_ms);
 }
 
 fn writeAllToPty(session: *NativeLocalShellSession, fd: c_int, bytes: []const u8) c.jint {

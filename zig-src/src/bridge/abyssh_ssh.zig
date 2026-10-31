@@ -2,6 +2,7 @@ const std = @import("std");
 const time = @import("time.zig");
 
 const c = @import("c");
+const wake = @import("abyssh_wake.zig");
 
 const allocator = std.heap.c_allocator;
 const LOG_TAG = "AbyssKittySSH";
@@ -1160,6 +1161,25 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     const session = sessionFromHandle(handle) orelse return null;
     const bytes = readChannel(session, @intCast(@max(max_bytes, 1))) orelse return null;
     return jniNewByteArrayOrNull(env, bytes);
+}
+
+/// Waits up to `timeout_ms` for output, or for `wake_fd` to be signalled; returns one of
+/// the `wake.wait_*` values. Returns `wait_cannot` while libssh2 waits to send, because
+/// the socket must then be polled for writing too.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeWaitReadable(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, wake_fd: c.jint, timeout_ms: c.jint) callconv(.c) c.jint {
+    _ = env;
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return wake.wait_cannot;
+    const ssh_session = session.session orelse return wake.wait_cannot;
+    const channel = session.channel orelse return wake.wait_cannot;
+    // A read can leave packets in libssh2's queue, such as stderr pulled in while
+    // reading stdout, or data beyond what fit in the buffer; the socket won't show them.
+    if (c.libssh2_poll_channel_read(channel, 1) != 0) return wake.wait_ready;
+    if (c.libssh2_channel_eof(channel) != 0) return wake.wait_ready;
+    if ((c.libssh2_session_block_directions(ssh_session) & c.LIBSSH2_SESSION_BLOCK_OUTBOUND) != 0) {
+        return wake.wait_cannot;
+    }
+    return wake.waitReadable(session.socket_fd, wake_fd, timeout_ms);
 }
 
 // The most one write copies out of the Java array at a time.

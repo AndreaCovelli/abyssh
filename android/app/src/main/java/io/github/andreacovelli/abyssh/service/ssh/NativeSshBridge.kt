@@ -79,6 +79,9 @@ class NativeSshBridge {
     /** Writes `data[offset until offset + length]` as far as the channel takes it now; -1 on failure. */
     external fun nativeWrite(handle: Long, data: ByteArray, offset: Int, length: Int): Int
 
+    /** Waits for output or for `wakeFd`; returns a `NativeWait` value. */
+    external fun nativeWaitReadable(handle: Long, wakeFd: Int, timeoutMs: Int): Int
+
     external fun nativeSftpInit(handle: Long): Boolean
 
     external fun nativeSftpListDirectory(handle: Long, path: String): Array<String>?
