@@ -1,23 +1,17 @@
 package io.github.andreacovelli.abyssh.ui
 
-import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.content.res.Resources
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
@@ -38,6 +32,7 @@ import io.github.andreacovelli.abyssh.ui.screens.settings.SettingsScreen
 import io.github.andreacovelli.abyssh.ui.screens.settings.SettingsViewModel
 import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalScreen
 import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalViewModel
+import io.github.andreacovelli.abyssh.ui.security.AppLockGate
 import io.github.andreacovelli.abyssh.ui.security.VerificationResult
 import io.github.andreacovelli.abyssh.ui.security.requireUserVerification
 
@@ -48,16 +43,16 @@ fun ApplicationNavController() {
     // Whether the user has verified since the app last came to the foreground.
     var appUnlocked by rememberSaveable { mutableStateOf(false) }
 
-    NavHost(navController = navController, startDestination = "servers") {
-        composable("servers") { ServersRoute(navController, application) }
-        composable("settings") {
-            SettingsRoute(navController, application, onAppLockVerified = { appUnlocked = true })
+    AppLockGate(application, unlocked = appUnlocked, onUnlockedChange = { appUnlocked = it }) {
+        NavHost(navController = navController, startDestination = "servers") {
+            composable("servers") { ServersRoute(navController, application) }
+            composable("settings") {
+                SettingsRoute(navController, application, onAppLockVerified = { appUnlocked = true })
+            }
+            serverEditorRoutes(navController, application)
+            terminalRoutes(navController, application)
         }
-        serverEditorRoutes(navController, application)
-        terminalRoutes(navController, application)
     }
-
-    AppLockGate(application, unlocked = appUnlocked, onUnlockedChange = { appUnlocked = it })
 }
 
 /** Runs [onVerified] after the user passes device verification. */
@@ -224,51 +219,5 @@ private fun NavGraphBuilder.terminalRoutes(navController: NavHostController, app
             onOpenSettings = { navController.navigate("settings") },
             onBack = { navController.popBackStack() },
         )
-    }
-}
-
-/**
- * Asks for device verification when app lock is on and the app has not been unlocked
- * since it last went to the background. A failed prompt is not repeated until the app
- * is backgrounded again.
- */
-@Composable
-private fun AppLockGate(application: Application, unlocked: Boolean, onUnlockedChange: (Boolean) -> Unit) {
-    val context = LocalContext.current
-    val resources = LocalResources.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val currentOnUnlockedChange by rememberUpdatedState(onUnlockedChange)
-    var unlockPromptRequested by rememberSaveable { mutableStateOf(false) }
-    var unlockPromptFailed by rememberSaveable { mutableStateOf(false) }
-
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { source, event ->
-            val isConfigChange = (source as? Activity)?.isChangingConfigurations == true
-            if (event == Lifecycle.Event.ON_STOP && !isConfigChange) {
-                currentOnUnlockedChange(false)
-                unlockPromptRequested = false
-                unlockPromptFailed = false
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    val appLockEnabled by SettingsRepository.getInstance(application).appLockEnabled.collectAsStateWithLifecycle()
-
-    LaunchedEffect(appLockEnabled, unlocked, unlockPromptRequested, unlockPromptFailed) {
-        if (appLockEnabled && !unlocked && !unlockPromptRequested && !unlockPromptFailed) {
-            unlockPromptRequested = true
-            requireUserVerification(
-                context = context,
-                title = resources.getString(R.string.nav_unlock_title),
-                subtitle = resources.getString(R.string.nav_unlock_subtitle),
-            ) { result ->
-                val success = result == VerificationResult.Success
-                currentOnUnlockedChange(success)
-                unlockPromptFailed = !success
-                unlockPromptRequested = false
-            }
-        }
     }
 }
