@@ -387,10 +387,23 @@ fn connectSocket(host: [:0]const u8, port: u16) !c_int {
     while (cur) |info| : (cur = info.ai_next) {
         const fd = c.socket(info.ai_family, info.ai_socktype, info.ai_protocol);
         if (fd < 0) continue;
-        if (c.connect(fd, info.ai_addr, info.ai_addrlen) == 0) return fd;
+        if (c.connect(fd, info.ai_addr, info.ai_addrlen) == 0) {
+            disableNagle(fd);
+            return fd;
+        }
         closeSocket(fd);
     }
     return error.ConnectFailed;
+}
+
+/// Sends each write at once, as OpenSSH does for interactive sessions. With Nagle's
+/// algorithm on, a keystroke waits while the previous one is unacknowledged, so on a
+/// slow link typed text arrives in bursts. A failure only costs that latency.
+fn disableNagle(fd: c_int) void {
+    const on: c_int = 1;
+    if (c.setsockopt(fd, c.IPPROTO_TCP, c.TCP_NODELAY, &on, @sizeOf(c_int)) != 0) {
+        logInfo("TCP_NODELAY not set errno={d}", .{c.__errno().*});
+    }
 }
 
 fn jniDupString(env: *c.JNIEnv, s: c.jstring) ?[]u8 {

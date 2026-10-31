@@ -6,6 +6,8 @@
 #include <fcntl.h>
 #include <jni.h>
 #include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdlib.h>

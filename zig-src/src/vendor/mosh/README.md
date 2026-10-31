@@ -40,8 +40,11 @@ Changed behavior:
   client does, and moves to `stopped`. Like Mosh, it reassembles one
   fragmented message at a time: a fragment of a new message frees the
   fragments of an unfinished one, which upstream kept until the session ended.
-- `src/ffi.zig`, `src/mosh_ffi.h`: `mosh_client_start_shutdown` and
-  `mosh_client_shutdown_acknowledged`.
+- `src/core.zig`: `msUntilNextTimer` reports when `maintenanceTick` next has
+  work, so the app can block on the socket until then instead of polling.
+- `src/ffi.zig`, `src/mosh_ffi.h`: `mosh_client_start_shutdown`,
+  `mosh_client_shutdown_acknowledged`, and `mosh_client_wait_params`, which
+  returns the UDP socket and `msUntilNextTimer`.
 
 Removed: `src/test_live.zig`, a standalone program for testing against a live
 server. Nothing built it, and it did not compile on Zig 0.17.

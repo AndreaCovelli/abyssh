@@ -73,7 +73,7 @@ internal class SessionTransports(
 ) {
     val ssh = NativeSshService(hostKeyPolicy = hostKeyPolicy)
     private val pacer = ReadPacer()
-    val mosh = MoshTransport(ssh, NativeMoshService(), pacer)
+    val mosh = MoshTransport(ssh, NativeMoshService(), pacer, outputWaiter)
     private var transport: Transport = Transport.SSH
 
     /** Why [transport]'s native library can't run, or null when it can. */

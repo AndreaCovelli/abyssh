@@ -91,6 +91,13 @@ class NativeMoshService(
         return bridge.nativePumpNetwork(handle) == 0
     }
 
+    /**
+     * Waits up to [maxTimeoutMs] for a datagram, for [wakeFd] to be signalled, or for the
+     * client's next timer; returns -1 when it can't wait, such as when it isn't running.
+     */
+    fun waitReadable(wakeFd: Int, maxTimeoutMs: Int): Int =
+        if (handle == 0L) -1 else bridge.nativeWaitReadable(handle, wakeFd, maxTimeoutMs)
+
     // Poll one output event. Returns null if no event is queued.
     fun pollOutput(): MoshOutputEvent? {
         if (handle == 0L) return null
