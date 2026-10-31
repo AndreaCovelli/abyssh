@@ -3,4 +3,6 @@
     <!-- SSH private keys, host passwords, passphrases, and trusted host keys are backed up only through Abyssh's encrypted local export flow. -->
     <exclude domain="database" path="." />
     <exclude domain="sharedpref" path="." />
+    <!-- The local shell's home directory, which can hold shell history and ~/.ssh. -->
+    <exclude domain="file" path="." />
 </full-backup-content>
