@@ -5,8 +5,6 @@ import io.github.andreacovelli.abyssh.model.AuthMethod
 import io.github.andreacovelli.abyssh.model.UiText
 import io.github.andreacovelli.abyssh.model.UiTextException
 import java.io.Closeable
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 class NativeSshService(
     private val bridge: NativeSshBridge = NativeSshBridge(),
@@ -24,80 +22,6 @@ class NativeSshService(
             nativeError,
         )
         else -> IllegalStateException(nativeError)
-    }
-
-    private object Ipc {
-        private const val VERSION: Byte = 1
-        private const val TAG_WRITE: Byte = 1
-        private const val TAG_READ: Byte = 2
-        private const val TAG_ACK: Byte = 100.toByte()
-        private const val TAG_DATA: Byte = 101.toByte()
-        private const val TAG_ERROR: Byte = 255.toByte()
-        private const val HEADER_SIZE = 6
-
-        fun encodeWrite(data: ByteArray): ByteArray {
-            val frame = ByteArray(HEADER_SIZE + data.size)
-            val buffer = ByteBuffer.wrap(frame).order(ByteOrder.LITTLE_ENDIAN)
-            buffer.put(VERSION)
-            buffer.put(TAG_WRITE)
-            buffer.putInt(data.size)
-            if (data.isNotEmpty()) {
-                buffer.put(data)
-            }
-            return frame
-        }
-
-        fun encodeRead(maxBytes: Int): ByteArray {
-            val payload =
-                ByteBuffer.allocate(4)
-                    .order(ByteOrder.LITTLE_ENDIAN)
-                    .putInt(maxBytes.coerceAtLeast(1))
-                    .array()
-            val frame = ByteArray(HEADER_SIZE + payload.size)
-            val buffer = ByteBuffer.wrap(frame).order(ByteOrder.LITTLE_ENDIAN)
-            buffer.put(VERSION)
-            buffer.put(TAG_READ)
-            buffer.putInt(payload.size)
-            buffer.put(payload)
-            return frame
-        }
-
-        data class DecodedFrame(val tag: Byte, val payload: ByteArray)
-
-        fun decode(frame: ByteArray): DecodedFrame {
-            require(frame.size >= HEADER_SIZE) { "Invalid IPC response" }
-            val buffer = ByteBuffer.wrap(frame).order(ByteOrder.LITTLE_ENDIAN)
-            val version = buffer.get()
-            require(version == VERSION) { "Unsupported IPC version: $version" }
-            val tag = buffer.get()
-            val len = buffer.int
-            require(len >= 0) { "Invalid IPC payload length" }
-            require(frame.size == HEADER_SIZE + len) { "Truncated IPC response" }
-            val payload = ByteArray(len)
-            if (len > 0) {
-                buffer.get(payload)
-            }
-            return DecodedFrame(tag, payload)
-        }
-
-        fun parseAckWritten(payload: ByteArray): Int {
-            require(payload.size == 4) { "Invalid ACK payload" }
-            return ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN).int
-        }
-
-        fun parseError(payload: ByteArray): String {
-            if (payload.isEmpty()) return "Native IPC error"
-            return payload.toString(Charsets.UTF_8)
-        }
-
-        val tagAck: Byte
-            get() = TAG_ACK
-
-        val tagData: Byte
-            get() = TAG_DATA
-
-        val tagError: Byte
-            get() = TAG_ERROR
     }
 
     private var handle: Long = 0L
@@ -265,8 +189,10 @@ class NativeSshService(
     private fun flushPendingWrites() {
         while (pendingWrites.isNotEmpty()) {
             val head = pendingWrites.first()
-            val chunk = if (pendingOffset == 0) head else head.copyOfRange(pendingOffset, head.size)
-            val written = writeOnce(chunk)
+            val remaining = head.size - pendingOffset
+            val written = bridge.nativeWrite(handle, head, pendingOffset, remaining)
+            if (written < 0) error(bridge.nativeGetLastError(handle) ?: "Native SSH write failed")
+            check(written <= remaining) { "Invalid native SSH write size: $written (remaining=$remaining)" }
             if (written == 0) return
             pendingOffset += written
             if (pendingOffset == head.size) {
@@ -276,32 +202,12 @@ class NativeSshService(
         }
     }
 
-    /** Writes what the channel takes of [chunk] now; returns how much that was. */
-    private fun writeOnce(chunk: ByteArray): Int {
-        val response =
-            bridge.nativeIpcExchange(handle, Ipc.encodeWrite(chunk))
-                ?: error(bridge.nativeGetLastError(handle) ?: "Native SSH write failed")
-        val decoded = Ipc.decode(response)
-        val written =
-            when (decoded.tag) {
-                Ipc.tagAck -> Ipc.parseAckWritten(decoded.payload)
-                Ipc.tagError -> error(Ipc.parseError(decoded.payload))
-                else -> error("Unexpected IPC write response tag: ${decoded.tag}")
-            }
-        check(written in 0..chunk.size) { "Invalid native SSH ACK size: $written (remaining=${chunk.size})" }
-        return written
-    }
-
+    /** What the channel holds now: empty when nothing has arrived, null when not connected. */
     fun read(maxBytes: Int = 8192): ByteArray? {
         if (handle == 0L) return null
         flushPendingWrites()
-        val response = bridge.nativeIpcExchange(handle, Ipc.encodeRead(maxBytes)) ?: return null
-        val decoded = Ipc.decode(response)
-        return when (decoded.tag) {
-            Ipc.tagData -> decoded.payload
-            Ipc.tagError -> error(Ipc.parseError(decoded.payload))
-            else -> error("Unexpected IPC read response tag: ${decoded.tag}")
-        }
+        return bridge.nativeRead(handle, maxBytes.coerceAtLeast(1))
+            ?: error(bridge.nativeGetLastError(handle) ?: "Native SSH read failed")
     }
 
     fun sftpListDirectory(path: String): List<String> {

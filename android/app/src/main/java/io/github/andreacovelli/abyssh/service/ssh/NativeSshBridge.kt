@@ -73,7 +73,11 @@ class NativeSshBridge {
         heightPx: Int,
     ): Boolean
 
-    external fun nativeIpcExchange(handle: Long, request: ByteArray): ByteArray?
+    /** What stdout and stderr hold now, empty when nothing has arrived, or null when the read fails. */
+    external fun nativeRead(handle: Long, maxBytes: Int): ByteArray?
+
+    /** Writes `data[offset until offset + length]` as far as the channel takes it now; -1 on failure. */
+    external fun nativeWrite(handle: Long, data: ByteArray, offset: Int, length: Int): Int
 
     external fun nativeSftpInit(handle: Long): Boolean
 
