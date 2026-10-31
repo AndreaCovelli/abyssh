@@ -34,7 +34,11 @@ internal data class TerminalCanvasColors(
     val cursorText: Int?,
 )
 
-/** Where a snapshot sits on the canvas: at the origin, or scaled and centered to fit. */
+/**
+ * Where a snapshot sits on the canvas: at the origin, or scaled to the canvas's width.
+ * A scaled snapshot shorter than the canvas is centered; a taller one shows the rows
+ * that end at the cursor's, as a terminal scrolled to its prompt does.
+ */
 internal data class SnapshotPlacement(val scale: Float = 1f, val offsetX: Float = 0f, val offsetY: Float = 0f) {
     /** Canvas pixels to snapshot pixels. */
     fun toSnapshot(position: Offset): Offset = Offset((position.x - offsetX) / scale, (position.y - offsetY) / scale)
@@ -43,22 +47,25 @@ internal data class SnapshotPlacement(val scale: Float = 1f, val offsetX: Float 
         val Identity = SnapshotPlacement()
 
         fun of(
-            fitToCanvas: Boolean,
+            fitToWidth: Boolean,
             snapshot: TerminalSnapshot,
             cell: TerminalCellMetrics,
             canvasWidth: Float,
             canvasHeight: Float,
         ): SnapshotPlacement {
-            if (!fitToCanvas) return Identity
+            if (!fitToWidth) return Identity
             val contentWidth = max(snapshot.cols, 1) * cell.width
-            val contentHeight = max(snapshot.rows, 1) * cell.height
-            val scale = minOf(canvasWidth / contentWidth, canvasHeight / contentHeight)
-            if (scale <= 0f) return Identity
-            return SnapshotPlacement(
-                scale = scale,
-                offsetX = ((canvasWidth - contentWidth * scale) / 2f).coerceAtLeast(0f),
-                offsetY = ((canvasHeight - contentHeight * scale) / 2f).coerceAtLeast(0f),
-            )
+            val scale = canvasWidth / contentWidth
+            if (scale <= 0f || canvasHeight <= 0f) return Identity
+            val rowHeight = cell.height * scale
+            val contentHeight = max(snapshot.rows, 1) * rowHeight
+            val offsetY = if (contentHeight <= canvasHeight) {
+                (canvasHeight - contentHeight) / 2f
+            } else {
+                val cursorBottom = (snapshot.cursorY.coerceIn(0, max(snapshot.rows - 1, 0)) + 1) * rowHeight
+                0f - (cursorBottom - canvasHeight).coerceIn(0f, contentHeight - canvasHeight)
+            }
+            return SnapshotPlacement(scale = scale, offsetY = offsetY)
         }
     }
 }

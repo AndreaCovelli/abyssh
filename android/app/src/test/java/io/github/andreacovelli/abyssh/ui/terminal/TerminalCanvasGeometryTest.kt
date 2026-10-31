@@ -32,17 +32,24 @@ class TerminalCanvasGeometryTest {
     }
 
     @Test
-    fun `a fitted snapshot scales to the tighter side and centers on the other`() {
-        // Content is 100 x 100; the canvas is 400 wide and 200 tall.
-        val placement = SnapshotPlacement.of(true, snapshot, cell, 400f, 200f)
+    fun `a fitted snapshot scales to the canvas width and centers when shorter`() {
+        // Content is 100 x 100; the canvas is 200 wide and 400 tall.
+        val placement = SnapshotPlacement.of(true, snapshot, cell, 200f, 400f)
 
-        assertEquals(SnapshotPlacement(scale = 2f, offsetX = 100f, offsetY = 0f), placement)
-        assertEquals(Offset(50f, 50f), placement.toSnapshot(Offset(200f, 100f)))
+        assertEquals(SnapshotPlacement(scale = 2f, offsetX = 0f, offsetY = 100f), placement)
+        assertEquals(Offset(50f, 50f), placement.toSnapshot(Offset(100f, 200f)))
     }
 
     @Test
-    fun `a fitted snapshot on an empty canvas is left alone`() {
-        assertEquals(SnapshotPlacement.Identity, SnapshotPlacement.of(true, snapshot, cell, 0f, 0f))
+    fun `a fitted snapshot taller than the canvas shows the rows up to the cursor`() {
+        // Scaled 4x, content is 400 x 400 and each row 80 tall; the canvas shows 2.5 rows.
+        val atTop = SnapshotPlacement.of(true, snapshot, cell, 400f, 200f)
+        val atRow3 = SnapshotPlacement.of(true, snapshot.copy(cursorY = 3), cell, 400f, 200f)
+        val atBottom = SnapshotPlacement.of(true, snapshot.copy(cursorY = 4), cell, 400f, 200f)
+
+        assertEquals(SnapshotPlacement(scale = 4f, offsetY = 0f), atTop)
+        assertEquals(SnapshotPlacement(scale = 4f, offsetY = -120f), atRow3)
+        assertEquals(SnapshotPlacement(scale = 4f, offsetY = -200f), atBottom)
     }
 
     @Test
