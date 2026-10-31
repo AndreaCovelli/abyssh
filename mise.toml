@@ -69,12 +69,11 @@ run = "actionlint"
 
 [tasks.check]
 description = "Run every repository check that needs no device"
+dir = "android"
+# One Gradle call instead of one per check: with the configuration cache on, Gradle
+# runs independent tasks of the module in parallel, and --continue reports every
+# failure in one run. Keep the task list in step with the tasks above.
 run = [
-  { task = "format:check" },
-  { task = "detekt" },
-  { task = "lint" },
-  { task = "test" },
-  { task = "test:device:compile" },
-  { task = "build" },
   { task = "check:actions" },
+  "./gradlew --continue spotlessCheck detekt lintDebug testDebugUnitTest compileDebugAndroidTestKotlin assembleDebug",
 ]

@@ -119,6 +119,8 @@ android {
             // Robolectric needs the merged resources to resolve app resources in tests.
             isIncludeAndroidResources = true
             all { test ->
+                // Robolectric tests are slow to start; spread them over half the cores.
+                test.maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
                 // Roborazzi gates PNG capture on this system property; the Gradle
                 // plugin usually wires it, but we pass it through manually so
                 // `-Proborazzi.test.record=true` works with plain test tasks.
