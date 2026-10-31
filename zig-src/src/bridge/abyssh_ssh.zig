@@ -908,10 +908,15 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
             return c.JNI_TRUE;
         }
         if (rc != c.LIBSSH2_ERROR_EAGAIN) {
-            logError("Public key memory auth failed rc={}", .{rc});
-            // userauth_list() can leave an unrelated EAGAIN message behind, so
-            // report the return code from this attempt rather than that stale text.
-            setError(session, "Public key memory auth failed (rc={})", .{rc});
+            const last_errno = c.libssh2_session_last_errno(ssh_session);
+            logError("Public key memory auth failed rc={} last_errno={}", .{ rc, last_errno });
+            // userauth_list() can leave an unrelated EAGAIN message behind. Show
+            // libssh2's text only when it belongs to this attempt's return code.
+            if (last_errno == rc) {
+                setLibssh2Error(session, "Public key memory auth failed", rc);
+            } else {
+                setError(session, "Public key memory auth failed (rc={})", .{rc});
+            }
             return c.JNI_FALSE;
         }
         if (nowMs() >= deadline_ms) {
