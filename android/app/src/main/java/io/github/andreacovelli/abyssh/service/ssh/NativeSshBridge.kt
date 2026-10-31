@@ -25,6 +25,9 @@ class NativeSshBridge {
 
     external fun nativeGetLastError(handle: Long): String?
 
+    /** Whether the last error is a status the SFTP server sent back, such as permission denied. */
+    external fun nativeLastErrorIsSftpStatus(handle: Long): Boolean
+
     external fun nativeGetHostKey(handle: Long): ByteArray?
 
     external fun nativeGetHostKeyAlgorithm(handle: Long): String?

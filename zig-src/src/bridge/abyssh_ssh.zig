@@ -42,6 +42,8 @@ const NativeSshSession = struct {
     hostkey_type: c_int = 0,
     hostkey_copy: ?[]u8 = null,
     last_error: std.ArrayListUnmanaged(u8) = .empty,
+    // The last error is a status the SFTP server sent back, so the connection still works.
+    last_error_is_sftp_status: bool = false,
     // Kept between reads, which the read loop makes for every chunk of output.
     read_buffer: []u8 = &.{},
 };
@@ -58,6 +60,7 @@ fn handleFromSession(session: *NativeSshSession) c.jlong {
 }
 
 fn setError(session: *NativeSshSession, comptime fmt: []const u8, args: anytype) void {
+    session.last_error_is_sftp_status = false;
     session.last_error.clearRetainingCapacity();
     session.last_error.print(allocator, fmt, args) catch return;
 }
@@ -73,6 +76,7 @@ fn setLibssh2Error(session: *NativeSshSession, prefix: []const u8, rc: c_int) vo
     } else {
         setError(session, "{s}: rc={}", .{ prefix, rc });
     }
+    session.last_error_is_sftp_status = rc == c.LIBSSH2_ERROR_SFTP_PROTOCOL;
 }
 
 fn sftpStatusName(code: c_ulong) []const u8 {
@@ -112,6 +116,7 @@ fn setSftpError(session: *NativeSshSession, sftp: *c.LIBSSH2_SFTP, prefix: []con
     const status = c.libssh2_sftp_last_error(sftp);
     const detail = if (errmsg_ptr != null and errmsg_len > 0) errmsg_ptr[0..@intCast(errmsg_len)] else "libssh2 SFTP error";
     setError(session, "{s}: {s} (SFTP status {d}: {s}, rc={d})", .{ prefix, detail, status, sftpStatusName(status), rc });
+    session.last_error_is_sftp_status = rc == c.LIBSSH2_ERROR_SFTP_PROTOCOL;
 }
 
 fn closeSocket(fd: c_int) void {
@@ -672,6 +677,13 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     _ = thiz;
     const session = sessionFromHandle(handle) orelse return null;
     return jniNewStringOrNull(env, session.last_error.items);
+}
+
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeLastErrorIsSftpStatus(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jboolean {
+    _ = env;
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
+    return if (session.last_error_is_sftp_status) c.JNI_TRUE else c.JNI_FALSE;
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeGetHostKey(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jbyteArray {
