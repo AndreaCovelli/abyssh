@@ -28,6 +28,10 @@ import kotlinx.coroutines.launch
 private const val TAG = "TmuxControl"
 private const val MAX_RECONNECT_ATTEMPTS = 8
 
+// The view's size changes on every frame while the keyboard slides in or out, and each
+// size tmux applies captures the pane again, so only the size that settles goes out.
+private const val CLIENT_RESIZE_SETTLE_MS = 150L
+
 /** How the control connection is doing; every tab of the session shows it. */
 internal data class TmuxControlStatus(
     val status: SessionStatus = SessionStatus.Connecting,
@@ -40,12 +44,10 @@ internal interface TmuxPaneView {
     /** The tab now shows window [windowId]. */
     fun bindWindow(windowId: Int)
 
-    /** Replaces the terminal with a blank one of [size] and writes [seed] into it. */
+    /** Replaces the terminal with a blank one of [size] and writes [seed] into it, as when the pane changes or resizes. */
     fun showPane(size: TmuxPaneSize, seed: ByteArray)
 
     fun paneOutput(data: ByteArray)
-
-    fun paneResized(size: TmuxPaneSize)
 }
 
 /** What a control session asks of the tabs around it. Calls arrive on the main thread. */
@@ -105,6 +107,7 @@ internal class TmuxControlSession(
     private var attached = false
     private var readJob: Job? = null
     private var reconnectJob: Job? = null
+    private var resizeJob: Job? = null
     private var clientGeometry: TerminalGeometry? = null
     private var sentClientSize: TmuxPaneSize? = null
 
@@ -136,11 +139,18 @@ internal class TmuxControlSession(
 
     fun detach(view: TmuxPaneView) = onThread { windows.detach(view) }
 
-    /** The size the app's terminal view has, which tmux gives the session's windows. */
+    /** The size the app's terminal view has, which tmux gives the session's windows once it settles. */
     fun resizeClient(geometry: TerminalGeometry) = onThread {
         clientGeometry = geometry
-        if (attached) sendClientSize()
+        resizeJob?.cancel()
+        resizeJob = scope.launch(dispatcher) {
+            delay(CLIENT_RESIZE_SETTLE_MS)
+            if (attached) sendClientSize()
+        }
     }
+
+    /** [view]'s tab became the active one, or none of this session's tabs did when null. */
+    fun focus(view: TmuxPaneView?) = onThread { windows.focus(view) }
 
     fun sendKeys(view: TmuxPaneView, data: ByteArray) = onThread {
         if (!attached || data.isEmpty()) return@onThread
@@ -173,6 +183,7 @@ internal class TmuxControlSession(
         scope.launch(dispatcher) {
             readJob?.cancel()
             reconnectJob?.cancel()
+            resizeJob?.cancel()
             if (attached) link.detachAndClose() else link.close()
             attached = false
         }
@@ -292,6 +303,7 @@ internal class TmuxControlSession(
             link.send(TmuxControlCommands.pauseAfter(TMUX_PAUSE_AFTER_SECONDS))
         }
         windows.listWindows()
+        if (firstAttach) windows.selectFocused()
     }
 
     private fun sendClientSize() {

@@ -73,6 +73,9 @@ class TerminalSessionEngine internal constructor(
     /** The tmux window this tab shows, when it is part of a control session. */
     internal val tmuxWindowId: Int? get() = (connection as? TmuxPaneConnection)?.windowId
 
+    /** The tab's view of its tmux window, when it is part of a control session. */
+    internal val tmuxView: TmuxPaneView? get() = connection as? TmuxPaneConnection
+
     internal fun showsTmuxView(view: TmuxPaneView): Boolean = connection === view
 
     /** Opens [spec], replacing whatever this session had open. */

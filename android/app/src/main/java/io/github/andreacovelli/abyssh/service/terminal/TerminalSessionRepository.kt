@@ -120,6 +120,7 @@ class TerminalSessionRepository private constructor(application: Application) {
                 sessionNotification(_tabs.value, active, anyLive = live.isNotEmpty())
             }.collect(foreground::update)
         }
+        scope.launch { activeTab.collect(tmuxTabs::activeTabChanged) }
     }
 
     fun attachClient() {

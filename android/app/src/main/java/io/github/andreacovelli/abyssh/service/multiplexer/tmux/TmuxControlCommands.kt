@@ -76,6 +76,13 @@ internal object TmuxControlCommands {
 
     fun killWindow(windowId: Int): String = "kill-window -t @$windowId"
 
+    /**
+     * Makes [windowId] the session's current window. With `aggressive-resize`, tmux sizes
+     * a window only to the clients whose current window it is, so a tab's window takes
+     * the app's size only once it is selected.
+     */
+    fun selectWindow(windowId: Int): String = "select-window -t @$windowId"
+
     const val DETACH = "detach-client"
 
     /** Shows session [name] in this client; tmux reads quotes as a shell does. */

@@ -104,14 +104,6 @@ internal class TmuxPaneConnection(
         }
     }
 
-    override fun paneResized(size: TmuxPaneSize) = onSessionThread {
-        paneSize = size
-        emulator.resizeGrid(size.cols, size.rows)
-        emulator.drainPtyWrites()
-        emulator.setMouseEncodingSize()
-        emulator.requestSnapshot(force = true)
-    }
-
     private fun onSessionThread(block: () -> Unit) {
         scope.launch(dispatcher) { if (attached) block() }
     }

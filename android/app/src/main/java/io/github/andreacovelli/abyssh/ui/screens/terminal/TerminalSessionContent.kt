@@ -142,7 +142,9 @@ private fun TerminalSessionEffects(
     LaunchedEffect(sessionState.handle, activeTabId) { input.clearSelection() }
     LaunchedEffect(input) { input.watchClipboard() }
     val isDark = (theme?.background ?: colors.background).luminance() < 0.5f
-    LaunchedEffect(theme, colors, isDark) {
+    // Keyed on the tabs too, so a tab that opens while this screen shows, as tmux windows do, gets the colors.
+    val tabs by vm.tabs.collectAsStateWithLifecycle()
+    LaunchedEffect(theme, colors, isDark, tabs) {
         vm.input.onColorSchemeChanged(isDark)
         vm.input.onDefaultColorsChanged(
             fg = (theme?.foreground ?: colors.textPrimary).toRgbIntArray(),

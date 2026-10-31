@@ -82,6 +82,13 @@ internal class TmuxControlTabs(
         sessions.toList().forEach(::end)
     }
 
+    /** Tells each control session which of its tabs, if any, is now the active one. */
+    fun activeTabChanged(tab: TabSession?) {
+        sessions.forEach { control ->
+            control.focus(tab?.engine?.takeIf { it.tmuxControl === control }?.tmuxView)
+        }
+    }
+
     override fun openWindowTab(control: TmuxControlSession, windowId: Int, select: Boolean) {
         if (control !in sessions) return
         val spec = control.spec.copy(multiplexerSessionName = control.sessionName, multiplexerCreateIfMissing = false)

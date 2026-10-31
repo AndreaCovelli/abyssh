@@ -20,8 +20,8 @@ internal interface TmuxWindowTabs {
  * Which tab shows which tmux window, and which pane each one shows. Keeps the tabs in
  * step with the session's windows: closes tabs whose window is gone, asks [tabs] to
  * open one for each new window, and fills each tab in from `capture-pane` when its pane
- * changes. Every call runs on the control session's thread; commands go out only while
- * [attached] says tmux has reported the session.
+ * or the pane's size changes. Every call runs on the control session's thread; commands
+ * go out only while [attached] says tmux has reported the session.
  */
 internal class TmuxWindowBindings(
     private val link: TmuxControlLink,
@@ -45,6 +45,9 @@ internal class TmuxWindowBindings(
     private val seeding = mutableMapOf<Int, Long>()
     private var seedCount = 0L
 
+    // The view whose tab is the app's active one, if it belongs to this session.
+    private var focused: TmuxPaneView? = null
+
     /** Binds [view] to window [windowId], or to a window that has no tab yet when null. */
     fun attach(view: TmuxPaneView, windowId: Int?) {
         val binding = Binding(view)
@@ -63,6 +66,20 @@ internal class TmuxWindowBindings(
 
     fun detach(view: TmuxPaneView) {
         bindings.removeAll { it.view === view }
+        if (focused === view) focused = null
+    }
+
+    /** [view]'s tab is now the active one, or none of this session's tabs is when null. */
+    fun focus(view: TmuxPaneView?) {
+        focused = view
+        selectFocused()
+    }
+
+    /** Makes the active tab's window tmux's current one, which tmux then sizes to this client. */
+    fun selectFocused() {
+        if (!attached()) return
+        val windowId = bindings.firstOrNull { it.view === focused }?.windowId ?: return
+        link.send(TmuxControlCommands.selectWindow(windowId))
     }
 
     /** The pane [view] shows, once it has one. */
@@ -101,7 +118,7 @@ internal class TmuxWindowBindings(
         windows[windowId]?.let { windows = windows + (windowId to it.copy(size = size)) }
         if (size != binding.size) {
             binding.size = size
-            binding.view.paneResized(size)
+            seed(binding)
         }
     }
 
@@ -136,20 +153,23 @@ internal class TmuxWindowBindings(
     private fun bindTo(binding: Binding, windowId: Int) {
         binding.windowId = windowId
         binding.view.bindWindow(windowId)
+        if (binding.view === focused) selectFocused()
     }
 
     private fun updatePane(binding: Binding, window: TmuxWindow) {
-        if (binding.paneId != window.paneId) {
+        if (binding.paneId != window.paneId || binding.size != window.size) {
             binding.paneId = window.paneId
             binding.size = window.size
             seed(binding)
-        } else if (binding.size != window.size) {
-            binding.size = window.size
-            binding.view.paneResized(window.size)
         }
     }
 
-    /** Captures the binding's pane and shows it; the pane's output waits until then, since the capture includes it. */
+    /**
+     * Captures the binding's pane and shows it; the pane's output waits until then, since
+     * the capture includes it. A resize captures again too: when tmux resizes a pane it
+     * reflows the lines and moves lines between the history and the screen in its own
+     * way, which resizing the local terminal can't match.
+     */
     private fun seed(binding: Binding) {
         val paneId = binding.paneId ?: return
         val number = ++seedCount
