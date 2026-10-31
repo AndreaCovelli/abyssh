@@ -354,6 +354,9 @@
     <string name="nav_verify_local_shell_subtitle">Authenticate to open this device shell</string>
     <string name="nav_unlock_title">Unlock abyssh</string>
     <string name="nav_unlock_subtitle">Authenticate to continue</string>
+    <string name="app_lock_title">App locked</string>
+    <string name="app_lock_body">Verify to see your hosts and sessions.</string>
+    <string name="app_lock_unlock">Unlock</string>
     <string name="tab_manager_close">Close tab manager</string>
     <string name="tab_manager_title">Tabs</string>
     <plurals name="tab_manager_session_count">
@@ -415,7 +418,9 @@
     <string name="error_mosh_session_ended_code">Mosh session ended (failure code %1$d). Reconnect to start a new session.</string>
     <string name="error_resize_failed">Resize failed: %1$s</string>
     <string name="error_reconnect_failed">Reconnect failed: %1$s</string>
+    <string name="error_connection_cancelled">Connection cancelled</string>
     <string name="error_reconnect_timeout">Timed out waiting for the session to reconnect</string>
+    <string name="error_session_not_connected">The session is not connected</string>
     <string name="error_host_key_rejected">Host key rejected</string>
     <string name="error_ssh_password_auth_disabled">%1$s. The server may not allow password sign-in for this address, for example with Tailscale SSH or sshd Match rules for tailnet addresses.</string>
     <string name="error_ssh_key_passphrase">Encrypted key authentication failed. Check that you entered the key passphrase, not the server account password.</string>

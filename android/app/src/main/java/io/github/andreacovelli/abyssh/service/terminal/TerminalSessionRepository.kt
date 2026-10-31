@@ -9,7 +9,6 @@ import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.model.UiText
-import io.github.andreacovelli.abyssh.model.UiTextException
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerRegistry
 import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSession
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
@@ -28,16 +27,13 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 
-private const val CONNECT_WAIT_MS = 20_000L
 
 /**
  * The open terminal tabs and which one is active. Each tab owns a
@@ -295,15 +291,14 @@ class TerminalSessionRepository private constructor(application: Application) {
         tabs.forEach { it.engine.dispose() }
     }
 
-    suspend fun awaitTabConnected(tabId: String, timeoutMs: Long = CONNECT_WAIT_MS) {
-        val tab = _tabs.value.firstOrNull { it.id == tabId && it.spec.transport != Transport.LocalShell } ?: return
-        if (tab.sessionState.value.status == SessionStatus.Connected) return
-        withTimeoutOrNull(timeoutMs) {
-            tab.sessionState.first { it.status == SessionStatus.Connected }
-        } ?: throw UiTextException(
-            UiText.Resource(R.string.error_reconnect_timeout),
-            "Timed out waiting for the session to reconnect",
-        )
+    /**
+     * Runs [operation] on the tab's SFTP channel once the session is connected, and once more
+     * if the session drops during the call and reconnects. Returns null for a closed tab or a
+     * local shell.
+     */
+    suspend fun <T> withSftp(tabId: String, operation: suspend (SftpSession) -> T): T? {
+        val tab = _tabs.value.firstOrNull { it.id == tabId && it.spec.transport != Transport.LocalShell } ?: return null
+        return runWhenConnected(tab.sessionState) { operation(tab.engine.sftp) }
     }
 
     /** Answers the host key prompt: a multiplexer check's first, then the active tab's. */

@@ -83,6 +83,9 @@ internal class SessionTransports(
         else -> null
     }
 
+    /** Cancels an SSH or Mosh connection that is still connecting. Safe from any thread. */
+    fun cancelConnect() = ssh.cancelConnect()
+
     fun closeAll() {
         ssh.close()
         mosh.shutdown()

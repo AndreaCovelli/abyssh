@@ -21,9 +21,15 @@ class NativeSshBridge {
 
     external fun nativeDestroySession(handle: Long)
 
+    /** Sets the eventfd that cancels the connection when signalled; the caller closes it after the session. */
+    external fun nativeSetCancelFd(handle: Long, fd: Int)
+
     external fun nativeConnect(handle: Long, host: String, port: Int, username: String): Boolean
 
     external fun nativeGetLastError(handle: Long): String?
+
+    /** Whether the last error is a status the SFTP server sent back, such as permission denied. */
+    external fun nativeLastErrorIsSftpStatus(handle: Long): Boolean
 
     external fun nativeGetHostKey(handle: Long): ByteArray?
 

@@ -170,8 +170,9 @@ private fun Context.toastFailure(resources: Resources, messageRes: Int, error: T
 
 /** Saves [bytes] to the cache and returns an intent that views them through the FileProvider. */
 private fun cacheRemoteFile(context: Context, name: String, bytes: ByteArray): Intent {
-    val safeName = name.ifBlank { "remote_file" }
-    val file = File(context.cacheDir, safeName)
+    val dir = File(context.cacheDir, REMOTE_FILES_DIR).apply { mkdirs() }
+    val file = localFileIn(dir, name)
+    val safeName = file.name
     file.writeBytes(bytes)
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     val mime = MimeTypeMap.getSingleton()

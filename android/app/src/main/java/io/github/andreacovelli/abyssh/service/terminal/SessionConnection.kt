@@ -75,6 +75,8 @@ internal class SessionConnection(
     @Volatile private var reconnectJob: Job? = null
 
     override fun connect(spec: TabSpec, sessionKey: String) {
+        // A Retry shouldn't queue behind an attempt that is still waiting on the network.
+        transports.cancelConnect()
         disconnectRequested = false
         this.spec = spec
         scope.launch(dispatcher) {
@@ -94,6 +96,7 @@ internal class SessionConnection(
 
     override fun disconnect(onClosed: () -> Unit) {
         disconnectRequested = true
+        transports.cancelConnect()
         reconnectJob?.cancel()
         reconnectJob = null
         spec = null

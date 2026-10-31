@@ -7,6 +7,7 @@ import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionRepository
 import io.github.andreacovelli.abyssh.ui.terminal.CustomActionModifier
 import io.github.andreacovelli.abyssh.ui.terminal.GhosttyKey
 import io.github.andreacovelli.abyssh.ui.terminal.GhosttyKeyAction
+import io.github.andreacovelli.abyssh.ui.terminal.KeyText
 import io.github.andreacovelli.abyssh.ui.terminal.ModifierState
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCustomAction
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalSpecialKey
@@ -81,19 +82,11 @@ class TerminalInput internal constructor(
     }
 
     fun onHardwareKey(key: Int, codepoint: Int, mods: Int, action: Int, charCode: Int = 0) {
-        val hasNonTextModifier = mods and NON_TEXT_MODIFIERS != 0
-        val isRelease = action == GhosttyKeyAction.Release
-        if (!isRelease) {
+        if (action != GhosttyKeyAction.Release) {
             activeEngine?.scrollToActive()
         }
-        val effectiveCodepoint = if (charCode > 0) charCode else codepoint
-        val utf8 =
-            if (effectiveCodepoint > 0 && !hasNonTextModifier && !isRelease) {
-                effectiveCodepoint.toChar().toString()
-            } else {
-                null
-            }
-        activeEngine?.writeKey(key, effectiveCodepoint, mods, action, utf8)
+        val text = KeyText.of(codepoint, mods, action, charCode)
+        activeEngine?.writeKey(key, codepoint, mods, action, text.utf8, text.consumedMods)
     }
 
     fun onTextInput(text: String) {
@@ -159,11 +152,6 @@ class TerminalInput internal constructor(
 
     private val activeEngine: TerminalSessionEngine?
         get() = sessionRepository.activeTab.value?.engine
-
-    private companion object {
-        // Ctrl, Alt, and Super: with any of them held, a key sends no text of its own.
-        const val NON_TEXT_MODIFIERS = (1 shl 1) or (1 shl 2) or (1 shl 3)
-    }
 }
 
 /** The text a custom action types and the modifiers it holds while typing it. */
