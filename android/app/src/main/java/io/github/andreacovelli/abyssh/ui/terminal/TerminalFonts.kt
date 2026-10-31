@@ -131,12 +131,13 @@ private fun Context.loadFont(fontResId: Int, default: Typeface): Typeface =
 
 /** One text paint per typeface, at the canvas's font size. */
 internal class TerminalTextPaints(fonts: TerminalFonts, sizePx: Float) {
-    private val primary = textPaint(fonts.primary, sizePx)
-    private val symbols = textPaint(fonts.symbols, sizePx)
-    private val fallback = textPaint(fonts.fallback, sizePx)
+    private val primary = textPaint(fonts.primary, sizePx).withoutLigatures()
+    private val symbols = textPaint(fonts.symbols, sizePx).withoutLigatures()
+    private val fallback = textPaint(fonts.fallback, sizePx).withoutLigatures()
 
     // The system typeface reaches Android's NotoColorEmoji fallback; the symbols Nerd
-    // Font has no color emoji or ZWJ shaping.
+    // Font has no color emoji or ZWJ shaping. Its ligatures stay on: they build the
+    // emoji sequences.
     private val emoji = textPaint(Typeface.DEFAULT, sizePx)
 
     fun forChoice(choice: Int): Paint = when (choice) {
@@ -164,7 +165,16 @@ internal class TerminalTextPaints(fonts: TerminalFonts, sizePx: Float) {
         textSize = sizePx
         typeface = face
     }
+
+    /**
+     * Each run of cells is drawn as one string, so the shaper would apply a code font's
+     * ligatures (JetBrains Mono's `#{`, Fira Code's `->`) and merge characters the
+     * terminal places in separate cells.
+     */
+    private fun Paint.withoutLigatures() = apply { fontFeatureSettings = NO_LIGATURES }
 }
+
+internal const val NO_LIGATURES = "'liga' 0, 'clig' 0, 'calt' 0"
 
 /**
  * The size of one cell. It is whole pixels so the renderer agrees with Ghostty's grid;
