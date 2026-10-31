@@ -1,6 +1,8 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import io.github.andreacovelli.abyssh.service.ssh.HostKeyPolicy
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,7 +17,10 @@ import kotlinx.coroutines.withContext
  * trust ends the check's SSH session, so no live session waits on the user; once the user
  * accepts the key, the check runs again.
  */
-internal class MultiplexerPreflight(private val hostKeyStore: HostKeyStore) {
+internal class MultiplexerPreflight(
+    private val hostKeyStore: HostKeyStore,
+    private val newProbe: (HostKeyPolicy) -> RemoteMultiplexerProbe = { RemoteMultiplexerProbe(hostKeyPolicy = it) },
+) {
     private class UntrustedKey(val prompt: HostKeyPrompt, val keyBytes: ByteArray)
 
     private val mutex = Mutex()
@@ -39,32 +44,36 @@ internal class MultiplexerPreflight(private val hostKeyStore: HostKeyStore) {
         _hostKeyPrompt.value = null
     }
 
+    // The probe reports a refused key as whatever its connect step throws, so any failure
+    // after an untrusted key was seen is treated as that refusal.
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun <T> runUntilTrusted(block: (RemoteMultiplexerProbe) -> T): T {
         while (true) {
             var untrusted: UntrustedKey? = null
             val probe =
-                RemoteMultiplexerProbe(
-                    hostKeyPolicy = { host, port, algorithm, keyBytes ->
-                        val prompt = hostKeyStore.promptFor(host, port, algorithm, keyBytes)
-                        if (prompt != null) untrusted = UntrustedKey(prompt, keyBytes.copyOf())
-                        prompt == null
-                    },
-                )
-            try {
-                return withContext(Dispatchers.IO) { block(probe) }
-            } catch (error: IllegalStateException) {
-                val key = untrusted ?: throw error
-                check(awaitDecision(key.prompt)) { "Host key rejected" }
-                with(key.prompt) { hostKeyStore.saveKey(host, port, algorithm, key.keyBytes) }
-            }
+                newProbe { host, port, algorithm, keyBytes ->
+                    val prompt = hostKeyStore.promptFor(host, port, algorithm, keyBytes)
+                    if (prompt != null) untrusted = UntrustedKey(prompt, keyBytes.copyOf())
+                    prompt == null
+                }
+            val key =
+                try {
+                    return withContext(Dispatchers.IO) { block(probe) }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    untrusted ?: throw error
+                }
+            check(awaitDecision(key.prompt)) { "Host key rejected" }
+            with(key.prompt) { hostKeyStore.saveKey(host, port, algorithm, key.keyBytes) }
         }
     }
 
     private suspend fun awaitDecision(prompt: HostKeyPrompt): Boolean {
         val pending = CompletableDeferred<Boolean>()
         decision = pending
-        _hostKeyPrompt.value = prompt
         return try {
+            _hostKeyPrompt.value = prompt
             pending.await()
         } finally {
             if (decision === pending) decision = null
