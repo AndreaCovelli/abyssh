@@ -174,6 +174,20 @@ pub export fn mosh_client_pump_network(handle: ?*anyopaque) callconv(.c) c_int {
     return @backingInt(types.ErrorCode.ok);
 }
 
+/// Sets `out_fd` to the UDP socket and `out_timeout_ms` to how long until
+/// `mosh_client_maintenance_tick` next has work, so a run loop can wait for the socket
+/// to become readable for that long. Returns not_started when the client isn't running.
+pub export fn mosh_client_wait_params(handle: ?*anyopaque, out_fd: ?*c_int, out_timeout_ms: ?*u64) callconv(.c) c_int {
+    const client = fromHandle(handle) orelse return @backingInt(types.ErrorCode.bad_handle);
+    const fd_slot = out_fd orelse return @backingInt(types.ErrorCode.invalid_argument);
+    const timeout_slot = out_timeout_ms orelse return @backingInt(types.ErrorCode.invalid_argument);
+    const fd = client.udp_socket.fd orelse return @backingInt(types.ErrorCode.not_started);
+    const timeout_ms = client.msUntilNextTimer(nowMs()) orelse return @backingInt(types.ErrorCode.not_started);
+    fd_slot.* = fd;
+    timeout_slot.* = timeout_ms;
+    return @backingInt(types.ErrorCode.ok);
+}
+
 pub export fn mosh_client_start_shutdown(handle: ?*anyopaque) callconv(.c) c_int {
     const client = fromHandle(handle) orelse return @backingInt(types.ErrorCode.bad_handle);
     client.startShutdown(nowMs()) catch |err| return @backingInt(mapCoreError(err));

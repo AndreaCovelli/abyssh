@@ -23,6 +23,10 @@ class NativeMoshBridge {
     external fun nativeMaintenanceTick(handle: Long): Int
     external fun nativePumpNetwork(handle: Long): Int
 
+    // Waits for a datagram, for wakeFd, or for the client's next timer, at most maxTimeoutMs.
+    // Returns a NativeWait value.
+    external fun nativeWaitReadable(handle: Long, wakeFd: Int, maxTimeoutMs: Int): Int
+
     // outBuf: byte array to receive payload (host bytes or diagnostic text).
     // outMeta: long[5] array receiving [eventType, written, cols, rows, echoAck].
     // Returns 0 on success, non-zero on error.

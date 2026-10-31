@@ -17,6 +17,8 @@ pub const shutdown_state_num: u64 = std.math.maxInt(u64);
 
 /// How often to resend the shutdown request until the server acknowledges it.
 const shutdown_resend_interval_ms: u64 = 200;
+// How soon to retry a datagram the socket refused with EAGAIN.
+const blocked_send_retry_ms: u64 = 2;
 
 pub const OutputEvent = struct {
     event_type: types.OutputEventType,
@@ -595,6 +597,31 @@ pub const Client = struct {
         {
             try self.sendShutdown(now_ms);
         }
+    }
+
+    /// How long until `maintenanceTick` next has work, so a run loop can wait on the
+    /// socket that long instead of polling. Null when the client isn't running.
+    pub fn msUntilNextTimer(self: *const Self, now_ms: u64) ?u64 {
+        if (self.state != .running) return null;
+        // A datagram the socket refused goes out on the next pump.
+        if (self.network_datagrams.items.len > 0) return blocked_send_retry_ms;
+
+        var deadline = self.last_received_at_ms +| self.config.network_timeout_ms;
+        deadline = @min(deadline, self.last_outbound_at_ms +| self.config.heartbeat_interval_ms);
+        for (self.pending_outbound_order.items) |state_num| {
+            const pending = self.pending_outbound.get(state_num) orelse continue;
+            deadline = @min(deadline, pending.next_retry_at_ms);
+        }
+        if (self.latest_received_state_num > self.last_ack_reported_num) {
+            deadline = @min(deadline, self.last_ack_sent_at_ms +| self.config.ack_interval_ms);
+            if (self.ack_dirty_at_ms) |dirty_at_ms| {
+                deadline = @min(deadline, dirty_at_ms +| self.config.ack_delay_ms);
+            }
+        }
+        if (self.shutdown_started_at_ms != null and !self.shutdown_acknowledged) {
+            deadline = @min(deadline, self.shutdown_last_sent_at_ms +| shutdown_resend_interval_ms);
+        }
+        return deadline -| now_ms;
     }
 
     pub fn pollNetworkDatagram(self: *Self, out_buf: []u8) !?usize {

@@ -50,6 +50,7 @@ internal class MoshTransport(
     private val ssh: NativeSshService,
     private val service: NativeMoshService,
     private val pacer: ReadPacer,
+    private val outputWaiter: OutputWaiter,
 ) : Closeable {
     val isLoaded: Boolean get() = service.isLoaded
 
@@ -154,10 +155,12 @@ internal class MoshTransport(
                 shellExited = true
                 Log.d(TAG, "MOSH: server ended the session")
             } else {
-                // Adaptive cadence: Mosh's retransmit/heartbeat timers are coarse, so
-                // backing the pump off while idle is safe and avoids a 500 Hz spin.
-                // Input wakes the pump so keystrokes go out at once.
-                pacer.idle()
+                // Sleep until a datagram arrives, input is sent, or the client's next
+                // timer is due, so a reply is read the moment it lands. Without a wake
+                // descriptor, poll at the adaptive cadence instead.
+                if (!outputWaiter.awaitOutput { wakeFd -> service.waitReadable(wakeFd, MAX_OUTPUT_WAIT_MS) }) {
+                    pacer.idle()
+                }
             }
         }
         Log.d(TAG, "MOSH: read loop exited after $loopCount iterations")

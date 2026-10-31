@@ -4,6 +4,7 @@ const std = @import("std");
 const mosh = @import("mosh");
 
 const c = @import("c");
+const wake = @import("abyssh_wake.zig");
 
 const allocator = std.heap.c_allocator;
 const LOG_TAG = "AbyssMoshJNI";
@@ -137,6 +138,26 @@ export fn Java_io_github_andreacovelli_abyssh_service_mosh_NativeMoshBridge_nati
     _ = thiz;
     const raw = clientFromHandle(handle);
     return mosh.ffi.mosh_client_pump_network(raw);
+}
+
+/// Waits until a datagram arrives, `wake_fd` is signalled, or the client's next timer
+/// is due, for at most `max_timeout_ms`; returns one of the `wake.wait_*` values.
+export fn Java_io_github_andreacovelli_abyssh_service_mosh_NativeMoshBridge_nativeWaitReadable(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+    wake_fd: c.jint,
+    max_timeout_ms: c.jint,
+) callconv(.c) c.jint {
+    _ = env;
+    _ = thiz;
+    if (handle == 0) return wake.wait_cannot;
+    var fd: c_int = -1;
+    var timer_ms: u64 = 0;
+    if (mosh.ffi.mosh_client_wait_params(clientFromHandle(handle), &fd, &timer_ms) != 0) return wake.wait_cannot;
+    // At least 1 ms, so a timer that stays due after a failed tick can't spin the loop.
+    const timeout_ms: c_int = @intCast(std.math.clamp(timer_ms, 1, @as(u64, @intCast(@max(max_timeout_ms, 1)))));
+    return wake.waitReadable(fd, wake_fd, timeout_ms);
 }
 
 /// outMeta must be a long[5] array. On success it is filled with:
