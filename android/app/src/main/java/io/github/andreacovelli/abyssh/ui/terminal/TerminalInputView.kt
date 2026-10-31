@@ -250,7 +250,7 @@ class TerminalInputView(context: Context) : EditText(context) {
             return true
         }
         val ghosttyAction = GhosttyKeyAction.fromAndroid(event.action, event.repeatCount)
-        val mapped = KeyMapper.map(keyCode, event.unicodeChar, event.metaState)
+        val mapped = KeyMapper.map(keyCode, event.unicodeChar, event.metaState, event.getUnicodeChar(0))
         if (mapped != null && ghosttyAction != null) {
             clearSuppression("onKeyDown keyCode=$keyCode")
             if (ghosttyAction == GhosttyKeyAction.Press && shouldInvalidateImeMirrorForKey(keyCode)) {
@@ -276,7 +276,7 @@ class TerminalInputView(context: Context) : EditText(context) {
         handleShortcutChordUp(keyCode)?.let { return it }
         if (altGrText(event) != null) return true
         val ghosttyAction = GhosttyKeyAction.fromAndroid(event.action, event.repeatCount)
-        val mapped = KeyMapper.map(keyCode, event.unicodeChar, event.metaState)
+        val mapped = KeyMapper.map(keyCode, event.unicodeChar, event.metaState, event.getUnicodeChar(0))
         if (mapped != null && ghosttyAction != null) {
             onTerminalKey?.invoke(mapped.key, mapped.codepoint, mapped.mods, ghosttyAction, mapped.charCode)
             return true
@@ -668,7 +668,7 @@ class TerminalInputView(context: Context) : EditText(context) {
             }
             val ghosttyAction = GhosttyKeyAction.fromAndroid(event.action, event.repeatCount)
             if (ghosttyAction != null) {
-                val mapped = KeyMapper.map(event.keyCode, event.unicodeChar, event.metaState)
+                val mapped = KeyMapper.map(event.keyCode, event.unicodeChar, event.metaState, event.getUnicodeChar(0))
                 if (mapped != null) {
                     if (ghosttyAction == GhosttyKeyAction.Press && view.shouldInvalidateImeMirrorForKey(event.keyCode)) {
                         invalidateImeMirror(

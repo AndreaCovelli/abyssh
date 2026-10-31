@@ -4,7 +4,12 @@ import android.view.KeyCharacterMap
 import android.view.KeyEvent
 
 object KeyMapper {
-    fun map(keyCode: Int, codepoint: Int, metaState: Int): MappedKey? {
+    /**
+     * Maps an Android key to a Ghostty key. [codepoint] is what the key types with
+     * [metaState] held, and [baseCodepoint] what it types with no modifiers in the active
+     * layout (`KeyEvent.getUnicodeChar(0)`), or 0 when unknown.
+     */
+    fun map(keyCode: Int, codepoint: Int, metaState: Int, baseCodepoint: Int = 0): MappedKey? {
         val mods = translateMods(metaState)
         val mapped = when (keyCode) {
             // Navigation and editing keys
@@ -99,14 +104,29 @@ object KeyMapper {
             }
         }
 
-        if (mapped.codepoint != 0) return mapped.copy(charCode = codepoint)
-        val unshiftedCodepoint = unshiftedCodepointFor(keyCode)
+        val layoutBase = asciiBase(baseCodepoint)
+        if (mapped.codepoint != 0) {
+            return mapped.copy(codepoint = if (layoutBase != 0) layoutBase else mapped.codepoint, charCode = codepoint)
+        }
+        // The layout's own character wins over the US table, so a JIS or German key
+        // reports what it is labelled with. Keys outside the table, such as Enter, keep 0.
+        val usBase = unshiftedCodepointFor(keyCode)
+        val unshiftedCodepoint = if (usBase != 0 && layoutBase != 0) layoutBase else usBase
         return if (unshiftedCodepoint != 0) {
             mapped.copy(codepoint = unshiftedCodepoint, charCode = codepoint)
         } else {
             mapped.copy(charCode = codepoint)
         }
     }
+
+    /**
+     * [codepoint] when it is a printable ASCII character, otherwise 0. Letters from layouts
+     * such as Russian stay on the US table, so Ctrl+W and similar still reach programs that
+     * use the Kitty keyboard protocol as the Latin key.
+     */
+    private fun asciiBase(codepoint: Int): Int = if (codepoint in PRINTABLE_ASCII) codepoint else 0
+
+    private val PRINTABLE_ASCII = 0x21..0x7e
 
     private fun unshiftedCodepointFor(keyCode: Int): Int = when (keyCode) {
         in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z ->

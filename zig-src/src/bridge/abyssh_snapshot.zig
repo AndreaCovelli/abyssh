@@ -785,7 +785,13 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     abyssh_set_mouse_encoding_size(handle, screen_width, screen_height, cell_width, cell_height, padding_top, padding_bottom, padding_left, padding_right);
 }
 
-export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeEncodeKey(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, key: c.jint, codepoint: c.jint, mods: c.jint, action: c.jint, utf8_jstring: c.jstring) callconv(.c) c.jbyteArray {
+/// Ghostty modifiers from the bits Kotlin packs, or null when they don't fit.
+fn keyMods(bits: c.jint) ?ghostty.input.KeyMods {
+    const backing = std.math.cast(ghostty.input.KeyMods.Backing, bits) orelse return null;
+    return @bitCast(backing);
+}
+
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeEncodeKey(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, key: c.jint, codepoint: c.jint, mods: c.jint, action: c.jint, utf8_jstring: c.jstring, consumed_mods: c.jint) callconv(.c) c.jbyteArray {
     _ = thiz;
     const terminal = abysshFromHandle(handle) orelse return jniEmptyByteArray(env);
     const action_value: ghostty.input.KeyAction = std.enums.fromInt(ghostty.input.KeyAction, action) orelse return jniEmptyByteArray(env);
@@ -811,8 +817,11 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     const event: ghostty.input.KeyEvent = .{
         .action = action_value,
         .key = key_value,
-        .mods = @bitCast(@as(ghostty.input.KeyMods.Backing, @intCast(mods))),
-        .unshifted_codepoint = if (codepoint > 0) @intCast(codepoint) else 0,
+        .mods = keyMods(mods) orelse return jniEmptyByteArray(env),
+        // The modifiers that went into the text, such as Shift for ":". Kitty mode sends
+        // the text as is when nothing else is held, rather than as Shift+":".
+        .consumed_mods = keyMods(consumed_mods) orelse return jniEmptyByteArray(env),
+        .unshifted_codepoint = if (codepoint > 0 and codepoint <= std.math.maxInt(u21)) @intCast(codepoint) else 0,
         .utf8 = utf8_slice,
     };
     ghostty.input.encodeKey(&writer, event, ghostty.input.KeyEncodeOptions.fromTerminal(&terminal.terminal)) catch return jniEmptyByteArray(env);

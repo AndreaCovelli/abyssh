@@ -40,7 +40,15 @@ class GhosttyBridge {
         cursorRgb: IntArray?,
         paletteRgb: ByteArray?,
     )
-    external fun nativeEncodeKey(handle: Long, key: Int, cp: Int, mods: Int, action: Int, utf8: String?): ByteArray?
+    external fun nativeEncodeKey(
+        handle: Long,
+        key: Int,
+        cp: Int,
+        mods: Int,
+        action: Int,
+        utf8: String?,
+        consumedMods: Int,
+    ): ByteArray?
     external fun nativeEncodePaste(handle: Long, data: String): ByteArray?
     external fun nativeSetMouseEncodingSize(
         handle: Long,

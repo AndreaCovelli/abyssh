@@ -81,8 +81,9 @@ class TerminalSessionEngine internal constructor(
     /** Opens [spec], replacing whatever this session had open. */
     fun connect(spec: TabSpec, sessionKey: String) = connection.connect(spec, sessionKey)
 
-    fun writeKey(key: Int, codepoint: Int, mods: Int, action: Int, utf8: String? = null) =
-        sendEncoded { handle -> bridge.nativeEncodeKey(handle, key, codepoint, mods, action, utf8) }
+    /** [consumedMods] are the modifiers that went into typing [utf8], such as Shift for `:`. */
+    fun writeKey(key: Int, codepoint: Int, mods: Int, action: Int, utf8: String? = null, consumedMods: Int = 0) =
+        sendEncoded { handle -> bridge.nativeEncodeKey(handle, key, codepoint, mods, action, utf8, consumedMods) }
 
     fun writeText(text: String) {
         if (text.isNotEmpty()) sendEncoded { text.toByteArray(Charsets.UTF_8) }
