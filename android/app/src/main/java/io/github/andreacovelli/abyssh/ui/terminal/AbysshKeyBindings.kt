@@ -32,7 +32,7 @@ class AbysshKeyBindings(
         return true
     }
 
-    /** Whether [key] runs a command after the ⌘ prefix. */
+    /** Whether [key] runs a command after the shortcut prefix. */
     fun hasShortcut(key: Char): Boolean = key.lowercaseChar() in handlers
 
     /**

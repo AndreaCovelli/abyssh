@@ -27,7 +27,7 @@ import io.github.andreacovelli.abyssh.ui.terminal.isSearchShortcut
 import kotlinx.coroutines.awaitCancellation
 
 /**
- * Routes what the user types to the right place: the ⌘ prefix, the open tab switcher,
+ * Routes what the user types to the right place: the shortcut prefix, the open tab switcher,
  * the copy, paste, and search shortcuts, or the terminal. It also holds the sticky
  * modifiers, the selection, and the hidden view that receives keyboard input.
  */
@@ -64,7 +64,7 @@ internal class TerminalInputController(
     // terminal after the selection is gone.
     private var copyShortcutHeld = false
 
-    // The key that completed a ⌘ shortcut, so its repeat and release stay out of the
+    // The key that completed a shortcut, so its repeat and release stay out of the
     // terminal. NO_HELD_KEY when none is held.
     private var heldShortcutKey = NO_HELD_KEY
 
@@ -74,6 +74,7 @@ internal class TerminalInputController(
         onTerminalText = ::onText
         onTerminalKey = ::onKey
         onShortcutChord = ::onShortcutChord
+        onPrefixChord = abysshKeys::togglePrefix
         onCapsLockChanged = { capsLockOn = it }
         setOnFocusChangeListener { _, hasFocus -> onFocusChanged(hasFocus) }
         inputView = this
@@ -193,7 +194,7 @@ internal class TerminalInputController(
         forwardKey(key, codepoint, mods or modifierState.terminalMods(), action, charCode)
     }
 
-    /** A hardware shortcut chord: the same command as tapping ⌘ in the accessory bar and then [key]. */
+    /** A hardware shortcut chord: the same command as tapping the shortcuts key and then [key]. */
     private fun onShortcutChord(key: Char): Boolean {
         val switcherTabs = if (overlay.isSwitcherOpen) overlay.switcherTabs(allTabs, routeTabs) else null
         return if (switcherTabs.isNullOrEmpty()) abysshKeys.runShortcut(key) else runSwitcherCommand(key)
@@ -211,7 +212,7 @@ internal class TerminalInputController(
     }
 
     // Keyboards without autocorrect send letters as key events rather than text, so the
-    // ⌘ prefix is checked here as well as in onText.
+    // shortcut prefix is checked here as well as in onText.
     private fun handleAbysshShortcutKey(key: Int, codepoint: Int, action: Int, charCode: Int): Boolean {
         val typed = if (charCode != 0) charCode else codepoint
         if (action != GhosttyKeyAction.Press || typed <= ' '.code) return false

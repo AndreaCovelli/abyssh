@@ -46,6 +46,9 @@ class TerminalInputView(context: Context) : EditText(context) {
     /** Runs a hardware shortcut chord's key as an Abyssh command; false when none is bound to it. */
     var onShortcutChord: ((Char) -> Boolean)? = null
 
+    /** Starts the shortcut prefix, for Ctrl+Shift+Enter. */
+    var onPrefixChord: (() -> Unit)? = null
+
     /** Reports a physical keyboard's Caps Lock turning on or off. */
     var onCapsLockChanged: ((Boolean) -> Unit)? = null
     private var capsLockOn = false
@@ -197,13 +200,18 @@ class TerminalInputView(context: Context) : EditText(context) {
     )
 
     /**
-     * A ⌘ or Ctrl+Shift chord bound to an Abyssh command runs it. Other ⌘ chords return
-     * false so the system can still use them, as with ⌘+Tab; other Ctrl+Shift chords
-     * return null and reach the terminal.
+     * Ctrl+Shift+Enter starts the shortcut prefix. A ⌘ or Ctrl+Shift chord bound to an
+     * Abyssh command runs it. Other ⌘ chords return false so the system can still use
+     * them, as with ⌘+Tab; other Ctrl+Shift chords return null and reach the terminal.
      */
     private fun handleShortcutChordDown(keyCode: Int, event: KeyEvent): Boolean? {
         if (keyCode == chordKeyCode && event.repeatCount > 0) return chordResult
+        val startPrefix = onPrefixChord
         val result = when {
+            startPrefix != null && isPrefixChord(keyCode, event.metaState) -> {
+                startPrefix()
+                true
+            }
             shortcutChordKey(event)?.let { onShortcutChord?.invoke(it) } == true -> true
             event.isMetaPressed && !KeyEvent.isModifierKey(keyCode) -> false
             else -> return null

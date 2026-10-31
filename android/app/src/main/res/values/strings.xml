@@ -368,6 +368,7 @@
     <string name="notification_channel_sessions">SSH sessions</string>
     <string name="notification_channel_sessions_description">Keeps active terminal sessions alive</string>
     <string name="notification_connected_title">Abyssh connected</string>
+    <string name="accessory_shortcuts">Shortcuts</string>
     <string name="accessory_open_files">Open files</string>
     <string name="accessory_zoom">Zoom</string>
     <string name="terminal_end_session">End session</string>

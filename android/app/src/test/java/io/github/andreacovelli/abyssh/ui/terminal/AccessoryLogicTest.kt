@@ -230,7 +230,16 @@ class AccessoryLogicTest {
     }
 
     @Test
-    fun `defaultEntries leaves out keys the soft keyboard or the ⌘ key already cover`() {
+    fun `defaultEntries puts modifiers in Ctrl Alt Shift order and arrows in vim order`() {
+        val ids = TerminalAccessoryLayoutStore.defaultEntries().map { it.id }
+        assertEquals(
+            listOf("escape", "tab", "ctrl", "alt", "shift", "left", "down", "up", "right"),
+            ids.take(9),
+        )
+    }
+
+    @Test
+    fun `defaultEntries leaves out keys the soft keyboard or the shortcuts key already cover`() {
         val ids = TerminalAccessoryLayoutStore.defaultEntries().map { it.id }
         assertFalse("cmd" in ids)
         assertFalse("space" in ids)

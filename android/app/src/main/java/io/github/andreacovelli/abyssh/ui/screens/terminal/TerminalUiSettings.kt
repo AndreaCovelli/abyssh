@@ -114,7 +114,7 @@ internal fun KeepFocusOnMouseClickEffect() {
     }
 }
 
-/** The ⌘ prefix bindings: builtin commands first, then the custom actions. */
+/** The shortcut prefix bindings: builtin commands first, then the custom actions. */
 @Composable
 internal fun rememberAbysshKeys(
     vm: TerminalViewModel,

@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -46,6 +47,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -380,7 +382,7 @@ private fun TerminalStatusBadges(sessionState: SessionState, preparingMultiplexe
     }
 }
 
-/** While the ⌘ prefix waits for its second key, the keys it takes and what they do. */
+/** While the shortcut prefix waits for its second key, the keys it takes and what they do. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AbysshPrefixHints(keys: AbysshKeyBindings, modifier: Modifier = Modifier) {
@@ -397,7 +399,14 @@ private fun AbysshPrefixHints(keys: AbysshKeyBindings, modifier: Modifier = Modi
                 .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AbyssText("⌘", style = typography.label, color = colors.accent, modifier = Modifier.width(24.dp))
+            Box(modifier = Modifier.width(24.dp)) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_bolt),
+                    contentDescription = null,
+                    tint = colors.accent,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
             FlowRow(
                 modifier = Modifier.weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),

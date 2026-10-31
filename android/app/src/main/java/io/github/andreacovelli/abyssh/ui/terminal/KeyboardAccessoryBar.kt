@@ -60,6 +60,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 private const val INITIAL_REPEAT_DELAY_MS = 400L
 private const val REPEAT_INTERVAL_MS = 50L
 
+// Extra space before the end-session key, on top of the row's spacing, so it is harder to
+// hit by mistake.
+private val END_SESSION_GAP = 8.dp
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun KeyboardAccessoryBar(
@@ -115,6 +119,13 @@ fun KeyboardAccessoryBar(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                ShortcutsButton(
+                    onAbysshKey = onAbysshKey,
+                    active = abysshKeyActive,
+                    buttonHeight = buttonHeight,
+                    buttonPadding = buttonPadding,
+                    modifier = keyModifier,
+                )
                 entries.forEach { entry ->
                     AccessoryEntry(
                         entry = entry,
@@ -130,8 +141,6 @@ fun KeyboardAccessoryBar(
                     )
                 }
                 FilesButton(
-                    onAbysshKey = onAbysshKey,
-                    abysshKeyActive = abysshKeyActive,
                     onOpenFiles = onOpenFiles,
                     buttonHeight = buttonHeight,
                     buttonPadding = buttonPadding,
@@ -148,7 +157,7 @@ fun KeyboardAccessoryBar(
                     onEndSession = onEndSession,
                     buttonHeight = buttonHeight,
                     buttonPadding = buttonPadding,
-                    modifier = keyModifier,
+                    modifier = Modifier.padding(start = END_SESSION_GAP).then(keyModifier),
                 )
             }
             return
@@ -162,6 +171,13 @@ fun KeyboardAccessoryBar(
             verticalArrangement = Arrangement.spacedBy(6.dp),
             maxLines = 2,
         ) {
+            ShortcutsButton(
+                onAbysshKey = onAbysshKey,
+                active = abysshKeyActive,
+                buttonHeight = buttonHeight,
+                buttonPadding = buttonPadding,
+                modifier = keyModifier,
+            )
             entries.forEach { entry ->
                 AccessoryEntry(
                     entry = entry,
@@ -177,8 +193,6 @@ fun KeyboardAccessoryBar(
                 )
             }
             FilesButton(
-                onAbysshKey = onAbysshKey,
-                abysshKeyActive = abysshKeyActive,
                 onOpenFiles = onOpenFiles,
                 buttonHeight = buttonHeight,
                 buttonPadding = buttonPadding,
@@ -195,7 +209,7 @@ fun KeyboardAccessoryBar(
                 onEndSession = onEndSession,
                 buttonHeight = buttonHeight,
                 buttonPadding = buttonPadding,
-                modifier = keyModifier,
+                modifier = Modifier.padding(start = END_SESSION_GAP).then(keyModifier),
             )
         }
     }
@@ -323,25 +337,37 @@ private fun AccessoryButton(
     }
 }
 
+/**
+ * Starts the shortcut prefix: the next key runs the Abyssh command bound to it. It comes
+ * first so it stays in view when the single-row bar scrolls.
+ */
+@Composable
+private fun ShortcutsButton(
+    onAbysshKey: (() -> Unit)?,
+    active: Boolean,
+    buttonHeight: Dp,
+    buttonPadding: PaddingValues,
+    modifier: Modifier = Modifier,
+) {
+    if (onAbysshKey == null) return
+    AccessoryIconKey(
+        icon = R.drawable.ic_bolt,
+        contentDescription = stringResource(R.string.accessory_shortcuts),
+        onClick = onAbysshKey,
+        buttonHeight = buttonHeight,
+        buttonPadding = buttonPadding,
+        modifier = modifier,
+        active = active,
+    )
+}
+
 @Composable
 private fun FilesButton(
-    onAbysshKey: (() -> Unit)?,
-    abysshKeyActive: Boolean,
     onOpenFiles: (() -> Unit)?,
     buttonHeight: Dp,
     buttonPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
-    if (onAbysshKey != null) {
-        AbyssKey(
-            onClick = onAbysshKey,
-            active = abysshKeyActive,
-            modifier = modifier.height(buttonHeight),
-            contentPadding = buttonPadding,
-        ) {
-            AbyssText("⌘", style = AbyssTypography.current.label)
-        }
-    }
     if (onOpenFiles == null) return
     AccessoryIconKey(
         icon = R.drawable.ic_folder,
@@ -374,7 +400,7 @@ private fun ZoomButton(
     )
 }
 
-/** Ends the active session; back leaves it running instead. */
+/** Ends the active session; back leaves it running instead. It comes last, set apart. */
 @Composable
 private fun EndSessionButton(
     onEndSession: (() -> Unit)?,

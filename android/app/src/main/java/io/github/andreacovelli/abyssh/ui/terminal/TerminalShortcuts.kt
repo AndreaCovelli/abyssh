@@ -62,11 +62,23 @@ internal fun isCopyShortcut(text: String, modifierState: ModifierState, hasSelec
 }
 
 /**
+ * Whether a key press is Ctrl+Shift+Enter, which starts the shortcut prefix like the
+ * shortcuts key in the accessory bar, so a hardware keyboard can show the bindings too.
+ * Enter sits in the same place on every layout, and Android doesn't take the chord for
+ * itself the way it can take Ctrl+Space to switch layouts.
+ */
+internal fun isPrefixChord(keyCode: Int, metaState: Int): Boolean {
+    if (keyCode != KeyEvent.KEYCODE_ENTER && keyCode != KeyEvent.KEYCODE_NUMPAD_ENTER) return false
+    val held = metaState and (KeyEvent.META_META_ON or KeyEvent.META_SHIFT_ON or KeyEvent.META_CTRL_ON or KeyEvent.META_ALT_ON)
+    return held == (KeyEvent.META_CTRL_ON or KeyEvent.META_SHIFT_ON)
+}
+
+/**
  * The key a hardware shortcut chord presses, or null when it isn't one. Holding ⌘, or
- * Ctrl+Shift, and pressing a key runs the same Abyssh command as tapping ⌘ in the
- * accessory bar and then the key. Ctrl+Shift is there because Android keeps every ⌘
- * chord for itself unless an app captures the keyboard, and capturing it breaks the
- * system's own ⌘ shortcuts. Only plain ⌘ counts: with Shift, Ctrl, or Alt held too,
+ * Ctrl+Shift, and pressing a key runs the same Abyssh command as tapping the shortcuts
+ * key in the accessory bar and then the key. Ctrl+Shift is there because Android keeps
+ * every ⌘ chord for itself unless an app captures the keyboard, and capturing it breaks
+ * the system's own ⌘ shortcuts. Only plain ⌘ counts: with Shift, Ctrl, or Alt held too,
  * the chord stays the system's. Ctrl+Shift+C, V, and F keep copying, pasting, and
  * searching. [plainChar] is what the key types with no modifiers.
  */

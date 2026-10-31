@@ -125,4 +125,23 @@ class TerminalShortcutsTest {
         assertNull(shortcutChordKey(KeyEvent.META_META_ON, ' '.code))
         assertNull(shortcutChordKey(KeyEvent.META_META_ON, 0))
     }
+
+    @Test
+    fun `ctrl shift enter starts the prefix`() {
+        val ctrlShift = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON or KeyEvent.META_SHIFT_ON
+        assertTrue(isPrefixChord(KeyEvent.KEYCODE_ENTER, ctrlShift))
+        assertTrue(isPrefixChord(KeyEvent.KEYCODE_NUMPAD_ENTER, ctrlShift))
+        assertTrue(isPrefixChord(KeyEvent.KEYCODE_ENTER, ctrlShift or KeyEvent.META_NUM_LOCK_ON))
+    }
+
+    @Test
+    fun `enter with other modifiers, or ctrl shift with another key, does not start the prefix`() {
+        val ctrlShift = KeyEvent.META_CTRL_ON or KeyEvent.META_SHIFT_ON
+        assertFalse(isPrefixChord(KeyEvent.KEYCODE_ENTER, KeyEvent.META_CTRL_ON))
+        assertFalse(isPrefixChord(KeyEvent.KEYCODE_ENTER, KeyEvent.META_SHIFT_ON))
+        assertFalse(isPrefixChord(KeyEvent.KEYCODE_ENTER, KeyEvent.META_META_ON))
+        assertFalse(isPrefixChord(KeyEvent.KEYCODE_ENTER, ctrlShift or KeyEvent.META_ALT_ON))
+        assertFalse(isPrefixChord(KeyEvent.KEYCODE_ENTER, 0))
+        assertFalse(isPrefixChord(KeyEvent.KEYCODE_SPACE, ctrlShift))
+    }
 }
