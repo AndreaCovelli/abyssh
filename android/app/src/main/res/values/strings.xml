@@ -307,7 +307,13 @@
     <string name="server_list_disconnect_choose">End one session, or disconnect all of them.</string>
     <string name="server_list_disconnect_all">Disconnect all</string>
     <string name="action_end">End</string>
+    <string name="action_detach">Detach</string>
     <string name="server_list_end_session">End %1$s</string>
+    <string name="server_list_detach_session">Detach from %1$s</string>
+    <plurals name="server_list_tmux_windows">
+        <item quantity="one">tmux · %d window</item>
+        <item quantity="other">tmux · %d windows</item>
+    </plurals>
     <string name="action_disconnect">Disconnect</string>
     <string name="settings_section_theme">Theme</string>
     <string name="theme_dark">Dark</string>

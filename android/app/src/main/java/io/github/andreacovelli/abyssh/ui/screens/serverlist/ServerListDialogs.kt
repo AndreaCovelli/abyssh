@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -78,8 +79,16 @@ private fun HostSessionRow(session: OpenSession, onEnd: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val tmux = session.tmuxWindows > 0
         Column(modifier = Modifier.weight(1f)) {
             AbyssText(session.label, style = typography.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (tmux) {
+                AbyssText(
+                    pluralStringResource(R.plurals.server_list_tmux_windows, session.tmuxWindows, session.tmuxWindows),
+                    style = typography.labelSmall,
+                    color = colors.textMuted,
+                )
+            }
             session.title?.let { title ->
                 AbyssText(
                     title,
@@ -94,10 +103,18 @@ private fun HostSessionRow(session: OpenSession, onEnd: () -> Unit) {
             onClick = onEnd,
             variant = AbyssButtonVariant.Outlined,
             borderColor = colors.warning,
-            contentDescription = stringResource(R.string.server_list_end_session, session.label),
+            contentDescription = stringResource(
+                if (tmux) R.string.server_list_detach_session else R.string.server_list_end_session,
+                session.label,
+            ),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
         ) {
-            AbyssText(stringResource(R.string.action_end), style = typography.label, color = colors.warning)
+            // A tmux session keeps running on the server, so its row detaches rather than ends.
+            AbyssText(
+                stringResource(if (tmux) R.string.action_detach else R.string.action_end),
+                style = typography.label,
+                color = colors.warning,
+            )
         }
     }
 }
