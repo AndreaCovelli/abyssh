@@ -5,6 +5,8 @@ import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.UiText
 import io.github.andreacovelli.abyssh.model.UiTextException
 import io.github.andreacovelli.abyssh.model.toUiText
+import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSession
+import io.github.andreacovelli.abyssh.service.multiplexer.TmuxMultiplexer
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TMUX_PAUSE_AFTER_SECONDS
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlCommands
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlEvent
@@ -13,6 +15,7 @@ import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxWindowLayout
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -23,6 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "TmuxControl"
 private const val MAX_RECONNECT_ATTEMPTS = 8
@@ -30,6 +34,9 @@ private const val MAX_RECONNECT_ATTEMPTS = 8
 // The view's size changes on every frame while the keyboard slides in or out, and each
 // size tmux applies captures the pane again, so only the size that settles goes out.
 private const val CLIENT_RESIZE_SETTLE_MS = 150L
+
+// A reply lost to a dropped connection never arrives, so a listing gives up after this.
+private const val LIST_SESSIONS_TIMEOUT_MS = 5_000L
 
 /** How the control connection is doing; every tab of the session shows it. */
 internal data class TmuxControlStatus(
@@ -67,6 +74,9 @@ internal interface TmuxControlHost {
 
     /** The client now shows session [name], so new connections should attach to it. */
     fun sessionRenamed(control: TmuxControlSession, name: String)
+
+    /** The sessions on [control]'s tmux server changed, so a list of them is out of date. */
+    fun sessionsChanged(control: TmuxControlSession)
 }
 
 /**
@@ -84,7 +94,7 @@ internal class TmuxControlSession(
     private val host: TmuxControlHost,
     hostKeyStore: HostKeyStore,
     private val localNetwork: LocalNetworkAccess?,
-) {
+) : TmuxSessionLister {
     private val thread = SessionThread(name = "tmux-control")
     private val dispatcher: CoroutineDispatcher = thread.dispatcher
 
@@ -180,6 +190,21 @@ internal class TmuxControlSession(
     /** Shows session [name] instead; its windows replace this session's tabs. */
     fun switchSession(name: String) = onThread {
         if (attached) link.send(TmuxControlCommands.switchClient(name))
+    }
+
+    /**
+     * The sessions on this connection's tmux server, or null when the client isn't
+     * attached, tmux reports an error, or no reply arrives in time.
+     */
+    override suspend fun listSessions(): List<RemoteMultiplexerSession>? {
+        if (disposed) return null
+        val reply = CompletableDeferred<TmuxControlEvent.Reply?>()
+        onThread {
+            if (attached) link.send(TmuxControlCommands.LIST_SESSIONS) { reply.complete(it) } else reply.complete(null)
+        }
+        val result = withTimeoutOrNull(LIST_SESSIONS_TIMEOUT_MS) { reply.await() }
+        if (result == null || result.failed) return null
+        return TmuxMultiplexer.parseSessions(result.lines.joinToString("\n"))
     }
 
     fun killWindow(windowId: Int) = onThread {
@@ -290,6 +315,7 @@ internal class TmuxControlSession(
             TmuxControlEvent.WindowsChanged -> if (attached) windows.listWindows()
             is TmuxControlEvent.LayoutChanged -> windows.layoutChanged(event.windowId, event.layout)
             is TmuxControlEvent.Pause -> windows.paused(event.paneId)
+            TmuxControlEvent.SessionsChanged -> post { sessionsChanged(this@TmuxControlSession) }
             is TmuxControlEvent.Exit -> {
                 exited = true
                 if (!disposed) {

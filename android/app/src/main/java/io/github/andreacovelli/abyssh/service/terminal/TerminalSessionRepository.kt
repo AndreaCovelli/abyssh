@@ -49,11 +49,23 @@ class TerminalSessionRepository private constructor(application: Application) {
     private val clipboard = appContext.getSystemService(ClipboardManager::class.java)
     private val settingsRepository = SettingsRepository.getInstance(appContext)
     private val preflight = MultiplexerPreflight(hostKeyStore)
-    val multiplexerSessions = RemoteMultiplexerSessions(preflight) { _tabs.value }
+    val multiplexerSessions = RemoteMultiplexerSessions(
+        preflight = preflight,
+        tmuxControl = { tmuxTabs.connectedTo(it) },
+        tabs = { _tabs.value },
+    )
     private val foreground = SessionForegroundTracker(appContext)
     private var attachedClients = 0
 
     private val _notices = MutableSharedFlow<UiText>(extraBufferCapacity = 4)
+
+    private val _multiplexerSessionsChanged = MutableSharedFlow<String>(extraBufferCapacity = 8)
+
+    /**
+     * The [TabSpec.sessionKey] of a host whose tmux sessions changed, as an open tmux
+     * control-mode connection reported.
+     */
+    val multiplexerSessionsChanged: SharedFlow<String> = _multiplexerSessionsChanged.asSharedFlow()
 
     /** Messages for the user about how tabs opened, such as a host falling back from tmux control mode. */
     val notices: SharedFlow<UiText> = _notices.asSharedFlow()
@@ -108,6 +120,7 @@ class TerminalSessionRepository private constructor(application: Application) {
             addTab = { spec, control, windowId, select -> addTab(spec, control, windowId, select) },
             removeTab = ::removeTab,
             selectTab = ::selectTab,
+            sessionsChanged = { _multiplexerSessionsChanged.tryEmit(it.sessionKey) },
         )
 
     init {

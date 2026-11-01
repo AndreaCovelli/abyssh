@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.service.multiplexer.tmux
 
+import io.github.andreacovelli.abyssh.service.multiplexer.TmuxMultiplexer
+
 private const val SEND_KEYS_CHUNK_BYTES = 256
 private const val VERSION_MARKER = "ABYSSH_TMUX_VERSION"
 private const val MIN_MAJOR = 3
@@ -75,6 +77,9 @@ internal object TmuxControlCommands {
             layout = layout ?: TmuxWindowLayout.single(paneId, size),
         )
     }
+
+    /** Lists every session on the tmux server, in the lines that [TmuxMultiplexer.parseSessions] reads. */
+    const val LIST_SESSIONS = "list-sessions -F '${TmuxMultiplexer.LIST_SESSIONS_FORMAT}'"
 
     const val NEW_WINDOW = "new-window -P -F '#{window_id}'"
 

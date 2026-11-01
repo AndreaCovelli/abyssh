@@ -34,14 +34,15 @@ class TmuxControlParserTest {
         val events = parse(attach)
 
         assertEquals(TmuxControlEvent.WindowsChanged, events[0])
-        assertEquals(TmuxControlEvent.SessionChanged(0, "abyssh-1"), events[1])
-        val output = events[2] as TmuxControlEvent.Output
+        assertEquals(TmuxControlEvent.SessionsChanged, events[1])
+        assertEquals(TmuxControlEvent.SessionChanged(0, "abyssh-1"), events[2])
+        val output = events[3] as TmuxControlEvent.Output
         assertEquals(0, output.paneId)
         assertEquals("\u001b[?2004h\u001b[01;32mandrea\u001b[00m:~\$ ", String(output.data, Charsets.UTF_8))
-        assertEquals(TmuxControlEvent.Reply(emptyList(), failed = false), events[3])
-        assertEquals(TmuxControlEvent.LayoutChanged(0, "f25d,40x6,0,0,0"), events[4])
-        assertEquals(TmuxControlEvent.Reply(listOf("@0 1 %0 40 6"), failed = false), events[5])
-        assertEquals(6, events.size)
+        assertEquals(TmuxControlEvent.Reply(emptyList(), failed = false), events[4])
+        assertEquals(TmuxControlEvent.LayoutChanged(0, "f25d,40x6,0,0,0"), events[5])
+        assertEquals(TmuxControlEvent.Reply(listOf("@0 1 %0 40 6"), failed = false), events[6])
+        assertEquals(7, events.size)
     }
 
     @Test
@@ -51,8 +52,8 @@ class TmuxControlParserTest {
 
         assertEquals(whole.filterNot { it is TmuxControlEvent.Output }, split.filterNot { it is TmuxControlEvent.Output })
         assertArrayEquals(
-            (whole[2] as TmuxControlEvent.Output).data,
-            (split[2] as TmuxControlEvent.Output).data,
+            (whole[3] as TmuxControlEvent.Output).data,
+            (split[3] as TmuxControlEvent.Output).data,
         )
     }
 
@@ -109,6 +110,18 @@ class TmuxControlParserTest {
             ),
             events,
         )
+    }
+
+    @Test
+    fun readsChangesToTheServersSessions() {
+        val events = parse(
+            "%sessions-changed\n" +
+                "%session-renamed \$1 work\n" +
+                "%client-session-changed /dev/pts/3 \$1 work\n" +
+                "%client-detached /dev/pts/3\n",
+        )
+
+        assertEquals(List(4) { TmuxControlEvent.SessionsChanged }, events)
     }
 
     @Test

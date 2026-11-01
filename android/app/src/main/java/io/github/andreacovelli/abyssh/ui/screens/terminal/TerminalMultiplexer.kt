@@ -250,7 +250,10 @@ class TerminalMultiplexer internal constructor(
         return true
     }
 
-    /** Loads the sessions on the active tab's host for the session panel. */
+    /**
+     * Loads the sessions on the active tab's host for the session panel. The list already
+     * shown stays while the new one loads, as long as it is for the same host.
+     */
     fun listSessionsForActiveHost() {
         val tab = sessionRepository.activeTab.value ?: return
         val requestGeneration = ++sessionListGeneration
@@ -258,30 +261,42 @@ class TerminalMultiplexer internal constructor(
         val sourceHostId = tab.spec.hostId
         val spec = tab.spec.withDefaultMultiplexer()
         _state.update {
+            val sameHost = sourceHostId != null && it.sessionsSourceHostId == sourceHostId
             it.copy(
-                sessions = emptyList(),
+                sessions = if (sameHost) it.sessions else emptyList(),
                 sessionsLoading = true,
                 sessionsError = null,
                 sessionsSourceTabId = sourceTabId,
                 sessionsSourceHostId = sourceHostId,
             )
         }
-        scope.launch(Dispatchers.IO) {
+        // On the main thread: the listing picks a tmux connection from the open tabs, and
+        // moves to the IO thread itself when it opens a new one.
+        scope.launch(Dispatchers.Main) {
             val result = runCatching { sessionRepository.multiplexerSessions.list(spec) }
-            withContext(Dispatchers.Main) {
-                val stale = requestGeneration != sessionListGeneration ||
-                    sessionRepository.activeTab.value?.id != sourceTabId
-                if (stale) return@withContext
-                _state.update {
-                    it.copy(
-                        sessions = result.getOrDefault(emptyList()),
-                        sessionsLoading = false,
-                        sessionsError = result.exceptionOrNull()?.toUiText(UiText.Resource(R.string.multiplexer_list_failed)),
-                        sessionsSourceTabId = sourceTabId,
-                        sessionsSourceHostId = sourceHostId,
-                    )
-                }
+            val stale = requestGeneration != sessionListGeneration ||
+                sessionRepository.activeTab.value?.id != sourceTabId
+            if (stale) return@launch
+            _state.update {
+                it.copy(
+                    sessions = result.getOrDefault(emptyList()),
+                    sessionsLoading = false,
+                    sessionsError = result.exceptionOrNull()?.toUiText(UiText.Resource(R.string.multiplexer_list_failed)),
+                    sessionsSourceTabId = sourceTabId,
+                    sessionsSourceHostId = sourceHostId,
+                )
             }
+        }
+    }
+
+    /**
+     * Loads the list again each time the active tab's host reports that its sessions
+     * changed, until cancelled. The panel runs this while it is open.
+     */
+    suspend fun reloadSessionsOnChange() {
+        sessionRepository.multiplexerSessionsChanged.collect { sessionKey ->
+            val spec = sessionRepository.activeTab.value?.spec ?: return@collect
+            if (spec.usesRuntimeMultiplexer && spec.sessionKey == sessionKey) listSessionsForActiveHost()
         }
     }
 
