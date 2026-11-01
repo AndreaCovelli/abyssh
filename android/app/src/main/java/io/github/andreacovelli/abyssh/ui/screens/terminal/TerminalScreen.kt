@@ -158,6 +158,7 @@ private fun TerminalStripBar(
         onTabSelected = vm::selectTab,
         onAddTab = { overlay.showNewTabPicker = true },
         onOpenManager = { overlay.showTabManager = true },
+        onCloseTab = vm::closeTab,
         newTabPicker = { TerminalNewTabPicker(vm, overlay, launcher, route) },
     )
 }

@@ -11,6 +11,7 @@ import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
 import io.github.andreacovelli.abyssh.R
+import io.github.andreacovelli.abyssh.ui.components.onSecondaryClick
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import android.Manifest
@@ -37,6 +38,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.lazy.LazyColumn
@@ -242,6 +244,11 @@ private fun ServerListHeader(
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
     var isSearchVisible by remember { mutableStateOf(false) }
+    // Back, or Esc on a keyboard, clears the filter and closes it.
+    BackHandler(enabled = isSearchVisible) {
+        onSearchChange("")
+        isSearchVisible = false
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -558,6 +565,7 @@ private fun HostCardContent(
     AbyssCard(
         modifier = Modifier
             .fillMaxSize()
+            .onSecondaryClick(onLongPress)
             .combinedClickable(onClick = onConnect, onLongClick = onLongPress),
         background = colors.surfaceVariant,
         border = when {

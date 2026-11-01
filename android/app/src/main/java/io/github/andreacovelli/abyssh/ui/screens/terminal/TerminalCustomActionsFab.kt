@@ -32,6 +32,8 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 @Composable
 internal fun TerminalCustomActionsFab(
     groups: List<TerminalCustomKeyGroup>,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
     onActionClick: (TerminalCustomAction) -> Unit,
     modifier: Modifier = Modifier,
     filteredActions: List<TerminalCustomAction>? = null,
@@ -39,7 +41,6 @@ internal fun TerminalCustomActionsFab(
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
-    var expanded by remember { mutableStateOf(filteredActions != null) }
     var selectedGroupKey by remember { mutableStateOf<String?>(null) }
     val selectedGroup =
         remember(selectedGroupKey, groups) {
@@ -48,10 +49,12 @@ internal fun TerminalCustomActionsFab(
 
     LaunchedEffect(filteredActions) {
         if (filteredActions != null) {
-            expanded = true
+            onExpandedChange(true)
             selectedGroupKey = null
         }
     }
+    // Closing from outside, such as with Esc, starts the next opening at the group list.
+    LaunchedEffect(expanded) { if (!expanded) selectedGroupKey = null }
 
     Column(
         modifier = modifier,
@@ -68,7 +71,7 @@ internal fun TerminalCustomActionsFab(
                         AbyssButton(
                             onClick = {
                                 onActionClick(action)
-                                expanded = false
+                                onExpandedChange(false)
                                 onClearFilter()
                             },
                             variant = AbyssButtonVariant.Outlined,
@@ -82,7 +85,7 @@ internal fun TerminalCustomActionsFab(
                         icon = R.drawable.ic_arrow_back,
                         contentDescription = stringResource(R.string.action_back),
                         onClick = {
-                            expanded = false
+                            onExpandedChange(false)
                             onClearFilter()
                         },
                         tonal = true,
@@ -93,7 +96,7 @@ internal fun TerminalCustomActionsFab(
                             onClick = {
                                 if (group.actions.size == 1) {
                                     onActionClick(group.actions.first())
-                                    expanded = false
+                                    onExpandedChange(false)
                                     selectedGroupKey = null
                                 } else {
                                     selectedGroupKey = group.keyLabel
@@ -111,7 +114,7 @@ internal fun TerminalCustomActionsFab(
                         AbyssButton(
                             onClick = {
                                 onActionClick(action)
-                                expanded = false
+                                onExpandedChange(false)
                                 selectedGroupKey = null
                             },
                             variant = AbyssButtonVariant.Outlined,
@@ -133,8 +136,8 @@ internal fun TerminalCustomActionsFab(
 
         SmallFloatingActionButton(
             onClick = {
-                expanded = !expanded
-                if (!expanded) {
+                onExpandedChange(!expanded)
+                if (expanded) {
                     selectedGroupKey = null
                     onClearFilter()
                 }

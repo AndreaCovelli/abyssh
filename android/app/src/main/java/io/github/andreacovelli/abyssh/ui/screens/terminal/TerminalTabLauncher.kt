@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.andreacovelli.abyssh.R
@@ -157,7 +156,8 @@ internal fun TerminalPassphraseDialog(launcher: TerminalTabLauncher, onBack: () 
             onValueChange = { launcher.passphrase = it },
             label = stringResource(R.string.key_passphrase_label),
             singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
+            secret = true,
+            onSubmit = launcher::confirm,
             modifier = Modifier.fillMaxWidth(),
         )
     }

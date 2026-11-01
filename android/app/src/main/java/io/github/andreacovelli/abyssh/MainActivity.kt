@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh
 
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -9,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -17,6 +19,8 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.ui.ApplicationNavController
+import io.github.andreacovelli.abyssh.ui.EscapeKeyBack
+import io.github.andreacovelli.abyssh.ui.LocalEscapeKeyBack
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTheme
 import io.github.andreacovelli.abyssh.ui.theme.GhosttyThemeRegistry
@@ -24,6 +28,14 @@ import io.github.andreacovelli.abyssh.ui.theme.resolveActiveThemeName
 import kotlinx.coroutines.launch
 
 class MainActivity : FragmentActivity() {
+    private val escapeKeyBack by lazy { EscapeKeyBack(onBackPressedDispatcher) }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean =
+        escapeKeyBack.onKeyDown(keyCode, event) || super.onKeyDown(keyCode, event)
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean =
+        escapeKeyBack.onKeyUp(keyCode, event) || super.onKeyUp(keyCode, event)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val settings = SettingsRepository.getInstance(this)
@@ -41,7 +53,9 @@ class MainActivity : FragmentActivity() {
             navigationBarStyle = SystemBarStyle.dark(0x00000000),
         )
         setContent {
-            AppRoot()
+            CompositionLocalProvider(LocalEscapeKeyBack provides escapeKeyBack) {
+                AppRoot()
+            }
         }
     }
 }

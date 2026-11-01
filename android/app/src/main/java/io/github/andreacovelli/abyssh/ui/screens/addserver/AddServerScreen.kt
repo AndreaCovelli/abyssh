@@ -44,11 +44,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.andreacovelli.abyssh.model.AuthMethod
 import io.github.andreacovelli.abyssh.model.MultiplexerType
+import io.github.andreacovelli.abyssh.service.terminal.runsRemoteCommands
 import io.github.andreacovelli.abyssh.model.SshKey
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
@@ -212,17 +212,22 @@ private fun ConnectionSection(form: AddServerForm, vm: AddServerViewModel) {
     }
 }
 
+/** Product names stay in code; only the local shell has a translated name. */
+@Composable
+private fun transportLabel(transport: Transport): String = when (transport) {
+    Transport.SSH -> "SSH"
+    Transport.TailscaleSSH -> "Tailscale"
+    Transport.Mosh -> "Mosh"
+    Transport.LocalShell -> stringResource(R.string.server_list_local_shell)
+}
+
 @Composable
 private fun TransportSection(selected: Transport, onSelect: (Transport) -> Unit) {
     AbyssSectionHeader(stringResource(R.string.server_section_transport))
+    val options = listOf(Transport.SSH, Transport.TailscaleSSH, Transport.Mosh)
     AbyssSegmentedControl(
-        options = listOf(Transport.SSH, Transport.TailscaleSSH, Transport.Mosh),
-        labels =
-            mapOf(
-                Transport.SSH to "SSH",
-                Transport.TailscaleSSH to "Tailscale",
-                Transport.Mosh to "Mosh",
-            ),
+        options = options,
+        labels = options.associateWith { transportLabel(it) },
         selected = selected,
         onSelect = onSelect,
     )
@@ -298,7 +303,7 @@ private fun SecretField(value: String, onValueChange: (String) -> Unit, label: S
         onValueChange = onValueChange,
         label = label,
         singleLine = true,
-        visualTransformation = PasswordVisualTransformation(),
+        secret = true,
         autoFocus = false,
         modifier = Modifier.fillMaxWidth(),
     )
@@ -343,6 +348,7 @@ private fun AdditionalSettingsSection(form: AddServerForm, vm: AddServerViewMode
     }
     SectionDivider()
     MultiplexerSection(
+        transport = form.transport,
         selected = form.multiplexer,
         onSelect = vm::updateMultiplexer,
         tmuxControlMode = form.tmuxControlMode,
@@ -523,6 +529,7 @@ private enum class MultiplexerOption(val type: MultiplexerType?) {
 
 @Composable
 private fun MultiplexerSection(
+    transport: Transport,
     selected: MultiplexerType?,
     onSelect: (MultiplexerType?) -> Unit,
     tmuxControlMode: Boolean,
@@ -533,6 +540,8 @@ private fun MultiplexerSection(
     AbyssSectionHeader(stringResource(R.string.server_section_persistence))
     val options = MultiplexerOption.entries.toList()
     val selectedOption = options.firstOrNull { it.type == selected } ?: MultiplexerOption.Off
+    // Multiplexers attach over a remote command, which Mosh can't run.
+    val transportSupported = transport.runsRemoteCommands
     AbyssSegmentedControl(
         options = options,
         labels =
@@ -544,8 +553,17 @@ private fun MultiplexerSection(
             ),
         selected = selectedOption,
         onSelect = { onSelect(it.type) },
-        disabledOptions = setOf(MultiplexerOption.Zellij),
+        disabledOptions = options.filterTo(mutableSetOf()) {
+            it.type != null && (!transportSupported || !it.type.runtimeSupported)
+        },
     )
+    if (!transportSupported) {
+        AbyssText(
+            stringResource(R.string.server_persistence_unsupported, transportLabel(transport)),
+            style = typography.bodySmall,
+            color = colors.textMuted,
+        )
+    }
     if (selected == MultiplexerType.Tmux) TmuxControlModeRow(tmuxControlMode, onTmuxControlModeChange)
 }
 

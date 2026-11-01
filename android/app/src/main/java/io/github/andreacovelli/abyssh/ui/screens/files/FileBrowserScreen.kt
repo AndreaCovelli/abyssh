@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.files
 
 import io.github.andreacovelli.abyssh.ui.components.asString
+import io.github.andreacovelli.abyssh.ui.components.onSecondaryClick
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.draw.clip
@@ -69,6 +70,8 @@ fun FileBrowserScreen(
         if (state.currentPath == "/" || state.currentPath == state.resolvedHomePath) onBackToTerminal() else onGoUp()
     }
     BackHandler(onBack = goUpOrBack)
+    // Registered later, so back clears a filter before it leaves the folder.
+    BackHandler(enabled = searchQuery.isNotEmpty()) { searchQuery = "" }
 
     LaunchedEffect(state.currentPath) { searchQuery = "" }
 
@@ -210,6 +213,7 @@ private fun FileEntryRow(
                     .defaultMinSize(minHeight = 44.dp)
                     .clip(MaterialTheme.shapes.medium)
                     .border(1.dp, colors.border.copy(alpha = 0.5f), MaterialTheme.shapes.medium)
+                    .onSecondaryClick(onLongClick)
                     .combinedClickable(onClick = onClick, onLongClick = onLongClick)
                     .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,

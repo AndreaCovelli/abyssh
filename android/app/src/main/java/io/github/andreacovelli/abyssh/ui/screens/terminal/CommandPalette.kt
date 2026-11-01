@@ -13,7 +13,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +53,9 @@ import io.github.andreacovelli.abyssh.service.terminal.sessionLabel
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
+import io.github.andreacovelli.abyssh.ui.components.HoverEffect
+import io.github.andreacovelli.abyssh.ui.components.onMiddleClick
+import io.github.andreacovelli.abyssh.ui.components.revealItem
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCanvas
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
@@ -86,7 +91,15 @@ fun CommandPalette(
 
     AnimatedVisibility(visible = true, enter = fadeIn(), exit = fadeOut()) {
         Box(
-            modifier = Modifier.fillMaxSize().background(colors.background).clickable(onClick = onDismiss),
+            modifier =
+                Modifier.fillMaxSize()
+                    .background(colors.background)
+                    // No indication: a hovered or focused scrim would tint the whole screen.
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onDismiss,
+                    ),
         ) {
             Column(
                 modifier =
@@ -96,7 +109,13 @@ fun CommandPalette(
                         .fillMaxWidth()
                         .clip(MaterialTheme.shapes.large)
                         .background(colors.surface)
-                        .border(1.dp, colors.border.copy(alpha = 0.65f), MaterialTheme.shapes.large),
+                        .border(1.dp, colors.border.copy(alpha = 0.65f), MaterialTheme.shapes.large)
+                        // Swallow clicks so only the space around the panel dismisses it.
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {},
+                        ),
             ) {
                 PaletteHeader(shown = entries.size, total = tabs.size)
                 if (entries.isNotEmpty()) {
@@ -105,6 +124,7 @@ fun CommandPalette(
                         activeTabId = activeTabId,
                         focusedTabIndex = focusedTabIndex.coerceIn(0, maxIndex),
                         canClose = tabs.size > 1,
+                        onFocusTab = onFocusedTabIndexChange,
                         onSelectTab = onSelectTab,
                         onCloseTab = onCloseTab,
                     )
@@ -166,11 +186,12 @@ private fun PaletteTabList(
     activeTabId: String?,
     focusedTabIndex: Int,
     canClose: Boolean,
+    onFocusTab: (Int) -> Unit,
     onSelectTab: (String) -> Unit,
     onCloseTab: (String) -> Unit,
 ) {
     val listState = rememberLazyListState()
-    LaunchedEffect(focusedTabIndex, entries.size) { listState.animateScrollToItem(focusedTabIndex) }
+    LaunchedEffect(focusedTabIndex, entries.size) { listState.revealItem(focusedTabIndex) }
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp),
@@ -185,6 +206,7 @@ private fun PaletteTabList(
                 isActive = tab.id == activeTabId,
                 isFocused = idx == focusedTabIndex,
                 canClose = canClose,
+                onHover = { onFocusTab(idx) },
                 onSelect = { onSelectTab(tab.id) },
                 onClose = { onCloseTab(tab.id) },
             )
@@ -199,10 +221,13 @@ private fun PaletteTabRow(
     isActive: Boolean,
     isFocused: Boolean,
     canClose: Boolean,
+    onHover: () -> Unit,
     onSelect: () -> Unit,
     onClose: () -> Unit,
 ) {
     val colors = AbyssColors.current
+    val interactionSource = remember { MutableInteractionSource() }
+    HoverEffect(interactionSource, onHover)
     val title by remember(tab) {
         tab.sessionState.map { it.title?.takeIf(String::isNotBlank) }
     }.collectAsStateWithLifecycle(initialValue = null)
@@ -211,7 +236,8 @@ private fun PaletteTabRow(
             Modifier.fillMaxWidth()
                 .clip(MaterialTheme.shapes.medium)
                 .background(if (isFocused) colors.accent.copy(alpha = 0.14f) else Color.Transparent)
-                .clickable(onClick = onSelect)
+                .then(if (canClose) Modifier.onMiddleClick(onClose) else Modifier)
+                .clickable(interactionSource = interactionSource, indication = LocalIndication.current, onClick = onSelect)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
