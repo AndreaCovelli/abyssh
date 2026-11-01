@@ -19,6 +19,8 @@ jobs:
       contents: write
       id-token: write
     runs-on: ubuntu-26.04
+    env:
+      NDK_VERSION: 28.2.13676358
 
     steps:
       - name: Checkout
@@ -61,8 +63,14 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Parsed version: $VERSION (major=$MAJOR minor=$MINOR patch=$PATCH)"
 
+      # Pin the NDK: the runner's newest NDK can change under us, and NDK 30 headers
+      # reject the target triple that Zig's translate-c passes.
+      - name: Install the Android NDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION"
+
       - name: build native library
-        run: ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME" mise run native -Dtarget=aarch64-linux-android.24
+        run: ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION" mise run native -Dtarget=aarch64-linux-android.24
 
       - name: Decode release keystore
         env:
