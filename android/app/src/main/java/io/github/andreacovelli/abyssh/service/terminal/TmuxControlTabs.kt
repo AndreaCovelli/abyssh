@@ -51,6 +51,17 @@ internal class TmuxControlTabs(
         return true
     }
 
+    /**
+     * A connected control session on [spec]'s host, preferring the one that shows
+     * [spec]'s tmux session. All of them talk to the same tmux server.
+     */
+    fun connectedTo(spec: TabSpec): TmuxControlSession? {
+        val hostSessions = sessions.filter {
+            it.spec.sessionKey == spec.sessionKey && it.status.value.status == SessionStatus.Connected
+        }
+        return hostSessions.firstOrNull { it.sessionName == spec.multiplexerSessionName } ?: hostSessions.firstOrNull()
+    }
+
     /** Shows tmux session [name] in the control session behind [tab]. */
     fun switchSession(tab: TabSession, name: String): Boolean {
         val control = tab.engine.tmuxControl ?: return false

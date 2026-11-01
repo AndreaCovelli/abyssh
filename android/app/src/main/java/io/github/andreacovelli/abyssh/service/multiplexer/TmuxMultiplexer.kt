@@ -7,11 +7,14 @@ object TmuxMultiplexer : Multiplexer {
 
     override val type: MultiplexerType = MultiplexerType.Tmux
 
+    /** The `list-sessions` format that [parseSessions] reads: attached clients, then the name. */
+    const val LIST_SESSIONS_FORMAT = "#{session_attached} #{session_name}"
+
     override fun availabilityCommand(): String = "command -v tmux >/dev/null 2>&1"
 
     override fun listSessionsCommand(): String =
         "if ! command -v tmux >/dev/null 2>&1; then printf 'tmux executable not found\\n' >&2; (exit 127); " +
-            "else tmux list-sessions -F '#{session_attached} #{session_name}' 2>/dev/null; " +
+            "else tmux list-sessions -F '$LIST_SESSIONS_FORMAT' 2>/dev/null; " +
             "status=\$?; if [ \"\$status\" -eq 1 ]; then true; else [ \"\$status\" -eq 0 ]; fi; fi"
 
     override fun parseSessions(output: String): List<RemoteMultiplexerSession> =

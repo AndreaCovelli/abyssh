@@ -270,21 +270,21 @@ class TerminalMultiplexer internal constructor(
                 sessionsSourceHostId = sourceHostId,
             )
         }
-        scope.launch(Dispatchers.IO) {
+        // On the main thread: the listing picks a tmux connection from the open tabs, and
+        // moves to the IO thread itself when it opens a new one.
+        scope.launch(Dispatchers.Main) {
             val result = runCatching { sessionRepository.multiplexerSessions.list(spec) }
-            withContext(Dispatchers.Main) {
-                val stale = requestGeneration != sessionListGeneration ||
-                    sessionRepository.activeTab.value?.id != sourceTabId
-                if (stale) return@withContext
-                _state.update {
-                    it.copy(
-                        sessions = result.getOrDefault(emptyList()),
-                        sessionsLoading = false,
-                        sessionsError = result.exceptionOrNull()?.toUiText(UiText.Resource(R.string.multiplexer_list_failed)),
-                        sessionsSourceTabId = sourceTabId,
-                        sessionsSourceHostId = sourceHostId,
-                    )
-                }
+            val stale = requestGeneration != sessionListGeneration ||
+                sessionRepository.activeTab.value?.id != sourceTabId
+            if (stale) return@launch
+            _state.update {
+                it.copy(
+                    sessions = result.getOrDefault(emptyList()),
+                    sessionsLoading = false,
+                    sessionsError = result.exceptionOrNull()?.toUiText(UiText.Resource(R.string.multiplexer_list_failed)),
+                    sessionsSourceTabId = sourceTabId,
+                    sessionsSourceHostId = sourceHostId,
+                )
             }
         }
     }

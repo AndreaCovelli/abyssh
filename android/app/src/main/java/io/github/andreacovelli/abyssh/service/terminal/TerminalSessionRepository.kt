@@ -49,7 +49,11 @@ class TerminalSessionRepository private constructor(application: Application) {
     private val clipboard = appContext.getSystemService(ClipboardManager::class.java)
     private val settingsRepository = SettingsRepository.getInstance(appContext)
     private val preflight = MultiplexerPreflight(hostKeyStore)
-    val multiplexerSessions = RemoteMultiplexerSessions(preflight) { _tabs.value }
+    val multiplexerSessions = RemoteMultiplexerSessions(
+        preflight = preflight,
+        tmuxControl = { tmuxTabs.connectedTo(it) },
+        tabs = { _tabs.value },
+    )
     private val foreground = SessionForegroundTracker(appContext)
     private var attachedClients = 0
 
