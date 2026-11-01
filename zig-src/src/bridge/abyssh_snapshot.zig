@@ -63,7 +63,10 @@ const CELL_FLAG_HAS_GRAPHEME: u8 = 1 << 6;
 // run break between neighboring glyph cells.
 const CELL_FLAG_SPACER: u8 = 1 << 7;
 const IMAGE_HEADER_BYTES = 60;
-const MAX_KITTY_IMAGES = 64;
+// Placements sent per frame. A unicode placeholder image is one placement per
+// row, so a screen of tall equations (such as render-latex.nvim in tmux) needs
+// far more than one per image.
+const MAX_KITTY_IMAGES = 256;
 const MAX_OSC52_CLIPBOARD_BYTES = 1024 * 1024;
 const MAX_OSC7_PWD_BYTES = 4096;
 // Kitty Unicode graphics placeholder (U+10EEEE). These cells only mark where an
