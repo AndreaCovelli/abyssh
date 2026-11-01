@@ -31,6 +31,7 @@ import io.github.andreacovelli.abyssh.service.ssh.NativeSshService
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
 import io.github.andreacovelli.abyssh.service.terminal.TabSpec
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionRepository
+import io.github.andreacovelli.abyssh.service.terminal.runsRemoteCommands
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -182,22 +183,7 @@ class AddServerViewModel(
     }
 
     fun updateTransport(transport: Transport) {
-        val current = _form.value
-        val nextAuthMethod =
-            when {
-                transport != Transport.TailscaleSSH && current.authMethod == AuthMethod.None ->
-                    AuthMethod.Password
-                else -> current.authMethod
-            }
-        _form.value =
-            current.copy(
-                transport = transport,
-                authMethod = nextAuthMethod,
-                multiplexer =
-                    current.multiplexer.takeIf {
-                        transport != Transport.Mosh && it?.runtimeSupported == true
-                    },
-            )
+        _form.value = _form.value.withTransport(transport)
     }
 
     fun updateAuthMethod(authMethod: AuthMethod) {
@@ -228,14 +214,7 @@ class AddServerViewModel(
     }
 
     fun updateMultiplexer(multiplexer: MultiplexerType?) {
-        val current = _form.value
-        _form.value =
-            current.copy(
-                multiplexer =
-                    multiplexer?.takeIf {
-                        current.transport != Transport.Mosh && it.runtimeSupported
-                    }
-            )
+        _form.value = _form.value.withMultiplexer(multiplexer)
     }
 
     fun updateTmuxControlMode(enabled: Boolean) {
@@ -335,10 +314,7 @@ class AddServerViewModel(
                     authMethod = current.authMethod,
                     requireAuthOnConnect = current.requireAuthOnConnect,
                     postConnectCommand = current.postConnectCommand.trim().ifBlank { null },
-                    multiplexer =
-                        current.multiplexer.takeIf {
-                            current.transport != Transport.Mosh && it?.runtimeSupported == true
-                        },
+                    multiplexer = current.effectiveMultiplexer,
                     tmuxControlMode = current.tmuxControlMode,
                 )
             hostRepository.upsert(profile)
@@ -394,6 +370,32 @@ data class AddServerForm(
     val multiplexer: MultiplexerType? = null,
     val tmuxControlMode: Boolean = false,
 )
+
+/**
+ * The multiplexer the host uses: the chosen one, or none while the transport can't run it.
+ * [AddServerForm.multiplexer] keeps the choice across transport changes.
+ */
+val AddServerForm.effectiveMultiplexer: MultiplexerType?
+    get() = multiplexer?.takeIf { transport.runsRemoteCommands && it.runtimeSupported }
+
+/**
+ * Switches the transport. The multiplexer choice is kept even when [transport] can't run it,
+ * so switching back to a transport that can restores it.
+ */
+fun AddServerForm.withTransport(transport: Transport): AddServerForm = copy(
+    transport = transport,
+    // Only Tailscale SSH can connect without credentials.
+    authMethod =
+        authMethod.takeUnless { it == AuthMethod.None && transport != Transport.TailscaleSSH }
+            ?: AuthMethod.Password,
+)
+
+/**
+ * Chooses a multiplexer. While the transport can't run one the control is locked to off, so the
+ * earlier choice stays.
+ */
+fun AddServerForm.withMultiplexer(multiplexer: MultiplexerType?): AddServerForm =
+    if (transport.runsRemoteCommands) copy(multiplexer = multiplexer?.takeIf { it.runtimeSupported }) else this
 
 fun AddServerForm.canSave(): Boolean {
     if (name.isBlank() || host.isBlank() || username.isBlank()) return false
