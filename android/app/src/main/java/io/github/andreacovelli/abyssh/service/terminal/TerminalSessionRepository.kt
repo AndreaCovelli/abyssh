@@ -218,7 +218,16 @@ class TerminalSessionRepository private constructor(application: Application) {
 
     /** Closes the tabs of a multiplexer session that ended, without sending tmux anything more. */
     fun closeMultiplexerSessionTabs(spec: TabSpec, name: String) {
-        val tabs = multiplexerSessions.tabsShowing(spec, name)
+        disconnectTabs(multiplexerSessions.tabsShowing(spec, name).map { it.id })
+    }
+
+    /**
+     * Closes tabs [ids] without ending anything on the server. A tmux control-mode tab
+     * detaches its whole session, which closes the session's other tabs too and leaves
+     * every window running; [closeTab] would end the tab's window instead.
+     */
+    fun disconnectTabs(ids: Collection<String>) {
+        val tabs = _tabs.value.filter { it.id in ids }
         tabs.mapNotNull { it.engine.tmuxControl }.distinct().forEach(tmuxTabs::end)
         tabs.filter { it.engine.tmuxControl == null }.forEach { closeTab(it.id) }
     }

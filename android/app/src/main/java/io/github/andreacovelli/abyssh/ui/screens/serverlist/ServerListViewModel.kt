@@ -81,9 +81,12 @@ class ServerListViewModel(
         closeTabsWhere { it.spec.hostId == id }
     }
 
-    /** Closes one tab, leaving the host's other tabs open. */
+    /**
+     * Closes one session of the host, leaving the others open. A tmux control-mode
+     * session detaches with all its windows' tabs, and keeps running on the server.
+     */
     fun closeSession(tabId: String) {
-        sessionRepository.closeTab(tabId)
+        sessionRepository.disconnectTabs(listOf(tabId))
     }
 
     /** Closes every local shell tab. */
@@ -92,7 +95,7 @@ class ServerListViewModel(
     }
 
     private fun closeTabsWhere(predicate: (TabSession) -> Boolean) {
-        sessionRepository.tabs.value.filter(predicate).map { it.id }.forEach(sessionRepository::closeTab)
+        sessionRepository.disconnectTabs(sessionRepository.tabs.value.filter(predicate).map { it.id })
     }
 
     fun deleteServer(id: Long) {
@@ -122,8 +125,12 @@ class ServerListViewModel(
     }
 }
 
-/** One open tab as the server list shows it: its numbered label and terminal title. */
-data class OpenSession(val tabId: String, val label: String, val title: String?)
+/**
+ * One session as the server list shows it: a tab, with its numbered label and terminal
+ * title, or a tmux control-mode session, whose [tmuxWindows] tabs share one row that
+ * [tabId] stands for.
+ */
+data class OpenSession(val tabId: String, val label: String, val title: String?, val tmuxWindows: Int = 0)
 
 /** The open tabs shown on the server list. */
 data class OpenSessions(
@@ -137,16 +144,34 @@ data class OpenSessions(
     fun tabsFor(hostId: Long): Int = sessionsFor(hostId).size
 }
 
-/** Groups [tabs] by saved host; [titles] holds each tab's terminal title, in the same order. */
+/**
+ * Groups [tabs] by saved host, with one row for each tmux control-mode session however
+ * many windows it has; [titles] holds each tab's terminal title, in the same order.
+ */
 internal fun openSessionsOf(tabs: List<OpenTab>, titles: List<String?>): OpenSessions {
     val sessionsByHost = tabs.withIndex()
-        .mapNotNull { (i, tab) ->
-            val title = titles.getOrNull(i)?.takeIf(String::isNotBlank)
-            tab.spec.hostId?.let { hostId -> hostId to OpenSession(tab.id, tab.sessionLabel(tabs), title) }
-        }
+        .mapNotNull { indexed -> indexed.value.spec.hostId?.let { it to indexed } }
         .groupBy({ it.first }, { it.second })
+        .mapValues { (_, hostTabs) ->
+            // LinkedHashMap keeps the rows in the order of each session's first tab.
+            hostTabs.groupBy { (_, tab) -> tab.tmuxSessionKey() ?: tab.id }.values.map { group ->
+                val (i, tab) = group.first()
+                val tmuxSession = tab.tmuxSessionKey()?.second
+                if (tmuxSession != null) {
+                    OpenSession(tab.id, "${tab.spec.tabLabel} · $tmuxSession", title = null, tmuxWindows = group.size)
+                } else {
+                    OpenSession(tab.id, tab.sessionLabel(tabs), titles.getOrNull(i)?.takeIf(String::isNotBlank))
+                }
+            }
+        }
     return OpenSessions(
         localShellTabs = tabs.count { it.spec.transport == Transport.LocalShell },
         sessionsByHost = sessionsByHost,
     )
+}
+
+/** The host and tmux session that a tmux control-mode tab shows a window of, or null for any other tab. */
+private fun OpenTab.tmuxSessionKey(): Pair<String, String>? {
+    val name = spec.multiplexerSessionName?.takeIf { spec.usesTmuxControlMode && it.isNotBlank() } ?: return null
+    return spec.sessionKey to name
 }

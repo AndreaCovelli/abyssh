@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.serverlist
 
+import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.service.terminal.FakeTab
 import io.github.andreacovelli.abyssh.service.terminal.TabSpec
@@ -32,5 +33,28 @@ class OpenSessionsTest {
         val sessions = openSessionsOf(emptyList(), emptyList())
         assertFalse(sessions.hasLocalShell)
         assertEquals(emptyMap<Long, List<OpenSession>>(), sessions.sessionsByHost)
+    }
+
+    @Test
+    fun aTmuxControlModeSessionIsOneRowForAllItsWindows() {
+        val tmux = web.copy(multiplexer = MultiplexerType.Tmux, tmuxControlMode = true)
+        val tabs = listOf(
+            FakeTab("a", tmux.copy(multiplexerSessionName = "abyssh-1"), 1),
+            FakeTab("b", web, 2),
+            FakeTab("c", tmux.copy(multiplexerSessionName = "abyssh-1"), 3),
+            FakeTab("d", tmux.copy(multiplexerSessionName = "work"), 4),
+        )
+
+        val sessions = openSessionsOf(tabs, listOf("vim", "zsh", "htop", null))
+
+        assertEquals(
+            listOf(
+                OpenSession("a", "web · abyssh-1", null, tmuxWindows = 2),
+                OpenSession("b", "web · 2", "zsh"),
+                OpenSession("d", "web · work", null, tmuxWindows = 1),
+            ),
+            sessions.sessionsFor(1),
+        )
+        assertEquals(3, sessions.tabsFor(1))
     }
 }
