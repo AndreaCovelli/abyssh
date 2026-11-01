@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "gh-cli": {
+      "source": "AndreaCovelli/my-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gh-cli/SKILL.md",
+      "computedHash": "67bd9280c42f6f314a03f29b1ae7cedbaa7f1ab90ee311d6bc920d487d7e4de9"
+    },
+    "github-actions": {
+      "source": "AndreaCovelli/my-skills",
+      "sourceType": "github",
+      "skillPath": "skills/github-actions/SKILL.md",
+      "computedHash": "af98f566ffa9d82102ceb555423de86dfe1d7d95a7b3016475ffaa058407d171"
+    },
+    "pr-feedback": {
+      "source": "AndreaCovelli/my-skills",
+      "sourceType": "github",
+      "skillPath": "skills/pr-feedback/SKILL.md",
+      "computedHash": "45951bbe39e4798c633ed6e47409d02c364ea9b5fa891ddd8c8d88d60dfd8df2"
+    }
+  }
+}
