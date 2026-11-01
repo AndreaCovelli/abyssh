@@ -220,10 +220,32 @@ class AbysshBackupCoreTest {
     }
 
     @Test
+    fun payloadV4PreservesChooseSessionOnConnect() {
+        val payload = samplePayload(chooseSessionOnConnect = true)
+
+        val decoded = AbysshBackupCodec.decodePayload(AbysshBackupCodec.encodePayload(payload))
+
+        assertEquals(payload, decoded)
+        assertTrue(decoded.hosts.single().chooseSessionOnConnect)
+    }
+
+    @Test
+    fun payloadV3DefaultsChooseSessionOnConnectToOff() {
+        val v4 = AbysshBackupCodec.encodePayload(samplePayload(tmuxControlMode = true, chooseSessionOnConnect = true))
+        writeIntAt(v4, offset = Int.SIZE_BYTES, value = 3)
+        val v3 = v4.copyOf(v4.size - ENCODED_BOOLEAN_SIZE)
+
+        val decoded = AbysshBackupCodec.decodePayload(v3)
+
+        assertTrue(decoded.hosts.single().tmuxControlMode)
+        assertFalse(decoded.hosts.single().chooseSessionOnConnect)
+    }
+
+    @Test
     fun payloadV2DefaultsTmuxControlModeToOff() {
-        val v3 = AbysshBackupCodec.encodePayload(samplePayload(tmuxControlMode = true))
-        writeIntAt(v3, offset = Int.SIZE_BYTES, value = 2)
-        val v2 = v3.copyOf(v3.size - ENCODED_BOOLEAN_SIZE)
+        val v4 = AbysshBackupCodec.encodePayload(samplePayload(tmuxControlMode = true))
+        writeIntAt(v4, offset = Int.SIZE_BYTES, value = 2)
+        val v2 = v4.copyOf(v4.size - 2 * ENCODED_BOOLEAN_SIZE)
 
         val decoded = AbysshBackupCodec.decodePayload(v2)
 
@@ -233,9 +255,9 @@ class AbysshBackupCoreTest {
 
     @Test
     fun payloadV1DefaultsMultiplexerToNull() {
-        val v3 = AbysshBackupCodec.encodePayload(samplePayload())
-        writeIntAt(v3, offset = Int.SIZE_BYTES, value = 1)
-        val v1 = v3.copyOf(v3.size - ENCODED_BOOLEAN_SIZE - encodedNullableStringSize(MultiplexerType.Tmux.id))
+        val v4 = AbysshBackupCodec.encodePayload(samplePayload())
+        writeIntAt(v4, offset = Int.SIZE_BYTES, value = 1)
+        val v1 = v4.copyOf(v4.size - 2 * ENCODED_BOOLEAN_SIZE - encodedNullableStringSize(MultiplexerType.Tmux.id))
 
         val decoded = AbysshBackupCodec.decodePayload(v1)
 
@@ -252,9 +274,16 @@ class AbysshBackupCoreTest {
         assumeTrue("native backup bridge unavailable in this JVM", NativeBackupBridge().isLoaded())
     }
 
-    private fun samplePayload(tmuxControlMode: Boolean = false): BackupPayload = BackupPayload(
+    private fun samplePayload(
+        tmuxControlMode: Boolean = false,
+        chooseSessionOnConnect: Boolean = false,
+    ): BackupPayload = BackupPayload(
         keys = listOf(BackupSshKey.fromEntity(sampleKey())),
-        hosts = listOf(BackupHostProfile.fromEntity(sampleHost().copy(tmuxControlMode = tmuxControlMode))),
+        hosts = listOf(
+            BackupHostProfile.fromEntity(
+                sampleHost().copy(tmuxControlMode = tmuxControlMode, chooseSessionOnConnect = chooseSessionOnConnect),
+            ),
+        ),
     )
 
     private fun sampleKey(

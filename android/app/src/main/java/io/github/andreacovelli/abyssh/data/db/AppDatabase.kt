@@ -13,8 +13,8 @@ import io.github.andreacovelli.abyssh.model.SshKey
 
 @Database(
     entities = [HostProfile::class, SshKey::class],
-    version = 12,
-    autoMigrations = [AutoMigration(from = 11, to = 12)],
+    version = 13,
+    autoMigrations = [AutoMigration(from = 11, to = 12), AutoMigration(from = 12, to = 13)],
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {

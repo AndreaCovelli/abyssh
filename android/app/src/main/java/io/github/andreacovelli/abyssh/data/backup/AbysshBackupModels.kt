@@ -65,6 +65,7 @@ data class BackupHostProfile(
     val postConnectCommand: String?,
     val multiplexer: MultiplexerType?,
     val tmuxControlMode: Boolean = false,
+    val chooseSessionOnConnect: Boolean = false,
 ) {
     fun toEntity(
         idOverride: Long = id,
@@ -84,6 +85,7 @@ data class BackupHostProfile(
         postConnectCommand = postConnectCommand,
         multiplexer = multiplexer,
         tmuxControlMode = tmuxControlMode,
+        chooseSessionOnConnect = chooseSessionOnConnect,
     )
 
     companion object {
@@ -102,6 +104,7 @@ data class BackupHostProfile(
             postConnectCommand = host.postConnectCommand,
             multiplexer = host.multiplexer,
             tmuxControlMode = host.tmuxControlMode,
+            chooseSessionOnConnect = host.chooseSessionOnConnect,
         )
     }
 }

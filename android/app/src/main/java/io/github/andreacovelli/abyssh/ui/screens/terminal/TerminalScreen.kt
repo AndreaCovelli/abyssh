@@ -75,6 +75,7 @@ fun TerminalScreen(
     TerminalNoticeEffects(sessionState.status, sessionState.error, multiplexer.preflightError, vm.notices)
 
     TerminalPassphraseDialog(launcher, onBack)
+    MultiplexerSessionChooserDialog(vm, onBack)
     TerminalEndSessionDialog(endSession, tabs)
     hostKeyPrompt?.let { prompt -> HostKeyDialog(prompt, vm::onHostKeyDecision) }
 
@@ -87,7 +88,8 @@ fun TerminalScreen(
         }
     val screenModifier = modifier.windowInsetsPadding(WindowInsets.safeDrawing)
     val routeTab = activeTab?.takeIf { route.owns(it.spec) }
-    val status = if (multiplexer.preflightLoading) SessionStatus.Connecting else sessionState.status
+    val preparing = multiplexer.preflightLoading || multiplexer.sessionChoice != null
+    val status = if (preparing) SessionStatus.Connecting else sessionState.status
     Box(Modifier.fillMaxSize()) {
         when {
             status == SessionStatus.Disconnected || status == SessionStatus.Error -> TerminalDisconnectedContent(

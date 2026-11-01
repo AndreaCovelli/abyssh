@@ -47,6 +47,13 @@ class TabSpecHostUpdateTest {
     }
 
     @Test
+    fun `choosing the session on connect needs no reconnect`() {
+        val next = running.withHostUpdate(saved.copy(chooseSessionOnConnect = true))
+        assertTrue(next.chooseSessionOnConnect)
+        assertFalse(running.connectsDifferentlyThan(next))
+    }
+
+    @Test
     fun `different multiplexer drops the old session name`() {
         val next = running.withHostUpdate(saved.copy(multiplexer = null))
         assertNull(next.multiplexerSessionName)

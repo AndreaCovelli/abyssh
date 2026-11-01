@@ -138,11 +138,12 @@ internal fun MultiplexerSessionPanel(
     }
 }
 
+/** One session: its name, notes about it, and buttons to attach and, given [onEnd], to end it. */
 @Composable
-private fun MultiplexerSessionRow(
+internal fun MultiplexerSessionRow(
     row: MultiplexerSessionRowState,
     onAttach: () -> Unit,
-    onEnd: () -> Unit,
+    onEnd: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val colors = AbyssColors.current
@@ -178,6 +179,7 @@ private fun MultiplexerSessionRow(
             )
             val notes = listOfNotNull(
                 stringResource(R.string.multiplexer_current).takeIf { row.current },
+                stringResource(R.string.multiplexer_open_in_tab).takeIf { row.openInTab },
                 stringResource(R.string.multiplexer_in_use_elsewhere).takeIf { row.inUseElsewhere },
             )
             if (notes.isNotEmpty()) {
@@ -192,11 +194,13 @@ private fun MultiplexerSessionRow(
                 onClick = onAttach,
             )
         }
-        PanelButton(
-            stringResource(R.string.multiplexer_end),
-            contentDescription = stringResource(R.string.multiplexer_end_description, row.name),
-            onClick = onEnd,
-        )
+        if (onEnd != null) {
+            PanelButton(
+                stringResource(R.string.multiplexer_end),
+                contentDescription = stringResource(R.string.multiplexer_end_description, row.name),
+                onClick = onEnd,
+            )
+        }
     }
 }
 
