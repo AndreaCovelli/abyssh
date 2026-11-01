@@ -92,7 +92,7 @@ Other tasks (`mise tasks ls` lists them all):
 | --- | --- |
 | `android/` | The Kotlin and Jetpack Compose app, built with Gradle |
 | `zig-src/` | The native library: the terminal engine, SSH, Mosh, the local shell, and backup encryption, built with Zig |
-| `.github/workflows/` | CI checks, nightly builds, and releases |
+| `.github/workflows/` | CI checks and releases |
 | `assets/` | The logo used in this README |
 
 The native library links [libghostty-vt](https://github.com/ghostty-org/ghostty) for
@@ -100,9 +100,8 @@ terminal emulation, libssh2 and OpenSSL for SSH, and a Zig Mosh client.
 
 ## Releases
 
-Every push to `main` publishes a nightly APK as a GitHub prerelease. Pushing a tag such
-as `v1.2.3` builds a signed APK and app bundle and attaches them to a draft release as
-`abyssh-1.2.3-arm64-v8a.apk` and `abyssh-1.2.3.aab`.
+Pushing a tag such as `v1.2.3` builds a signed APK and app bundle and attaches them to
+a draft release as `abyssh-1.2.3-arm64-v8a.apk` and `abyssh-1.2.3.aab`.
 
 `mise run release` creates the next tag from the Conventional Commits since the last
 one. Before 1.0, a breaking change bumps the minor version and anything else bumps the

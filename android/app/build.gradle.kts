@@ -99,7 +99,7 @@ android {
         compose = true
     }
     lint {
-        // Nightly and release APKs ship arm64-v8a only (ANDROID_ABI_FILTERS);
+        // Release APKs ship arm64-v8a only (ANDROID_ABI_FILTERS);
         // ChromeOS and x86 devices are not supported targets.
         disable += "ChromeOsAbiSupport"
     }
