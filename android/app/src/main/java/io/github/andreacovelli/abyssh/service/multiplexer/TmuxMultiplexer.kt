@@ -26,7 +26,7 @@ object TmuxMultiplexer : Multiplexer {
                 if (name.isBlank()) return@mapNotNull null
                 RemoteMultiplexerSession(
                     name = name,
-                    attached = trimmed.substring(0, separatorIndex).toIntOrNull()?.let { it > 0 } == true,
+                    clients = trimmed.substring(0, separatorIndex).toIntOrNull()?.coerceAtLeast(0) ?: 0,
                 )
             }
             .toList()
@@ -40,6 +40,9 @@ object TmuxMultiplexer : Multiplexer {
     } else {
         interactiveAttachExistingCommand(sessionName, trustedRemoteName)
     }
+
+    override fun killSessionCommand(sessionName: String): String =
+        "tmux kill-session -t ${shellQuote("=$sessionName")}"
 
     override fun defaultSessionName(
         remoteSessions: Collection<RemoteMultiplexerSession>,

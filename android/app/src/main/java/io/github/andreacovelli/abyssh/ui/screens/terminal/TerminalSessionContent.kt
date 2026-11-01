@@ -461,7 +461,7 @@ private fun TerminalPaletteSheet(
             vm.selectTab(id)
             overlay.showTabSheet = false
         },
-        onCloseTab = vm::closeTab,
+        onCloseTab = host.onCloseTab,
         onAddTab = {
             vm.duplicateTab()
             overlay.showTabSheet = false

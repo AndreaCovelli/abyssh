@@ -1,12 +1,5 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
-import io.github.andreacovelli.abyssh.ui.components.asString
-
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.shape.CircleShape
-import io.github.andreacovelli.abyssh.R
-import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -14,106 +7,140 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSession
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.andreacovelli.abyssh.R
+import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerRegistry
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
+import io.github.andreacovelli.abyssh.ui.components.AbyssDialog
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
+import io.github.andreacovelli.abyssh.ui.components.asString
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
+/**
+ * The multiplexer sessions on one host: [title] names the multiplexer and host. Each row
+ * attaches the active tab to its session, or ends the session after asking;
+ * [openTabCount] says how many tabs show a session, for that question.
+ */
 @Composable
-fun MultiplexerSessionPanel(
-    sessions: List<RemoteMultiplexerSession>,
+internal fun MultiplexerSessionPanel(
+    title: String,
+    rows: List<MultiplexerSessionRowState>,
     loading: Boolean,
     error: String?,
+    openTabCount: (String) -> Int,
     onRefresh: () -> Unit,
     onNew: () -> Unit,
     onAttach: (String) -> Unit,
+    onEnd: (String) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
-    val visibleSessions = if (loading) emptyList() else sessions
+    val visibleRows = if (loading) emptyList() else rows
+    var pendingEnd by remember { mutableStateOf<MultiplexerSessionRowState?>(null) }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AbyssText(stringResource(R.string.multiplexer_sessions), style = typography.body, color = colors.textSecondary)
-                Spacer(modifier = Modifier.weight(1f))
-                if (loading) {
-                    AbyssText("…", style = typography.labelSmall, color = colors.textMuted)
-                } else {
-                    AbyssText("${visibleSessions.size}", style = typography.labelSmall, color = colors.textMuted)
-                }
-            }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AbyssText(
+                title,
+                style = typography.body,
+                color = colors.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            AbyssText(
+                if (loading) "…" else "${visibleRows.size}",
+                style = typography.labelSmall,
+                color = colors.textMuted,
+            )
         }
         if (error != null) {
             AbyssText(
                 error,
                 style = typography.labelSmall,
                 color = colors.error,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
         }
-        if (visibleSessions.isNotEmpty()) {
-            LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f, fill = false)) {
-                items(visibleSessions) { session ->
+        if (visibleRows.isNotEmpty()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+                contentPadding = PaddingValues(horizontal = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                items(visibleRows, key = { it.name }) { row ->
                     MultiplexerSessionRow(
-                        session = session,
+                        row = row,
                         onAttach = {
-                            onAttach(session.name)
+                            onAttach(row.name)
                             onDismiss()
                         },
+                        onEnd = { pendingEnd = row },
                     )
                 }
             }
         }
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            AbyssButton(
-                onClick = onRefresh,
-                variant = AbyssButtonVariant.Ghost,
-                borderColor = colors.textMuted,
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-            ) {
-                AbyssText(stringResource(R.string.action_refresh), style = typography.labelSmall, color = colors.textMuted)
-            }
-            AbyssButton(
+            PanelButton(stringResource(R.string.action_refresh), onClick = onRefresh)
+            PanelButton(
+                stringResource(R.string.multiplexer_new_session),
                 onClick = {
                     onNew()
                     onDismiss()
                 },
-                variant = AbyssButtonVariant.Ghost,
-                borderColor = colors.textMuted,
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-            ) {
-                AbyssText(stringResource(R.string.action_new), style = typography.labelSmall, color = colors.textMuted)
-            }
+            )
         }
+    }
+
+    pendingEnd?.let { row ->
+        EndSessionDialog(
+            row = row,
+            openTabs = openTabCount(row.name),
+            onConfirm = {
+                pendingEnd = null
+                onEnd(row.name)
+            },
+            onDismiss = { pendingEnd = null },
+        )
     }
 }
 
 @Composable
 private fun MultiplexerSessionRow(
-    session: RemoteMultiplexerSession,
+    row: MultiplexerSessionRowState,
     onAttach: () -> Unit,
+    onEnd: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = AbyssColors.current
@@ -125,36 +152,99 @@ private fun MultiplexerSessionRow(
             .clip(MaterialTheme.shapes.medium)
             .border(
                 1.dp,
-                colors.border.copy(alpha = if (session.attached) 0.65f else 0.35f),
+                colors.border.copy(alpha = if (row.current) 0.65f else 0.35f),
                 MaterialTheme.shapes.medium,
             )
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(start = 12.dp, end = 6.dp, top = 2.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // Green marks where you are, as it does in the tab list above.
         Box(
             modifier = Modifier
                 .size(8.dp)
                 .clip(CircleShape)
-                .background(if (session.attached) colors.success else Color.Transparent),
+                .background(if (row.current) colors.success else Color.Transparent),
         )
-        AbyssText(
-            session.name,
-            style = typography.code,
-            color = colors.textPrimary,
-            modifier = Modifier.weight(1f),
-        )
-        if (session.attached) {
-            AbyssText(stringResource(R.string.multiplexer_attached), style = typography.labelSmall, color = colors.textMuted)
+        Column(modifier = Modifier.weight(1f)) {
+            AbyssText(
+                row.name,
+                style = typography.code,
+                color = colors.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val notes = listOfNotNull(
+                stringResource(R.string.multiplexer_current).takeIf { row.current },
+                stringResource(R.string.multiplexer_in_use_elsewhere).takeIf { row.inUseElsewhere },
+            )
+            if (notes.isNotEmpty()) {
+                AbyssText(notes.joinToString(" · "), style = typography.labelSmall, color = colors.textMuted)
+            }
         }
-        AbyssButton(
-            onClick = onAttach,
-            modifier = Modifier.defaultMinSize(minHeight = 48.dp, minWidth = 48.dp),
-            variant = AbyssButtonVariant.Ghost,
-            borderColor = colors.textMuted,
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-        ) {
-            AbyssText(stringResource(R.string.multiplexer_attach), style = typography.labelSmall, color = colors.accent)
+        if (!row.current) {
+            PanelButton(
+                stringResource(R.string.multiplexer_attach),
+                contentDescription = stringResource(R.string.multiplexer_attach_description, row.name),
+                color = colors.accent,
+                onClick = onAttach,
+            )
+        }
+        PanelButton(
+            stringResource(R.string.multiplexer_end),
+            contentDescription = stringResource(R.string.multiplexer_end_description, row.name),
+            onClick = onEnd,
+        )
+    }
+}
+
+@Composable
+private fun PanelButton(
+    text: String,
+    onClick: () -> Unit,
+    contentDescription: String? = null,
+    color: Color = AbyssColors.current.textSecondary,
+) {
+    AbyssButton(
+        onClick = onClick,
+        modifier = Modifier.defaultMinSize(minHeight = 48.dp, minWidth = 48.dp),
+        variant = AbyssButtonVariant.Outlined,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+        contentDescription = contentDescription,
+    ) {
+        AbyssText(text, style = AbyssTypography.current.labelSmall, color = color)
+    }
+}
+
+@Composable
+private fun EndSessionDialog(
+    row: MultiplexerSessionRowState,
+    openTabs: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = AbyssColors.current
+    val typography = AbyssTypography.current
+    AbyssDialog(
+        title = stringResource(R.string.multiplexer_end_title, row.name),
+        confirmLabel = stringResource(R.string.multiplexer_end),
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+    ) {
+        AbyssText(stringResource(R.string.multiplexer_end_body), style = typography.body, color = colors.textSecondary)
+        if (row.inUseElsewhere) {
+            AbyssText(
+                stringResource(R.string.multiplexer_end_body_elsewhere),
+                style = typography.body,
+                color = colors.textSecondary,
+            )
+        }
+        if (openTabs > 0) {
+            AbyssText(
+                pluralStringResource(R.plurals.multiplexer_end_body_tabs, openTabs, openTabs),
+                style = typography.body,
+                color = colors.textSecondary,
+            )
         }
     }
 }
@@ -163,15 +253,19 @@ private fun MultiplexerSessionRow(
 @Composable
 internal fun TerminalMultiplexerPanel(vm: TerminalViewModel, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
     val activeTab by vm.activeTab.collectAsStateWithLifecycle()
-    if (activeTab?.spec?.usesRuntimeMultiplexer != true) return
+    val spec = activeTab?.spec?.takeIf { it.usesRuntimeMultiplexer } ?: return
     val state by vm.multiplexer.state.collectAsStateWithLifecycle()
+    val type = spec.multiplexer ?: MultiplexerRegistry.defaultType
     MultiplexerSessionPanel(
-        sessions = state.sessions,
+        title = stringResource(R.string.multiplexer_sessions_on, type.label, spec.tabLabel),
+        rows = multiplexerSessionRows(state.sessions, spec.multiplexerSessionName),
         loading = state.sessionsLoading,
         error = state.sessionsError?.asString(),
+        openTabCount = vm.multiplexer::openTabCount,
         onRefresh = vm.multiplexer::listSessionsForActiveHost,
         onNew = vm.multiplexer::createNextSession,
         onAttach = { name -> vm.multiplexer.switchToSession(name, state.sessionsSourceTabId) },
+        onEnd = { name -> vm.multiplexer.endSession(name, state.sessionsSourceTabId) },
         onDismiss = onDismiss,
         modifier = modifier,
     )

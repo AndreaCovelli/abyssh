@@ -21,6 +21,9 @@ interface Multiplexer {
         trustedRemoteName: Boolean = false,
     ): String
 
+    /** Ends session [sessionName] and every program in it; exits non-zero when it fails. */
+    fun killSessionCommand(sessionName: String): String
+
     fun defaultSessionName(
         remoteSessions: Collection<RemoteMultiplexerSession>,
         localSessionNames: Collection<String>,

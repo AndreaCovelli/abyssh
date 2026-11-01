@@ -70,7 +70,7 @@ class TerminalMultiplexer internal constructor(
         val duplicateSpec = spec.withNewSession()
         scope.launch(Dispatchers.IO) {
             try {
-                val result = runCatching { sessionRepository.resolveMultiplexerSessionName(duplicateSpec) }
+                val result = runCatching { sessionRepository.multiplexerSessions.resolveName(duplicateSpec) }
                 withContext(Dispatchers.Main) {
                     result.fold(
                         onSuccess = { name -> sessionRepository.openTab(duplicateSpec.copy(multiplexerSessionName = name)) },
@@ -161,7 +161,7 @@ class TerminalMultiplexer internal constructor(
             val result =
                 try {
                     Result.success(
-                        sessionRepository.resolveMultiplexerSessionName(
+                        sessionRepository.multiplexerSessions.resolveName(
                             spec = spec,
                             reuseDetachedAbysshSession =
                                 prepared is PendingAction.Open && spec.multiplexerSessionName.isNullOrBlank(),
@@ -267,7 +267,7 @@ class TerminalMultiplexer internal constructor(
             )
         }
         scope.launch(Dispatchers.IO) {
-            val result = runCatching { sessionRepository.listMultiplexerSessions(spec) }
+            val result = runCatching { sessionRepository.multiplexerSessions.list(spec) }
             withContext(Dispatchers.Main) {
                 val stale = requestGeneration != sessionListGeneration ||
                     sessionRepository.activeTab.value?.id != sourceTabId
@@ -290,7 +290,7 @@ class TerminalMultiplexer internal constructor(
         val tab = sessionRepository.activeTab.value ?: return
         val nextSpec = tab.spec.withNewSession()
         scope.launch(Dispatchers.IO) {
-            val result = runCatching { sessionRepository.resolveMultiplexerSessionName(nextSpec) }
+            val result = runCatching { sessionRepository.multiplexerSessions.resolveName(nextSpec) }
             withContext(Dispatchers.Main) {
                 result.fold(
                     onSuccess = { name ->
@@ -312,6 +312,45 @@ class TerminalMultiplexer internal constructor(
      * still belongs to the active tab or its host.
      */
     fun switchToSession(name: String, sourceTabId: String?) {
+        if (!listMatchesActiveTab(sourceTabId)) return
+        sessionRepository.switchActiveMultiplexerSession(name)
+    }
+
+    /**
+     * Ends session [name] on the active tab's host from the panel, closes the tabs that
+     * showed it, and loads the list again.
+     */
+    fun endSession(name: String, sourceTabId: String?) {
+        if (!listMatchesActiveTab(sourceTabId)) return
+        val spec = sessionRepository.activeTab.value?.spec?.withDefaultMultiplexer() ?: return
+        _state.update { it.copy(sessionsLoading = true, sessionsError = null) }
+        scope.launch(Dispatchers.IO) {
+            val result = runCatching { sessionRepository.multiplexerSessions.kill(spec, name) }
+            withContext(Dispatchers.Main) {
+                _state.update { it.copy(sessionsLoading = false) }
+                result.fold(
+                    onSuccess = {
+                        sessionRepository.closeMultiplexerSessionTabs(spec, name)
+                        listSessionsForActiveHost()
+                    },
+                    onFailure = { error ->
+                        _state.update {
+                            it.copy(sessionsError = error.toUiText(UiText.Resource(R.string.multiplexer_end_failed)))
+                        }
+                    },
+                )
+            }
+        }
+    }
+
+    /** How many open tabs show session [name] on the active tab's host. */
+    fun openTabCount(name: String): Int {
+        val spec = sessionRepository.activeTab.value?.spec ?: return 0
+        return sessionRepository.multiplexerSessions.tabsShowing(spec, name).size
+    }
+
+    /** Whether the panel's list still belongs to the active tab or its host; marks it stale when not. */
+    private fun listMatchesActiveTab(sourceTabId: String?): Boolean {
         val activeTab = sessionRepository.activeTab.value
         val state = _state.value
         val activeHostId = activeTab?.spec?.hostId
@@ -319,17 +358,15 @@ class TerminalMultiplexer internal constructor(
             state.sessionsSourceTabId == sourceTabId &&
             activeTab?.id == sourceTabId
         val listMatchesHost = activeHostId != null && state.sessionsSourceHostId == activeHostId
-        if (activeTab == null || (!listMatchesTab && !listMatchesHost)) {
-            _state.value = state.copy(
-                sessions = emptyList(),
-                sessionsLoading = false,
-                sessionsError = UiText.Resource(R.string.multiplexer_sessions_stale),
-                sessionsSourceTabId = activeTab?.id,
-                sessionsSourceHostId = activeHostId,
-            )
-            return
-        }
-        sessionRepository.switchActiveMultiplexerSession(name)
+        if (activeTab != null && (listMatchesTab || listMatchesHost)) return true
+        _state.value = state.copy(
+            sessions = emptyList(),
+            sessionsLoading = false,
+            sessionsError = UiText.Resource(R.string.multiplexer_sessions_stale),
+            sessionsSourceTabId = activeTab?.id,
+            sessionsSourceHostId = activeHostId,
+        )
+        return false
     }
 }
 

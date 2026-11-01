@@ -79,6 +79,19 @@ internal class RemoteMultiplexerProbe(
         return multiplexer.parseSessions(sessions)
     }
 
+    /** Ends session [name] on [spec]'s host and the programs running in it. */
+    fun killSession(spec: TabSpec, name: String) {
+        val type = spec.multiplexer ?: error("No multiplexer selected")
+        val multiplexer = supportedMultiplexer(type, spec.transport)
+        // The exec channel only carries stdout, so the error message is sent there too.
+        val result = runCommand(spec, "${multiplexer.killSessionCommand(name)} 2>&1")
+        if (!result.isSuccess) {
+            val reason = result.output.trim()
+            val text = if (reason.isEmpty()) UiText.Resource(R.string.multiplexer_end_failed) else UiText.Raw(reason)
+            throw UiTextException(text, "Failed to end ${type.label} session")
+        }
+    }
+
     /**
      * The session a tab for [spec] attaches to: its own name when it still applies, a
      * detached Abyssh session when [reuseDetachedAbysshSession] allows one, or a new name

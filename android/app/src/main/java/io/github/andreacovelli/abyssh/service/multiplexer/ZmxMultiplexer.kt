@@ -28,7 +28,7 @@ object ZmxMultiplexer : Multiplexer {
                 val name = fields["name"]?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 RemoteMultiplexerSession(
                     name = name,
-                    attached = fields["clients"]?.toIntOrNull()?.let { it > 0 } == true,
+                    clients = fields["clients"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0,
                 )
             }
             .toList()
@@ -46,6 +46,8 @@ object ZmxMultiplexer : Multiplexer {
                 "else printf 'zmx session %s is no longer available\\n' $target; exec \"\${SHELL:-/bin/sh}\" -l; fi"
         }
     }
+
+    override fun killSessionCommand(sessionName: String): String = "zmx kill ${shellQuote(sessionName)}"
 
     override fun defaultSessionName(
         remoteSessions: Collection<RemoteMultiplexerSession>,

@@ -17,4 +17,6 @@ internal class TerminalSessionHost(
     val tabStrip: (@Composable () -> Unit)?,
     val onNewConnection: () -> Unit,
     val onEndSession: () -> Unit,
+    /** Closes a tab from a tab list, asking first when that kills a tmux window. */
+    val onCloseTab: (String) -> Unit,
 )

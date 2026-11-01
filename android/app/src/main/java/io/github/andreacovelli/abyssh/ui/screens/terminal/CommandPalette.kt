@@ -131,7 +131,11 @@ fun CommandPalette(
                 }
                 entries.getOrNull(focusedTabIndex)?.first?.let { FocusedTabPreview(it) }
                 PaletteDivider()
-                PaletteFooter(onSearch = onSearch, onAddTab = onAddTab)
+                PaletteFooter(
+                    onSearch = onSearch,
+                    onAddTab = onAddTab,
+                    addsWindow = tabs.firstOrNull { it.id == activeTabId }?.spec?.usesTmuxControlMode == true,
+                )
                 multiplexerPanel()
             }
             accessoryBar(
@@ -235,7 +239,7 @@ private fun PaletteTabRow(
         modifier =
             Modifier.fillMaxWidth()
                 .clip(MaterialTheme.shapes.medium)
-                .background(if (isFocused) colors.accent.copy(alpha = 0.14f) else Color.Transparent)
+                .tabFocusOutline(isFocused)
                 .then(if (canClose) Modifier.onMiddleClick(onClose) else Modifier)
                 .clickable(interactionSource = interactionSource, indication = LocalIndication.current, onClick = onSelect)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -257,9 +261,10 @@ private fun PaletteTabRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            title?.takeIf { it != alias }?.let {
+            val subtitle = listOfNotNull(terminalTabMultiplexerLabel(tab), title?.takeIf { it != alias })
+            if (subtitle.isNotEmpty()) {
                 AbyssText(
-                    it,
+                    subtitle.joinToString("  ·  "),
                     style = AbyssTypography.current.codeSmall,
                     color = colors.textMuted,
                     maxLines = 1,
@@ -324,7 +329,7 @@ private fun FocusedTabPreview(tab: TabSession) {
 }
 
 @Composable
-private fun PaletteFooter(onSearch: () -> Unit, onAddTab: () -> Unit) {
+private fun PaletteFooter(onSearch: () -> Unit, onAddTab: () -> Unit, addsWindow: Boolean) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
     Row(
@@ -348,7 +353,11 @@ private fun PaletteFooter(onSearch: () -> Unit, onAddTab: () -> Unit) {
             variant = AbyssButtonVariant.Outlined,
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
         ) {
-            AbyssText(stringResource(R.string.tab_manager_new), style = typography.labelSmall, color = colors.accent)
+            AbyssText(
+                stringResource(if (addsWindow) R.string.tab_manager_new_window_short else R.string.tab_manager_new),
+                style = typography.labelSmall,
+                color = colors.accent,
+            )
         }
     }
 }

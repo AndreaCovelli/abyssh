@@ -10,7 +10,6 @@ import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.model.UiText
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerRegistry
-import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSession
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -50,6 +49,7 @@ class TerminalSessionRepository private constructor(application: Application) {
     private val clipboard = appContext.getSystemService(ClipboardManager::class.java)
     private val settingsRepository = SettingsRepository.getInstance(appContext)
     private val preflight = MultiplexerPreflight(hostKeyStore)
+    val multiplexerSessions = RemoteMultiplexerSessions(preflight) { _tabs.value }
     private val foreground = SessionForegroundTracker(appContext)
     private var attachedClients = 0
 
@@ -133,14 +133,6 @@ class TerminalSessionRepository private constructor(application: Application) {
     fun sftpFor(tabId: String): SftpSession? =
         _tabs.value.firstOrNull { it.id == tabId && it.spec.transport != Transport.LocalShell }?.engine?.sftp
 
-    suspend fun resolveMultiplexerSessionName(spec: TabSpec, reuseDetachedAbysshSession: Boolean = false): String {
-        val localNames = openMultiplexerSessionNames(spec)
-        return preflight.run { probe -> probe.resolveSessionName(spec, localNames, reuseDetachedAbysshSession) }
-    }
-
-    suspend fun listMultiplexerSessions(spec: TabSpec): List<RemoteMultiplexerSession> =
-        preflight.run { probe -> probe.listSessions(spec) }
-
     /**
      * Opens a tab for [spec]. A tmux control-mode tab joins its host's control session,
      * which opens a tab for each tmux window; a host whose tmux is too old for control
@@ -211,8 +203,24 @@ class TerminalSessionRepository private constructor(application: Application) {
         activeTab.value?.let(::reconnectTab)
     }
 
+    /** Closes the tabs of a multiplexer session that ended, without sending tmux anything more. */
+    fun closeMultiplexerSessionTabs(spec: TabSpec, name: String) {
+        val tabs = multiplexerSessions.tabsShowing(spec, name)
+        tabs.mapNotNull { it.engine.tmuxControl }.distinct().forEach(tmuxTabs::end)
+        tabs.filter { it.engine.tmuxControl == null }.forEach { closeTab(it.id) }
+    }
+
+    /**
+     * Shows multiplexer session [sessionName] in the active tab, or selects the tab that
+     * already shows it, so one session never gets two sets of tabs.
+     */
     fun switchActiveMultiplexerSession(sessionName: String): Boolean {
         val tab = activeTab.value ?: return false
+        if (tab.spec.multiplexerSessionName == sessionName) return true
+        multiplexerSessions.tabsShowing(tab.spec, sessionName).firstOrNull()?.let { open ->
+            selectTab(open.id)
+            return true
+        }
         if (tab.engine.tmuxControl != null) return tmuxTabs.switchSession(tab, sessionName)
         val type = tab.spec.multiplexer ?: MultiplexerRegistry.defaultType
         MultiplexerRegistry.forType(type) ?: return false
@@ -261,7 +269,7 @@ class TerminalSessionRepository private constructor(application: Application) {
             }
             // The host just got a multiplexer, or a different one: find a session first.
             scope.launch {
-                val name = runCatching { resolveMultiplexerSessionName(spec) }.getOrNull()
+                val name = runCatching { multiplexerSessions.resolveName(spec) }.getOrNull()
                 if (_tabs.value.none { it.id == tab.id } || tab.spec != spec) return@launch
                 tab.spec = if (name != null) spec.copy(multiplexerSessionName = name) else spec.copy(multiplexer = null)
                 reopenOrReconnect(tab)
@@ -304,13 +312,6 @@ class TerminalSessionRepository private constructor(application: Application) {
     /** Answers the host key prompt: a multiplexer check's first, then the active tab's. */
     fun respondToHostKey(accepted: Boolean) {
         if (!preflight.respond(accepted)) activeTab.value?.engine?.respondToHostKey(accepted)
-    }
-
-    private fun openMultiplexerSessionNames(spec: TabSpec): List<String> {
-        val type = spec.multiplexer ?: MultiplexerRegistry.defaultType
-        return tabsForHost(spec.hostId)
-            .filter { it.spec.multiplexer == type }
-            .mapNotNull { it.spec.multiplexerSessionName }
     }
 
     private fun publishTerminalClipboard(tabId: String, text: String) {

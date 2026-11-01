@@ -8,11 +8,11 @@ class MultiplexerSessionAllocatorTest {
     fun reusesHighestDetachedAbysshSessionOutsideLocalTabs() {
         val reusable = MultiplexerSessionAllocator.reusableDetachedAbysshSessionName(
             remoteSessions = listOf(
-                RemoteMultiplexerSession("abyssh-1", attached = false),
-                RemoteMultiplexerSession("abyssh-2", attached = false),
-                RemoteMultiplexerSession("abyssh-3", attached = false),
-                RemoteMultiplexerSession("abyssh-5", attached = true),
-                RemoteMultiplexerSession("abyssh-7-extra", attached = false),
+                RemoteMultiplexerSession("abyssh-1", clients = 0),
+                RemoteMultiplexerSession("abyssh-2", clients = 0),
+                RemoteMultiplexerSession("abyssh-3", clients = 0),
+                RemoteMultiplexerSession("abyssh-5", clients = 1),
+                RemoteMultiplexerSession("abyssh-7-extra", clients = 0),
             ),
             localSessionNames = listOf("abyssh-3"),
         )
@@ -24,9 +24,9 @@ class MultiplexerSessionAllocatorTest {
     fun doesNotReuseAttachedOrLocalAbysshSessions() {
         val reusable = MultiplexerSessionAllocator.reusableDetachedAbysshSessionName(
             remoteSessions = listOf(
-                RemoteMultiplexerSession("abyssh-1", attached = true),
-                RemoteMultiplexerSession("abyssh-2", attached = false),
-                RemoteMultiplexerSession("work", attached = false),
+                RemoteMultiplexerSession("abyssh-1", clients = 1),
+                RemoteMultiplexerSession("abyssh-2", clients = 0),
+                RemoteMultiplexerSession("work", clients = 0),
             ),
             localSessionNames = listOf("abyssh-2"),
         )
@@ -38,9 +38,9 @@ class MultiplexerSessionAllocatorTest {
     fun skipsUsedRemoteAndLocalNames() {
         val next = MultiplexerSessionAllocator.nextAbysshSessionName(
             remoteSessions = listOf(
-                RemoteMultiplexerSession("abyssh-1", attached = false),
-                RemoteMultiplexerSession("main", attached = true),
-                RemoteMultiplexerSession("abyssh-3", attached = false),
+                RemoteMultiplexerSession("abyssh-1", clients = 0),
+                RemoteMultiplexerSession("main", clients = 1),
+                RemoteMultiplexerSession("abyssh-3", clients = 0),
             ),
             localSessionNames = listOf("abyssh-2"),
         )
@@ -51,7 +51,7 @@ class MultiplexerSessionAllocatorTest {
     @Test
     fun ignoresPrefixCollisions() {
         val next = MultiplexerSessionAllocator.nextAbysshSessionName(
-            remoteSessions = listOf(RemoteMultiplexerSession("abyssh-2", attached = false)),
+            remoteSessions = listOf(RemoteMultiplexerSession("abyssh-2", clients = 0)),
             localSessionNames = listOf("abyssh-1-extra"),
         )
 
