@@ -435,6 +435,13 @@ internal class TerminalCanvasGestures(
             lastEventUptime = event.changes.maxOfOrNull { it.uptimeMillis } ?: lastEventUptime
             val pressed = event.changes.filter { it.pressed }
             if (pressed.isEmpty()) {
+                // Compose delivers a cancelled touch, such as one the system took for the
+                // back gesture, as a lift that's already consumed. It isn't a tap: tapping
+                // shows the keyboard, which would undo the back gesture hiding it.
+                if (event.changes.all { it.isConsumed }) {
+                    finished = true
+                    return
+                }
                 event.changes.firstOrNull { it.id == lastSinglePointerId }?.let { lift ->
                     velocity.addPosition(lift.uptimeMillis, env.value.toSnapshot(lift.position))
                     lastPointerPos = lift.position
