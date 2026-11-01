@@ -50,6 +50,8 @@ internal class TerminalEmulator(
     private val state: MutableStateFlow<SessionState>,
     private val publishClipboardText: (String) -> Unit,
     private val scrollbackLimitBytes: () -> Int,
+    // Runs after each update to [state], as when a tmux pane's terminal feeds its window's view.
+    private val onPublished: () -> Unit = {},
 ) {
     var handle: Long = 0L
         private set
@@ -245,6 +247,7 @@ internal class TerminalEmulator(
                     )
                 }
             }
+            onPublished()
         } catch (e: Exception) {
             Log.e(TAG, "emitSnapshot failed", e)
         }
@@ -262,6 +265,7 @@ internal class TerminalEmulator(
     private fun publishMetadata() {
         val bellCount = pollMetadata()
         state.update { it.copy(title = title, pwd = pwd, bellCount = bellCount) }
+        onPublished()
     }
 
     private fun publishClipboard(text: String) {

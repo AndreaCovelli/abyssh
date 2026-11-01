@@ -13,8 +13,8 @@ internal const val TMUX_PAUSE_AFTER_SECONDS = 30
 /** How many history lines a pane's terminal gets when it is filled in from tmux. */
 internal const val TMUX_HISTORY_LINES = 5000
 
-/** A window in the attached session, and the size of its active pane. */
-internal data class TmuxWindow(val id: Int, val active: Boolean, val paneId: Int, val size: TmuxPaneSize)
+/** A window in the attached session, its active pane, and where each of its panes sits. */
+internal data class TmuxWindow(val id: Int, val active: Boolean, val paneId: Int, val layout: TmuxWindowLayout)
 
 /** The commands Abyssh sends to tmux in control mode, one per line, and readers for their replies. */
 internal object TmuxControlCommands {
@@ -57,16 +57,22 @@ internal object TmuxControlCommands {
 
     fun continuePane(paneId: Int): String = "refresh-client -A '%$paneId:continue'"
 
-    const val LIST_WINDOWS = "list-windows -F '#{window_id} #{window_active} #{pane_id} #{pane_width} #{pane_height}'"
+    /** Lists the windows with the layout they show, which has only the zoomed pane while one is zoomed. */
+    const val LIST_WINDOWS =
+        "list-windows -F '#{window_id} #{window_active} #{pane_id} #{pane_width} #{pane_height} #{window_visible_layout}'"
 
+    /** Reads [LIST_WINDOWS]; a window whose layout can't be read shows just its active pane. */
     fun parseWindows(lines: List<String>): List<TmuxWindow> = lines.mapNotNull { line ->
         val parts = line.trim().split(' ')
-        if (parts.size != 5) return@mapNotNull null
+        if (parts.size !in 5..6) return@mapNotNull null
+        val paneId = paneId(parts[2]) ?: return@mapNotNull null
+        val size = TmuxPaneSize(parts[3].toIntOrNull() ?: return@mapNotNull null, parts[4].toIntOrNull() ?: return@mapNotNull null)
+        val layout = parts.getOrNull(5)?.let(TmuxLayout::parse)?.takeIf { it.pane(paneId) != null }
         TmuxWindow(
             id = windowId(parts[0]) ?: return@mapNotNull null,
             active = parts[1] == "1",
-            paneId = paneId(parts[2]) ?: return@mapNotNull null,
-            size = TmuxPaneSize(parts[3].toIntOrNull() ?: return@mapNotNull null, parts[4].toIntOrNull() ?: return@mapNotNull null),
+            paneId = paneId,
+            layout = layout ?: TmuxWindowLayout.single(paneId, size),
         )
     }
 
@@ -82,6 +88,9 @@ internal object TmuxControlCommands {
      * the app's size only once it is selected.
      */
     fun selectWindow(windowId: Int): String = "select-window -t @$windowId"
+
+    /** Makes [paneId] its window's active pane, which keys sent without a target go to. */
+    fun selectPane(paneId: Int): String = "select-pane -t %$paneId"
 
     const val DETACH = "detach-client"
 

@@ -38,8 +38,24 @@ class TmuxControlCommandsTest {
     @Test
     fun parsesWindowsAndNewWindowReplies() {
         assertEquals(
-            listOf(TmuxWindow(0, true, 0, TmuxPaneSize(40, 6)), TmuxWindow(3, false, 7, TmuxPaneSize(80, 23))),
-            TmuxControlCommands.parseWindows(listOf("@0 1 %0 40 6", "@3 0 %7 80 23", "garbage")),
+            listOf(
+                TmuxWindow(0, true, 0, TmuxWindowLayout.single(0, TmuxPaneSize(40, 6))),
+                TmuxWindow(3, false, 7, TmuxWindowLayout.single(7, TmuxPaneSize(80, 23))),
+                TmuxWindow(
+                    4,
+                    false,
+                    9,
+                    TmuxWindowLayout(81, 23, listOf(TmuxPaneRect(8, 0, 0, 40, 23), TmuxPaneRect(9, 41, 0, 40, 23))),
+                ),
+            ),
+            TmuxControlCommands.parseWindows(
+                listOf(
+                    "@0 1 %0 40 6",
+                    "@3 0 %7 80 23 broken",
+                    "@4 0 %9 40 23 b25d,81x23,0,0{40x23,0,0,8,40x23,41,0,9}",
+                    "garbage",
+                ),
+            ),
         )
         assertEquals(1, TmuxControlCommands.parseNewWindow(listOf("@1")))
         assertNull(TmuxControlCommands.parseNewWindow(emptyList()))

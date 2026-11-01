@@ -88,6 +88,9 @@ class TerminalRow(
     }
 }
 
+/** A rectangle of cells, from its top left cell. */
+data class TerminalCellArea(val col: Int, val row: Int, val cols: Int, val rows: Int)
+
 /**
  * The visible terminal: its size, cursor, default colors, and [rowData], one
  * [TerminalRow] per row. Cells are addressed by index, row * cols + col.
@@ -119,6 +122,11 @@ data class TerminalSnapshot(
     val appHandlesSelectionDrag: Boolean = false,
     /** True when the app has enabled any mouse mode, so taps reach it as clicks. */
     val appTracksMouse: Boolean = false,
+    /**
+     * The cells of the terminal that keys go to, when the snapshot shows several, as a
+     * split tmux window does. Search results come from that terminal and stay inside it.
+     */
+    val activeArea: TerminalCellArea? = null,
 ) {
     init {
         require(rowData.size == rows) { "Snapshot has ${rowData.size} rows, expected $rows" }
