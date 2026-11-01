@@ -42,7 +42,8 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 /**
  * The multiplexer sessions on one host: [title] names the multiplexer and host. Each row
  * attaches the active tab to its session, or ends the session after asking;
- * [openTabCount] says how many tabs show a session, for that question.
+ * [openTabCount] says how many tabs show a session, for that question. While [loading],
+ * the count shows "…" and the rows already loaded stay.
  */
 @Composable
 internal fun MultiplexerSessionPanel(
@@ -60,7 +61,6 @@ internal fun MultiplexerSessionPanel(
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
-    val visibleRows = if (loading) emptyList() else rows
     var pendingEnd by remember { mutableStateOf<MultiplexerSessionRowState?>(null) }
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -77,7 +77,7 @@ internal fun MultiplexerSessionPanel(
                 modifier = Modifier.weight(1f),
             )
             AbyssText(
-                if (loading) "…" else "${visibleRows.size}",
+                if (loading) "…" else "${rows.size}",
                 style = typography.labelSmall,
                 color = colors.textMuted,
             )
@@ -90,13 +90,14 @@ internal fun MultiplexerSessionPanel(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
         }
-        if (visibleRows.isNotEmpty()) {
+        // Rows stay while the list reloads, so a refresh doesn't empty the panel.
+        if (rows.isNotEmpty()) {
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
                 contentPadding = PaddingValues(horizontal = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                items(visibleRows, key = { it.name }) { row ->
+                items(rows, key = { it.name }) { row ->
                     MultiplexerSessionRow(
                         row = row,
                         onAttach = {

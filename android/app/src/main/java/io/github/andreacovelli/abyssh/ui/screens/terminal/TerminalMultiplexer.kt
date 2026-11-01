@@ -250,7 +250,10 @@ class TerminalMultiplexer internal constructor(
         return true
     }
 
-    /** Loads the sessions on the active tab's host for the session panel. */
+    /**
+     * Loads the sessions on the active tab's host for the session panel. The list already
+     * shown stays while the new one loads, as long as it is for the same host.
+     */
     fun listSessionsForActiveHost() {
         val tab = sessionRepository.activeTab.value ?: return
         val requestGeneration = ++sessionListGeneration
@@ -258,8 +261,9 @@ class TerminalMultiplexer internal constructor(
         val sourceHostId = tab.spec.hostId
         val spec = tab.spec.withDefaultMultiplexer()
         _state.update {
+            val sameHost = sourceHostId != null && it.sessionsSourceHostId == sourceHostId
             it.copy(
-                sessions = emptyList(),
+                sessions = if (sameHost) it.sessions else emptyList(),
                 sessionsLoading = true,
                 sessionsError = null,
                 sessionsSourceTabId = sourceTabId,
