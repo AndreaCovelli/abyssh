@@ -289,6 +289,17 @@ class TerminalMultiplexer internal constructor(
         }
     }
 
+    /**
+     * Loads the list again each time the active tab's host reports that its sessions
+     * changed, until cancelled. The panel runs this while it is open.
+     */
+    suspend fun reloadSessionsOnChange() {
+        sessionRepository.multiplexerSessionsChanged.collect { sessionKey ->
+            val spec = sessionRepository.activeTab.value?.spec ?: return@collect
+            if (spec.usesRuntimeMultiplexer && spec.sessionKey == sessionKey) listSessionsForActiveHost()
+        }
+    }
+
     /** Opens a tab in a new session on the active tab's host. */
     fun createNextSession() {
         val tab = sessionRepository.activeTab.value ?: return

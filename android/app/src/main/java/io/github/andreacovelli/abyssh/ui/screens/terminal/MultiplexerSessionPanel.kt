@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -256,6 +257,8 @@ internal fun TerminalMultiplexerPanel(vm: TerminalViewModel, onDismiss: () -> Un
     val activeTab by vm.activeTab.collectAsStateWithLifecycle()
     val spec = activeTab?.spec?.takeIf { it.usesRuntimeMultiplexer } ?: return
     val state by vm.multiplexer.state.collectAsStateWithLifecycle()
+    // tmux control mode reports when sessions come and go, so the open panel keeps up.
+    LaunchedEffect(vm.multiplexer) { vm.multiplexer.reloadSessionsOnChange() }
     val type = spec.multiplexer ?: MultiplexerRegistry.defaultType
     MultiplexerSessionPanel(
         title = stringResource(R.string.multiplexer_sessions_on, type.label, spec.tabLabel),

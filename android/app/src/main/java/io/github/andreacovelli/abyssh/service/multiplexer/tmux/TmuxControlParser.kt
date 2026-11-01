@@ -30,6 +30,12 @@ internal sealed interface TmuxControlEvent {
     /** This client is now attached to session [sessionId], named [name]. */
     data class SessionChanged(val sessionId: Int, val name: String) : TmuxControlEvent
 
+    /**
+     * The server's sessions changed: one was created, ended, or renamed, or another client
+     * attached to one or detached.
+     */
+    data object SessionsChanged : TmuxControlEvent
+
     /** The client is leaving control mode: detached, or its session ended. */
     data class Exit(val reason: String?) : TmuxControlEvent
 }
@@ -131,6 +137,8 @@ internal class TmuxControlParser {
                 val sessionId = args.getOrNull(1)?.removePrefix("$")?.toIntOrNull() ?: return null
                 TmuxControlEvent.SessionChanged(sessionId, text.substringAfter(' ').substringAfter(' ', ""))
             }
+            "%sessions-changed", "%session-renamed", "%client-session-changed", "%client-detached" ->
+                TmuxControlEvent.SessionsChanged
             "%exit" -> TmuxControlEvent.Exit(text.substringAfter(' ', "").ifEmpty { null })
             else -> null
         }

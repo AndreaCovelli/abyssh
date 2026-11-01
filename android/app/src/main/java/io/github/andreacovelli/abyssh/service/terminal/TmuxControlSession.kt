@@ -74,6 +74,9 @@ internal interface TmuxControlHost {
 
     /** The client now shows session [name], so new connections should attach to it. */
     fun sessionRenamed(control: TmuxControlSession, name: String)
+
+    /** The sessions on [control]'s tmux server changed, so a list of them is out of date. */
+    fun sessionsChanged(control: TmuxControlSession)
 }
 
 /**
@@ -312,6 +315,7 @@ internal class TmuxControlSession(
             TmuxControlEvent.WindowsChanged -> if (attached) windows.listWindows()
             is TmuxControlEvent.LayoutChanged -> windows.layoutChanged(event.windowId, event.layout)
             is TmuxControlEvent.Pause -> windows.paused(event.paneId)
+            TmuxControlEvent.SessionsChanged -> post { sessionsChanged(this@TmuxControlSession) }
             is TmuxControlEvent.Exit -> {
                 exited = true
                 if (!disposed) {

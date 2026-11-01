@@ -7,7 +7,8 @@ import kotlinx.coroutines.CoroutineScope
 /**
  * The tmux control sessions behind the open tabs, and the tabs each one shows: one per
  * tmux window. Runs on the main thread, as the repository does; [addTab], [removeTab],
- * and [selectTab] change the repository's tabs without touching tmux.
+ * and [selectTab] change the repository's tabs without touching tmux. [sessionsChanged]
+ * hears when a control session reports that its server's sessions changed.
  */
 internal class TmuxControlTabs(
     private val scope: CoroutineScope,
@@ -17,6 +18,7 @@ internal class TmuxControlTabs(
     private val addTab: (spec: TabSpec, control: TmuxControlSession, windowId: Int?, select: Boolean) -> TabSession,
     private val removeTab: (TabSession) -> Unit,
     private val selectTab: (String) -> Unit,
+    private val sessionsChanged: (TabSpec) -> Unit,
 ) : TmuxControlHost {
     private val sessions = mutableListOf<TmuxControlSession>()
 
@@ -123,6 +125,10 @@ internal class TmuxControlTabs(
     override fun sessionRenamed(control: TmuxControlSession, name: String) {
         control.spec = control.spec.copy(multiplexerSessionName = name, multiplexerCreateIfMissing = false)
         tabsOf(control).forEach { it.spec = it.spec.copy(multiplexerSessionName = name, multiplexerCreateIfMissing = false) }
+    }
+
+    override fun sessionsChanged(control: TmuxControlSession) {
+        if (control in sessions) sessionsChanged(control.spec)
     }
 
     private fun tabsOf(control: TmuxControlSession): List<TabSession> = tabs().filter { it.engine.tmuxControl === control }
