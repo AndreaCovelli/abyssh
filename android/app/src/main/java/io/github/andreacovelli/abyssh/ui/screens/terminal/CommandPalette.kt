@@ -318,7 +318,7 @@ private fun FocusedTabPreview(tab: TabSession) {
                 selectionForegroundColor = Color.Transparent,
                 onTap = {},
                 onPrimaryClick = { _, _, _ -> },
-                onScroll = { _, _, _ -> },
+                onScroll = { _, _, _, _ -> },
                 onFontSizeChange = {},
                 onSelectionChanged = {},
                 // A screen taller than the preview is drawn shifted up; only the part in view shows.

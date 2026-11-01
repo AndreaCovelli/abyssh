@@ -18,6 +18,7 @@ import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pinch
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.andreacovelli.abyssh.R
@@ -41,6 +42,7 @@ class TerminalCanvasGestureTest {
     private val linkTaps = mutableListOf<String?>()
     private val clicks = mutableListOf<Offset>()
     private val scrolls = mutableListOf<Int>()
+    private val momentumScrolls = mutableListOf<Int>()
 
     private fun snapshot(appTracksMouse: Boolean, vararg rows: String): TerminalSnapshot {
         val cols = 40
@@ -69,7 +71,7 @@ class TerminalCanvasGestureTest {
                 onResize = { _, _, w, h, _, _ -> cellWidth = w; cellHeight = h },
                 onLinkTap = { _, _, url, noLink -> if (url == null) noLink() else linkTaps += url },
                 onPrimaryClick = { _, x, y -> clicks += Offset(x, y) },
-                onScroll = { delta, _, _ -> scrolls += delta },
+                onScroll = { delta, _, _, momentum -> if (momentum) momentumScrolls += delta else scrolls += delta },
             )
         }
         compose.waitUntil { cellWidth > 0 && cellHeight > 0 }
@@ -115,6 +117,40 @@ class TerminalCanvasGestureTest {
         }
         compose.waitUntil { scrolls.isNotEmpty() }
         assertEquals(3, kotlin.math.abs(scrolls.sum()))
+    }
+
+    @Test
+    fun fastSwipeFlingsOnAndATouchStopsItWithoutClicking() {
+        show(snapshot(appTracksMouse = false, "a", "b", "c"))
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("canvas").performTouchInput {
+            swipeDown(startY = top + 1f, endY = bottom - 1f, durationMillis = 60)
+        }
+        compose.mainClock.advanceTimeBy(150)
+        assertTrue(scrolls.sum() < 0)
+        assertTrue(momentumScrolls.isNotEmpty())
+        assertTrue(momentumScrolls.all { it < 0 })
+
+        compose.onNodeWithTag("canvas").performTouchInput { click(center) }
+        compose.mainClock.advanceTimeBy(50)
+        val stoppedAt = momentumScrolls.size
+        compose.mainClock.advanceTimeBy(2_000)
+        assertEquals(stoppedAt, momentumScrolls.size)
+        assertTrue(clicks.isEmpty())
+    }
+
+    @Test
+    fun liftingAfterHoldingStillDoesNotFling() {
+        show(snapshot(appTracksMouse = false, "a", "b", "c"))
+        compose.onNodeWithTag("canvas").performTouchInput {
+            down(Offset(centerX, top + 1f))
+            moveBy(Offset(0f, height / 2f))
+            advanceEventTime(300)
+            up()
+        }
+        compose.mainClock.advanceTimeBy(2_000)
+        assertTrue(scrolls.sum() < 0)
+        assertTrue(momentumScrolls.isEmpty())
     }
 
     @Test

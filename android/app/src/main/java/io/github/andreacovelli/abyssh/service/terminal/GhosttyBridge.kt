@@ -25,7 +25,12 @@ class GhosttyBridge {
     external fun nativeDestroy(handle: Long)
     external fun nativeWriteRemote(handle: Long, data: ByteArray)
     external fun nativeResize(handle: Long, cols: Int, rows: Int, cellW: Int, cellH: Int)
-    external fun nativeScroll(handle: Long, delta: Int, x: Float, y: Float)
+    /**
+     * Scrolls by [delta] rows at ([x], [y]): the scrollback, wheel events, or arrow keys,
+     * depending on the program. A [momentum] step only scrolls the scrollback. Returns
+     * whether anything changed.
+     */
+    external fun nativeScroll(handle: Long, delta: Int, x: Float, y: Float, momentum: Boolean): Boolean
     external fun nativeScrollToActive(handle: Long)
     external fun nativeSnapshot(handle: Long, full: Boolean): ByteBuffer
     external fun nativePollTitle(handle: Long): String?

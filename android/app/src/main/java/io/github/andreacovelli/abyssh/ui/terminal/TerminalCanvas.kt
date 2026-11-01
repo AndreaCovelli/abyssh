@@ -73,7 +73,8 @@ fun TerminalCanvas(
     // when the remote app takes mouse input, like Shift+drag in desktop terminals.
     stickyModifiers: ModifierState = ModifierState(),
     onShiftSelectionStart: () -> Unit = {},
-    onScroll: (delta: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
+    // Rows to scroll at a point. Momentum steps come from a fling after the finger lifts.
+    onScroll: (delta: Int, x: Float, y: Float, momentum: Boolean) -> Unit = { _, _, _, _ -> },
     minFontSizeSp: Float = 1f,
     maxFontSizeSp: Float = Float.MAX_VALUE,
     onFontSizeChange: (sizeSp: Float) -> Unit = {},
@@ -165,20 +166,27 @@ fun TerminalCanvas(
     }
 }
 
-/** Scroll requests, merged so the app gets at most one per frame. */
+/**
+ * Scroll requests, merged so the app gets at most one per frame. The merged step counts
+ * as momentum only when every request in it does, so a finger's rows are never dropped.
+ */
 @Composable
-private fun rememberScrollDeltas(onScroll: (delta: Int, x: Float, y: Float) -> Unit): Channel<TerminalScrollDelta> {
+private fun rememberScrollDeltas(
+    onScroll: (delta: Int, x: Float, y: Float, momentum: Boolean) -> Unit,
+): Channel<TerminalScrollDelta> {
     val currentOnScroll by rememberUpdatedState(onScroll)
     val channel = remember { Channel<TerminalScrollDelta>(capacity = Channel.UNLIMITED) }
     LaunchedEffect(channel) {
         while (isActive) {
             var latest = channel.receive()
             var accumulated = latest.delta
+            var momentum = latest.momentum
             generateSequence { channel.tryReceive().getOrNull() }.forEach { next ->
                 accumulated += next.delta
+                momentum = momentum && next.momentum
                 latest = next
             }
-            if (accumulated != 0) currentOnScroll(accumulated, latest.x, latest.y)
+            if (accumulated != 0) currentOnScroll(accumulated, latest.x, latest.y, momentum)
             withFrameNanos { }
         }
     }

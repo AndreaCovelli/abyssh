@@ -172,12 +172,15 @@ class TerminalSessionEngine internal constructor(
         scope.launch(dispatcher) { connection.resize(geometry) }
     }
 
-    /** Scrolls the terminal under pixel ([x], [y]), or sends it wheel reports when its program wants them. */
-    fun scroll(delta: Int, x: Float, y: Float) {
+    /**
+     * Scrolls the terminal under pixel ([x], [y]), or sends its program wheel events or
+     * arrow keys. A [momentum] step, from a fling, only scrolls the scrollback.
+     */
+    fun scroll(delta: Int, x: Float, y: Float, momentum: Boolean = false) {
         if (delta == 0) return
         scope.launch(dispatcher) {
             val target = terminals.pointer(x, y, action = null) ?: return@launch
-            bridge.nativeScroll(target.emulator.handle, delta, x - target.xPx, y - target.yPx)
+            if (!bridge.nativeScroll(target.emulator.handle, delta, x - target.xPx, y - target.yPx, momentum)) return@launch
             target.flush()
             target.emulator.requestSnapshot(force = true)
         }
