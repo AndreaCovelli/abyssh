@@ -2,23 +2,67 @@ on:
   push:
     tags:
       - "v*.*.*"
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "Tag to publish (required for manual runs)"
-        required: false
-        type: string
 
 name: Release
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Never interrupt a release that may already be publishing.
+  cancel-in-progress: false
+
+permissions: {}
+
 jobs:
+  gate:
+    name: Require main CI
+    runs-on: ubuntu-26.04
+    timeout-minutes: 50
+    permissions:
+      contents: read
+      checks: read
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require the tagged commit on main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      # CI on main may still be running when the tag is pushed right after a merge.
+      - name: Wait for CI on the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for _ in $(seq 90); do
+            RESULT=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?check_name=Validate" \
+              --jq '.check_runs | sort_by(.started_at) | last | "\(.status) \(.conclusion)"')
+            case "$RESULT" in
+              "completed success")
+                echo "CI passed on $GITHUB_SHA"
+                exit 0
+                ;;
+              completed*)
+                echo "::error::CI finished as '${RESULT#completed }' on $GITHUB_SHA"
+                exit 1
+                ;;
+            esac
+            sleep 30
+          done
+          echo "::error::CI did not finish on $GITHUB_SHA within 45 minutes"
+          exit 1
+
   release:
+    name: Publish signed release
+    needs: gate
     # The release environment holds the signing secrets and admits only main and v* tags.
     environment: release
     permissions:
       contents: write
-      id-token: write
     runs-on: ubuntu-26.04
+    timeout-minutes: 45
     env:
       NDK_VERSION: 28.2.13676358
 
@@ -37,15 +81,15 @@ jobs:
           version: 2026.10.14
           install_args: java zig
 
-      - name: parse version from tag
+      - name: Parse version from tag
         id: version
-        if: ${{ github.ref_type == 'tag' || inputs.release_tag != '' }}
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          set -e
-          TAG="${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}"
+          set -euo pipefail
           VERSION="${TAG#v}"
-          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Tag '$TAG' is not a valid semver (expected MAJOR.MINOR.PATCH, optionally prefixed with 'v')"
+          if ! [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Tag '$TAG' is not vMAJOR.MINOR.PATCH"
             exit 1
           fi
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
@@ -61,7 +105,7 @@ jobs:
             echo "patch=$PATCH"
             echo "version=$VERSION"
           } >> "$GITHUB_OUTPUT"
-          echo "Parsed version: $VERSION (major=$MAJOR minor=$MINOR patch=$PATCH)"
+          echo "Parsed version: $VERSION"
 
       # Pin the NDK: the runner's newest NDK can change under us, and NDK 30 headers
       # reject the target triple that Zig's translate-c passes.
@@ -69,7 +113,7 @@ jobs:
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION"
 
-      - name: build native library
+      - name: Build native library
         run: ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION" mise run native -Dtarget=aarch64-linux-android.24
 
       - name: Decode release keystore
@@ -88,7 +132,7 @@ jobs:
           umask 077
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
 
-      - name: build android release artifacts (APK + AAB)
+      - name: Build signed APK and AAB
         env:
           KEYSTORE_PATH: ${{ runner.temp }}/release.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -105,8 +149,25 @@ jobs:
         if: ${{ always() }}
         run: rm -f -- "$RUNNER_TEMP/release.jks"
 
-      - name: name release artifacts
-        if: ${{ github.ref_type == 'tag' || inputs.release_tag != '' }}
+      - name: Reject unsigned or debug-signed artifacts
+        run: |
+          set -euo pipefail
+          OUT=android/app/build/outputs
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          test -n "$APKSIGNER"
+          APK_CERT=$("$APKSIGNER" verify --print-certs "$OUT/apk/release/app-release.apk")
+          AAB_CERT=$(keytool -printcert -jarfile "$OUT/bundle/release/app-release.aab")
+          printf '%s\n%s\n' "$APK_CERT" "$AAB_CERT"
+          if ! grep -q 'Owner:' <<< "$AAB_CERT"; then
+            echo "::error::The AAB is not signed"
+            exit 1
+          fi
+          if grep -qi 'CN=Android Debug' <<< "$APK_CERT$AAB_CERT"; then
+            echo "::error::Refusing to publish artifacts signed with the Android debug certificate"
+            exit 1
+          fi
+
+      - name: Name release artifacts
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -116,15 +177,13 @@ jobs:
           cp "$OUT/apk/release/app-release.apk" "dist/abyssh-${VERSION}-arm64-v8a.apk"
           cp "$OUT/bundle/release/app-release.aab" "dist/abyssh-${VERSION}.aab"
 
-      - name: upload release
-        if: ${{ github.ref_type == 'tag' || inputs.release_tag != '' }}
+      - name: Publish GitHub release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.release_tag }}
-          target_commitish: ${{ github.sha }}
-          draft: true
+          tag_name: ${{ github.ref_name }}
+          name: Abyssh ${{ steps.version.outputs.version }}
+          generate_release_notes: true
           files: |
             ./dist/abyssh-*.apk
             ./dist/abyssh-*.aab
           fail_on_unmatched_files: true
-
