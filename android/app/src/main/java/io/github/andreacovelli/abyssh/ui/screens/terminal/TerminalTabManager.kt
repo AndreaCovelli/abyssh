@@ -13,6 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -68,6 +69,9 @@ import io.github.andreacovelli.abyssh.service.terminal.sessionLabel
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
+import io.github.andreacovelli.abyssh.ui.components.HoverEffect
+import io.github.andreacovelli.abyssh.ui.components.onMiddleClick
+import io.github.andreacovelli.abyssh.ui.components.revealItem
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColorPalette
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
@@ -121,7 +125,12 @@ fun TerminalTabManager(
                 .fillMaxSize()
                 .background(colors.background)
                 .semantics { contentDescription = closeDescription }
-                .clickable(onClick = onDismiss)
+                // No indication: a hovered or focused scrim would tint the whole screen.
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss,
+                )
                 .focusRequester(focusRequester)
                 .focusable()
                 .onPreviewKeyEvent { event ->
@@ -165,6 +174,7 @@ fun TerminalTabManager(
                         activeTabId = activeTabId,
                         focusedTabIndex = focusedTabIndex.coerceIn(0, maxIndex),
                         visible = visible,
+                        onFocusTab = onFocusedTabIndexChange,
                         onSelectTab = onSelectTab,
                         onCloseTab = onCloseTab,
                         onDuplicateTab = { id ->
@@ -264,13 +274,14 @@ private fun TabManagerList(
     activeTabId: String?,
     focusedTabIndex: Int,
     visible: Boolean,
+    onFocusTab: (Int) -> Unit,
     onSelectTab: (String) -> Unit,
     onCloseTab: (String) -> Unit,
     onDuplicateTab: (String) -> Unit,
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(focusedTabIndex, tabs.size, visible) {
-        if (visible) listState.animateScrollToItem(focusedTabIndex)
+        if (visible) listState.revealItem(focusedTabIndex)
     }
     LazyColumn(
         state = listState,
@@ -284,6 +295,7 @@ private fun TabManagerList(
                 label = tab.sessionLabel(tabs),
                 isActive = tab.id == activeTabId,
                 isFocused = idx == focusedTabIndex,
+                onHover = { onFocusTab(idx) },
                 onSelect = { onSelectTab(tab.id) },
                 onDuplicate = { onDuplicateTab(tab.id) },
                 onClose = { onCloseTab(tab.id) },
@@ -298,11 +310,14 @@ private fun TabManagerRow(
     label: String,
     isActive: Boolean,
     isFocused: Boolean,
+    onHover: () -> Unit,
     onSelect: () -> Unit,
     onDuplicate: () -> Unit,
     onClose: () -> Unit,
 ) {
     val colors = AbyssColors.current
+    val interactionSource = remember { MutableInteractionSource() }
+    HoverEffect(interactionSource, onHover)
     val rowState by remember(tab) {
         tab.sessionState
             .map { TabRowState(it.status, it.title?.takeIf(String::isNotBlank), it.pwd?.takeIf(String::isNotBlank)) }
@@ -320,7 +335,8 @@ private fun TabManagerRow(
             .clip(MaterialTheme.shapes.medium)
             .background(if (isFocused) colors.accent.copy(alpha = 0.14f) else Color.Transparent)
             .semantics { contentDescription = rowDescription }
-            .clickable(onClick = onSelect)
+            .onMiddleClick(onClose)
+            .clickable(interactionSource = interactionSource, indication = LocalIndication.current, onClick = onSelect)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),

@@ -6,6 +6,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.sp
+import io.github.andreacovelli.abyssh.ui.components.onMiddleClick
+import io.github.andreacovelli.abyssh.ui.components.verticalWheelScrollsHorizontally
 import io.github.andreacovelli.abyssh.ui.components.AbyssIconButton
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.stringResource
@@ -78,6 +80,7 @@ fun TerminalTabStrip(
     onAddTab: () -> Unit,
     onOpenManager: () -> Unit,
     modifier: Modifier = Modifier,
+    onCloseTab: ((String) -> Unit)? = null,
     newTabPicker: @Composable () -> Unit = {},
 ) {
     val colors = AbyssColors.current
@@ -114,6 +117,7 @@ fun TerminalTabStrip(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(end = trailingActionWidth)
+                .verticalWheelScrollsHorizontally(scrollState)
                 .horizontalScroll(scrollState)
                 .onGloballyPositioned { coords ->
                     rowRootLeft.intValue = coords.localToRoot(Offset.Zero).x.roundToInt()
@@ -147,6 +151,7 @@ fun TerminalTabStrip(
                                 Color.Transparent
                             }
                         )
+                        .then(if (onCloseTab != null) Modifier.onMiddleClick { onCloseTab(tab.id) } else Modifier)
                         .clickable { onTabSelected(tab.id) }
                         .padding(horizontal = 8.dp, vertical = 3.dp),
                     contentAlignment = Alignment.Center,

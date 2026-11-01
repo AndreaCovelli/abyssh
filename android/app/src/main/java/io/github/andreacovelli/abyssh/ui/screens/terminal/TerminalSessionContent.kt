@@ -56,6 +56,7 @@ import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.service.terminal.SessionState
 import io.github.andreacovelli.abyssh.service.terminal.SessionStatus
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
+import io.github.andreacovelli.abyssh.ui.HoldEscapeKey
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
@@ -86,6 +87,8 @@ internal fun TerminalSessionContent(
     val activeTabId by vm.activeTabId.collectAsStateWithLifecycle()
     val activeTab by vm.activeTab.collectAsStateWithLifecycle()
     val selectedPane by vm.files.selectedPane.collectAsStateWithLifecycle()
+    // The terminal takes Esc as a key; the files pane leaves it to act as Back.
+    HoldEscapeKey(enabled = selectedPane == ConnectionTab.Terminal)
     val fileState by vm.files.state.collectAsStateWithLifecycle()
     val input = remember(context, vm, overlay) { TerminalInputController(context, vm, overlay) }
     SideEffect {
@@ -302,6 +305,8 @@ private fun TerminalPane(
             ) {
                 TerminalCustomActionsFab(
                     groups = settings.customKeyGroups,
+                    expanded = host.overlay.fabExpanded,
+                    onExpandedChange = { host.overlay.fabExpanded = it },
                     onActionClick = { action ->
                         vm.input.sendCustomAction(action)
                         input.requestFocus()

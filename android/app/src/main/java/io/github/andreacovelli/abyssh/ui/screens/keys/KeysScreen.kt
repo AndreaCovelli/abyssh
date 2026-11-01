@@ -225,7 +225,13 @@ private fun GenerateKeyDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit
         onConfirm = { onConfirm(name) },
         onDismiss = onDismiss,
     ) {
-        AbyssTextField(value = name, onValueChange = { name = it }, label = stringResource(R.string.key_details_name), singleLine = true)
+        AbyssTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = stringResource(R.string.key_details_name),
+            singleLine = true,
+            onSubmit = { onConfirm(name) },
+        )
     }
 }
 
@@ -320,7 +326,13 @@ private fun RenameKeyDialog(
         onConfirm = { onConfirm(name) },
         onDismiss = onDismiss,
     ) {
-        AbyssTextField(value = name, onValueChange = { name = it }, label = stringResource(R.string.key_details_name), singleLine = true)
+        AbyssTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = stringResource(R.string.key_details_name),
+            singleLine = true,
+            onSubmit = { onConfirm(name) },
+        )
     }
 }
 

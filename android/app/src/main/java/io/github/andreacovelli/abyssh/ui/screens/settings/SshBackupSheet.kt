@@ -37,7 +37,6 @@ import androidx.compose.ui.platform.LocalClipboard
 import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.text.SimpleDateFormat
@@ -482,7 +481,7 @@ private fun ExportPassphraseContent(
                 label = stringResource(R.string.backup_encryption_passphrase),
                 placeholder = pluralStringResource(R.plurals.backup_passphrase_min_placeholder, BACKUP_MIN_PASSPHRASE_LENGTH, BACKUP_MIN_PASSPHRASE_LENGTH),
                 singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
+                secret = true,
                 autoFocus = true,
             )
             AbyssTextField(
@@ -491,7 +490,7 @@ private fun ExportPassphraseContent(
                 label = stringResource(R.string.backup_confirm_passphrase),
                 placeholder = stringResource(R.string.backup_reenter_passphrase),
                 singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
+                secret = true,
                 autoFocus = false,
             )
             if (passphrase.length in 1 until BACKUP_MIN_PASSPHRASE_LENGTH) {
@@ -562,7 +561,7 @@ private fun ImportPassphraseContent(
                 label = stringResource(R.string.backup_passphrase),
                 placeholder = stringResource(R.string.backup_passphrase_placeholder),
                 singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
+                secret = true,
                 autoFocus = true,
             )
             AbyssText(

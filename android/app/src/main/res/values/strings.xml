@@ -48,6 +48,7 @@
     <string name="key_change">Change key</string>
     <string name="key_use_existing">Use existing key</string>
     <string name="server_section_persistence">Session persistence</string>
+    <string name="server_persistence_unsupported">%1$s connections can\'t keep sessions in a multiplexer.</string>
     <string name="multiplexer_off">Off</string>
     <string name="server_auto_run">Auto-run on connect</string>
     <string name="server_auto_run_placeholder">e.g. tmux attach -t main</string>
@@ -369,6 +370,8 @@
     <string name="tab_manager_dup">Dup</string>
     <string name="tab_manager_close_tab">Close %1$s</string>
     <string name="action_close">Close</string>
+    <string name="action_show_secret">Show password</string>
+    <string name="action_hide_secret">Hide password</string>
     <string name="tab_manager_new">+ new</string>
     <string name="palette_search">Search</string>
     <string name="session_status_connected">Connected</string>

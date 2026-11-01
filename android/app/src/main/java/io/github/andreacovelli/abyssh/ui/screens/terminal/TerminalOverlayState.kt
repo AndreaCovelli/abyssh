@@ -31,12 +31,21 @@ internal class TerminalOverlayState {
     var showNewTabPicker by mutableStateOf(false)
     var focusedTabIndex by mutableIntStateOf(0)
     var fabFilteredActions by mutableStateOf<List<TerminalCustomAction>?>(null)
+    var fabExpanded by mutableStateOf(false)
     val zoom = TerminalZoomState()
 
     val isSwitcherOpen: Boolean get() = showTabSheet || showTabManager
 
     fun openSwitcher(tabMode: TerminalTabMode) {
         if (tabMode == TerminalTabMode.Strip) showTabManager = true else showTabSheet = true
+    }
+
+    /** Closes the custom actions menu if it's open, and says whether it was. */
+    fun closeActionsMenu(): Boolean {
+        if (!fabExpanded && fabFilteredActions == null) return false
+        fabExpanded = false
+        fabFilteredActions = null
+        return true
     }
 
     fun closeSwitcher() {

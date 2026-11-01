@@ -190,6 +190,12 @@ internal class TerminalInputController(
 
     private fun onKey(key: Int, codepoint: Int, mods: Int, action: Int, charCode: Int) {
         if (releaseHeldShortcutKey(key, action)) return
+        // Esc closes the custom actions menu before it reaches the terminal.
+        val escape = key == TerminalSpecialKey.Escape.engineKey && action == GhosttyKeyAction.Press
+        if (escape && overlay.closeActionsMenu()) {
+            heldShortcutKey = key
+            return
+        }
         val switcherTabs = if (overlay.isSwitcherOpen) overlay.switcherTabs(allTabs, routeTabs) else null
         if (switcherTabs.isNullOrEmpty() && handleAbysshShortcutKey(key, codepoint, action, charCode)) return
         if (switcherTabs != null && handleSwitcherKey(key, codepoint, action, switcherTabs)) return
