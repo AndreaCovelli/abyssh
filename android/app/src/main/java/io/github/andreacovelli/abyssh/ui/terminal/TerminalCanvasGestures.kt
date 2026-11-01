@@ -1,6 +1,10 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
 import android.view.ViewConfiguration
+import androidx.compose.animation.core.AnimationState
+import androidx.compose.animation.core.DecayAnimationSpec
+import androidx.compose.animation.core.animateDecay
+import androidx.compose.animation.splineBasedDecay
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.Composable
@@ -25,6 +29,7 @@ import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.isTertiaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
@@ -34,6 +39,10 @@ import io.github.andreacovelli.abyssh.service.terminal.TerminalMouseButton
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 import kotlin.math.abs
 import kotlin.math.round
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 /** Rows scrolled per mouse wheel notch, as in most desktop terminals. */
 private const val WHEEL_ROWS_PER_NOTCH = 3f
@@ -50,7 +59,8 @@ private const val VERTICAL_INTENT_RATIO = 1.2f
 /** A two-finger tap must lift within this many long-press timeouts. */
 private const val TWO_FINGER_TAP_TIMEOUTS = 2
 
-internal data class TerminalScrollDelta(val delta: Int, val x: Float, val y: Float)
+/** Rows to scroll at a point; [momentum] marks a step of a fling after the finger lifted. */
+internal data class TerminalScrollDelta(val delta: Int, val x: Float, val y: Float, val momentum: Boolean = false)
 
 /** What the canvas calls back for pointer input; see [TerminalCanvas] for each. */
 internal class TerminalCanvasCallbacks(
@@ -115,6 +125,9 @@ internal data class TerminalGestureConfig(
     val doubleTapTimeoutMs: Long,
     val doubleTapSlopPx: Float,
     val autoScrollEdgePx: Float,
+    val minFlingVelocityPx: Float,
+    val maxFlingVelocityPx: Float,
+    val flingDecay: DecayAnimationSpec<Float>,
 )
 
 @Composable
@@ -131,6 +144,9 @@ internal fun rememberTerminalGestureConfig(): TerminalGestureConfig {
             doubleTapTimeoutMs = ViewConfiguration.getDoubleTapTimeout().toLong(),
             doubleTapSlopPx = viewConfiguration.scaledDoubleTapSlop.toFloat(),
             autoScrollEdgePx = with(density) { 48.dp.toPx() },
+            minFlingVelocityPx = viewConfiguration.scaledMinimumFlingVelocity.toFloat(),
+            maxFlingVelocityPx = viewConfiguration.scaledMaximumFlingVelocity.toFloat(),
+            flingDecay = splineBasedDecay(density),
         )
     }
 }
@@ -159,8 +175,8 @@ private enum class DragMode {
 /**
  * Turns pointer input on the terminal canvas into selections, clicks, scrolling, and
  * font size changes. Touch: tap, double-tap for a word, long-press to select or to
- * hand the drag to the app, one-finger scroll, pinch to zoom, two-finger tap for a
- * right click. Mouse: the wheel scrolls, the left button selects or clicks, and the
+ * hand the drag to the app, one-finger scroll that flings on when lifted, pinch to
+ * zoom, two-finger tap for a right click. Mouse: the wheel scrolls, the left button selects or clicks, and the
  * right and middle buttons go to the app.
  */
 internal class TerminalCanvasGestures(
@@ -177,9 +193,17 @@ internal class TerminalCanvasGestures(
 
     private val doubleTap = DoubleTapState()
 
+    /** The fling running after a one-finger scroll lifted, until it slows to a stop or a touch stops it. */
+    private var fling: Job? = null
+
     val modifier: Modifier = Modifier
         .pointerInput(this) { awaitPointerEventScope { wheelScroll() } }
-        .pointerInput(this) { awaitEachGesture { gesture() } }
+        .pointerInput(this) {
+            coroutineScope {
+                val flingScope = this
+                awaitEachGesture { gesture(flingScope) }
+            }
+        }
 
     // Mouse wheel and touchpad scrolling. These don't press a pointer, so the gesture
     // handler never sees them.
@@ -189,6 +213,7 @@ internal class TerminalCanvasGestures(
             val event = awaitPointerEvent()
             val change = event.changes.firstOrNull()
             if (event.type == PointerEventType.Scroll && change != null) {
+                stopFling()
                 remainder += change.scrollDelta.y * WHEEL_ROWS_PER_NOTCH
                 val rows = remainder.toInt()
                 if (rows != 0) {
@@ -201,15 +226,46 @@ internal class TerminalCanvasGestures(
         }
     }
 
-    private suspend fun AwaitPointerEventScope.gesture() {
+    private suspend fun AwaitPointerEventScope.gesture(flingScope: CoroutineScope) {
         val down = awaitFirstDown(requireUnconsumed = false)
+        val stoppedFling = stopFling()
         val held = HeldModifiers.of(env.value, currentEvent.keyboardModifiers)
         val isMouse = down.type == PointerType.Mouse
         val mouseButton = if (isMouse) nonPrimaryMouseButton(currentEvent.buttons) else null
         when {
             mouseButton != null -> forwardMouseButton(down, mouseButton)
             isMouse -> mouseLeftButton(down, held)
-            else -> touch(down, held)
+            else -> touch(TouchGesture(down, held, flingScope, stoppedFling))
+        }
+    }
+
+    /** Stops a running fling, and returns whether there was one. */
+    private fun stopFling(): Boolean {
+        val running = fling?.isActive == true
+        fling?.cancel()
+        fling = null
+        return running
+    }
+
+    /**
+     * Keeps scrolling after the finger lifts at [velocityY] snapshot pixels a second,
+     * slowing as Android lists do. The steps go to the terminal under [position], and
+     * they only move the scrollback: full-screen programs ignore them.
+     */
+    private fun startFling(scope: CoroutineScope, velocityY: Float, position: Offset) {
+        fling = scope.launch {
+            var lastValue = 0f
+            var rows = 0f
+            AnimationState(initialValue = 0f, initialVelocity = velocityY).animateDecay(config.flingDecay) {
+                val cellHeight = env.value.cell.height
+                if (cellHeight > 0f) rows += (value - lastValue) / cellHeight
+                lastValue = value
+                val whole = rows.toInt()
+                if (whole != 0) {
+                    rows -= whole
+                    scroll(TerminalScrollDelta(-whole, position.x, position.y, momentum = true))
+                }
+            }
         }
     }
 
@@ -281,8 +337,7 @@ internal class TerminalCanvasGestures(
         }
     }
 
-    private suspend fun AwaitPointerEventScope.touch(down: PointerInputChange, held: HeldModifiers) {
-        val gesture = TouchGesture(down, held)
+    private suspend fun AwaitPointerEventScope.touch(gesture: TouchGesture) {
         try {
             while (!gesture.finished) {
                 val timeout = gesture.timeoutMs()
@@ -332,8 +387,16 @@ internal class TerminalCanvasGestures(
         }
     }
 
-    /** One touch gesture, from the first finger down to the last finger up. */
-    private inner class TouchGesture(private val down: PointerInputChange, private val held: HeldModifiers) {
+    /**
+     * One touch gesture, from the first finger down to the last finger up. A touch that
+     * [stoppedFling] isn't a tap: it only stops the scrolling.
+     */
+    private inner class TouchGesture(
+        private val down: PointerInputChange,
+        private val held: HeldModifiers,
+        private val flingScope: CoroutineScope,
+        private val stoppedFling: Boolean,
+    ) {
         var finished = false
             private set
         private var dragMode = DragMode.None
@@ -354,6 +417,7 @@ internal class TerminalCanvasGestures(
         private val longPressDeadline = down.uptimeMillis + config.longPressTimeoutMs
         private var lastPointerPos = down.position
         private var autoScrollDir = 0
+        private val velocity = VelocityTracker()
 
         /** How long to wait for the next event before [onTimeout], or null to wait for it. */
         fun timeoutMs(): Long? = when {
@@ -371,6 +435,10 @@ internal class TerminalCanvasGestures(
             lastEventUptime = event.changes.maxOfOrNull { it.uptimeMillis } ?: lastEventUptime
             val pressed = event.changes.filter { it.pressed }
             if (pressed.isEmpty()) {
+                event.changes.firstOrNull { it.id == lastSinglePointerId }?.let { lift ->
+                    velocity.addPosition(lift.uptimeMillis, env.value.toSnapshot(lift.position))
+                    lastPointerPos = lift.position
+                }
                 onRelease()
                 return
             }
@@ -432,6 +500,7 @@ internal class TerminalCanvasGestures(
                 current.appDrag(TerminalMouseAction.Release, held.primary, current.toSnapshot(lastPointerPos))
             }
             if (releasedDragMode != DragMode.None) return
+            if (didScroll && !didPinch) flingIfFast()
             val heldMs = lastEventUptime - down.uptimeMillis
             val twoFingerTap = didPinch &&
                 !fingersMoved &&
@@ -442,8 +511,17 @@ internal class TerminalCanvasGestures(
                     val tapPos = current.toSnapshot(down.position)
                     current.callbacks.onSecondaryClick(held.secondary, tapPos.x, tapPos.y)
                 }
-                !didScroll && !didPinch && !didDragGesture -> tap(down.position, lastEventUptime, held)
+                !didScroll && !didPinch && !didDragGesture && !stoppedFling -> tap(down.position, lastEventUptime, held)
             }
+        }
+
+        /** Flings when the finger lifted moving fast enough, and mostly up or down. */
+        private fun flingIfFast() {
+            val max = config.maxFlingVelocityPx
+            val v = velocity.calculateVelocity()
+            val vy = v.y.coerceIn(-max, max)
+            if (abs(vy) < config.minFlingVelocityPx || abs(v.y) <= abs(v.x)) return
+            startFling(flingScope, vy, env.value.toSnapshot(lastPointerPos))
         }
 
         private fun onPinch(pressed: List<PointerInputChange>) {
@@ -515,6 +593,8 @@ internal class TerminalCanvasGestures(
                 }
             }
             stopAutoScroll()
+            lastPointerPos = change.position
+            velocity.addPosition(change.uptimeMillis, pos)
             val dragX = pos.x - previous.x
             val dragY = pos.y - previous.y
             if (abs(dragY) > abs(dragX) * VERTICAL_INTENT_RATIO) dragRemainder += dragY / current.cell.height

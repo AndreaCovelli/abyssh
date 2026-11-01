@@ -30,8 +30,8 @@ class TerminalInput internal constructor(
         activeEngine?.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
     }
 
-    fun onScroll(delta: Int, x: Float, y: Float) {
-        activeEngine?.scroll(delta, x, y)
+    fun onScroll(delta: Int, x: Float, y: Float, momentum: Boolean) {
+        activeEngine?.scroll(delta, x, y, momentum)
     }
 
     fun onPrimaryMouseClick(mods: Int, x: Float, y: Float) {

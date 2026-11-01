@@ -686,10 +686,10 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     abyssh_resize(handle, cols, rows, cell_width, cell_height);
 }
 
-export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeScroll(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, delta: c.jint, x: c.jfloat, y: c.jfloat) callconv(.c) void {
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeScroll(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, delta: c.jint, x: c.jfloat, y: c.jfloat, momentum: c.jboolean) callconv(.c) c.jboolean {
     _ = env;
     _ = thiz;
-    abyssh_scroll(handle, delta, x, y);
+    return if (abyssh_scroll(handle, delta, x, y, momentum != c.JNI_FALSE)) c.JNI_TRUE else c.JNI_FALSE;
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeScrollToActive(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) void {
@@ -1642,8 +1642,16 @@ fn takeWheelEvents(terminal: *AbysshTerminal, delta: i32) i32 {
     return events;
 }
 
-export fn abyssh_scroll(handle: c.jlong, delta: c.jint, x: c.jfloat, y: c.jfloat) callconv(.c) void {
-    const terminal = abysshFromHandle(handle) orelse return;
+/// Scrolls by [delta] rows, the way the terminal's program expects. Programs
+/// that take the mouse get wheel events at ([x], [y]). Full-screen programs
+/// without the mouse, such as less and man, get up and down arrow keys, as
+/// xterm and Ghostty send in alternate scroll mode (1007). Anything else
+/// scrolls the scrollback. A [momentum] step, from a fling after the finger
+/// lifts, only scrolls the scrollback, so a flick never floods a program with
+/// keys. Returns whether anything changed.
+export fn abyssh_scroll(handle: c.jlong, delta: c.jint, x: c.jfloat, y: c.jfloat, momentum: bool) callconv(.c) bool {
+    const terminal = abysshFromHandle(handle) orelse return false;
+    if (delta == 0) return false;
 
     // Check if we're in alternate screen mode (used by vim, tmux, less, etc.)
     const alt_screen = terminal.terminal.modes.get(.alt_screen);
@@ -1655,58 +1663,86 @@ export fn abyssh_scroll(handle: c.jlong, delta: c.jint, x: c.jfloat, y: c.jfloat
     const mouse_reporting_enabled = terminal.terminal.flags.mouse_event != .none;
 
     if (in_alt_screen or mouse_reporting_enabled) {
-        // Send mouse scroll events to the application.
-        // Negative delta = scroll up (older content) → button 4.
-        // Positive delta = scroll down (newer content) → button 5.
-        const events = takeWheelEvents(terminal, delta);
-        if (events == 0) return;
-        const button: u8 = if (events < 0) 4 else 5;
-        // A fast swipe can cover many rows in one frame; cap the burst so
-        // programs that parse input in chunks are not flooded.
-        const scroll_count: usize = @min(@abs(events), max_wheel_events_per_scroll);
-
-        // Use the gesture position so mouse-aware programs like tmux route the
-        // wheel event to the pane under the user's finger.
-        const max_x: f32 = @as(f32, @floatFromInt(@max(terminal.terminal.width_px, 1) - 1));
-        const max_y: f32 = @as(f32, @floatFromInt(@max(terminal.terminal.height_px, 1) - 1));
-        const scroll_x: f32 = @min(@max(@as(f32, x), 0), max_x);
-        const scroll_y: f32 = @min(@max(@as(f32, y), 0), max_y);
-
-        var buf: [max_wheel_events_per_scroll * 32]u8 = undefined;
-        var len: usize = 0;
-        var last_cell: ?ghostty.point.Coordinate = null;
-        const opts = ghosttyMouseEncodeOptions(terminal, false, true, &last_cell);
-
-        // Wheel buttons have no release: xterm and Ghostty send presses only.
-        // Each event is encoded on its own and appended only when complete, so
-        // a full buffer can never leave half a sequence in the output.
-        var i: usize = 0;
-        while (i < scroll_count) : (i += 1) {
-            var event_buf: [32]u8 = undefined;
-            var event_writer: std.Io.Writer = .fixed(&event_buf);
-            const press_event: ghostty.input.MouseEncodeEvent = .{
-                .action = .press,
-                .button = @fromBackingInt(@intCast(button)),
-                .mods = .{},
-                .pos = .{ .x = scroll_x, .y = scroll_y },
-            };
-            ghostty.input.encodeMouse(&event_writer, press_event, opts) catch continue;
-            const encoded = event_writer.buffered();
-            if (encoded.len == 0 or len + encoded.len > buf.len) break;
-            @memcpy(buf[len..][0..encoded.len], encoded);
-            len += encoded.len;
-        }
-
-        // Send encoded events to PTY in one write.
-        if (len > 0) {
-            appendPtyWrite(terminal, buf[0..len]);
-        }
+        if (momentum) return false;
+        const sent = if (mouse_reporting_enabled)
+            sendWheelEvents(terminal, delta, x, y)
+        else if (terminal.terminal.modes.get(.mouse_alternate_scroll))
+            sendCursorKeys(terminal, delta)
+        else
+            false;
+        if (!sent) return false;
     } else {
-        // Normal scrollback scrolling
         terminal.terminal.scrollViewport(.{ .delta = @intCast(delta) });
     }
 
     update_render_state(terminal);
+    return true;
+}
+
+/// Wheel events for [delta] rows at ([x], [y]). Returns whether any were queued.
+fn sendWheelEvents(terminal: *AbysshTerminal, delta: i32, x: f32, y: f32) bool {
+    // Negative delta = scroll up (older content) → button 4.
+    // Positive delta = scroll down (newer content) → button 5.
+    const events = takeWheelEvents(terminal, delta);
+    if (events == 0) return false;
+    const button: u8 = if (events < 0) 4 else 5;
+    // A fast swipe can cover many rows in one frame; cap the burst so
+    // programs that parse input in chunks are not flooded.
+    const scroll_count: usize = @min(@abs(events), max_wheel_events_per_scroll);
+
+    // Use the gesture position so mouse-aware programs like tmux route the
+    // wheel event to the pane under the user's finger.
+    const max_x: f32 = @as(f32, @floatFromInt(@max(terminal.terminal.width_px, 1) - 1));
+    const max_y: f32 = @as(f32, @floatFromInt(@max(terminal.terminal.height_px, 1) - 1));
+    const scroll_x: f32 = @min(@max(x, 0), max_x);
+    const scroll_y: f32 = @min(@max(y, 0), max_y);
+
+    var buf: [max_wheel_events_per_scroll * 32]u8 = undefined;
+    var len: usize = 0;
+    var last_cell: ?ghostty.point.Coordinate = null;
+    const opts = ghosttyMouseEncodeOptions(terminal, false, true, &last_cell);
+
+    // Wheel buttons have no release: xterm and Ghostty send presses only.
+    // Each event is encoded on its own and appended only when complete, so
+    // a full buffer can never leave half a sequence in the output.
+    var i: usize = 0;
+    while (i < scroll_count) : (i += 1) {
+        var event_buf: [32]u8 = undefined;
+        var event_writer: std.Io.Writer = .fixed(&event_buf);
+        const press_event: ghostty.input.MouseEncodeEvent = .{
+            .action = .press,
+            .button = @fromBackingInt(@intCast(button)),
+            .mods = .{},
+            .pos = .{ .x = scroll_x, .y = scroll_y },
+        };
+        ghostty.input.encodeMouse(&event_writer, press_event, opts) catch continue;
+        const encoded = event_writer.buffered();
+        if (encoded.len == 0 or len + encoded.len > buf.len) break;
+        @memcpy(buf[len..][0..encoded.len], encoded);
+        len += encoded.len;
+    }
+
+    if (len == 0) return false;
+    appendPtyWrite(terminal, buf[0..len]);
+    return true;
+}
+
+/// The most arrow keys one scroll sends, as many rows as the wheel events cap.
+const max_cursor_keys_per_scroll: usize = max_wheel_events_per_scroll * rows_per_wheel_event;
+
+/// One up or down arrow key per row of [delta], in the cursor key mode
+/// (DECCKM) the program set, so less and man move with the finger.
+fn sendCursorKeys(terminal: *AbysshTerminal, delta: i32) bool {
+    const application = terminal.terminal.modes.get(.cursor_keys);
+    const key: *const [3]u8 = if (delta < 0)
+        (if (application) "\x1bOA" else "\x1b[A")
+    else
+        (if (application) "\x1bOB" else "\x1b[B");
+    const count: usize = @min(@abs(delta), max_cursor_keys_per_scroll);
+    var buf: [max_cursor_keys_per_scroll * 3]u8 = undefined;
+    for (0..count) |i| @memcpy(buf[i * 3 ..][0..3], key);
+    appendPtyWrite(terminal, buf[0 .. count * 3]);
+    return true;
 }
 
 export fn abyssh_scroll_to_active(handle: c.jlong) callconv(.c) void {
