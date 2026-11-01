@@ -349,7 +349,7 @@ private fun AdditionalSettingsSection(form: AddServerForm, vm: AddServerViewMode
     SectionDivider()
     MultiplexerSection(
         transport = form.transport,
-        selected = form.multiplexer,
+        selected = form.effectiveMultiplexer,
         onSelect = vm::updateMultiplexer,
         tmuxControlMode = form.tmuxControlMode,
         onTmuxControlModeChange = vm::updateTmuxControlMode,
