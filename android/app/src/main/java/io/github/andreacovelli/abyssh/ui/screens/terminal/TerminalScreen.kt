@@ -81,7 +81,7 @@ fun TerminalScreen(
     val onNewConnection = { launcher.openAnotherSession(activeTab?.spec?.hostId ?: route.hostId) }
     val tabStrip: (@Composable () -> Unit)? =
         if (stripMode) {
-            { TerminalStripBar(vm, overlay, launcher, route) }
+            { TerminalStripBar(vm, overlay, launcher, route, endSession::requestClose) }
         } else {
             null
         }
@@ -124,6 +124,7 @@ fun TerminalScreen(
                     tabStrip = tabStrip,
                     onNewConnection = onNewConnection,
                     onEndSession = endSession::request,
+                    onCloseTab = endSession::requestClose,
                 ),
                 modifier = screenModifier,
             )
@@ -140,7 +141,9 @@ fun TerminalScreen(
 
     BackHandler(enabled = overlay.showTabManager) { overlay.showTabManager = false }
     // Outside the status branches, so the manager opens from every state.
-    if (stripMode) TerminalStripTabManager(vm, overlay, tabs, activeTabId, abysshKeys, onNewConnection)
+    if (stripMode) {
+        TerminalStripTabManager(vm, overlay, tabs, activeTabId, abysshKeys, onNewConnection, endSession::requestClose)
+    }
 }
 
 @Composable
@@ -149,6 +152,7 @@ private fun TerminalStripBar(
     overlay: TerminalOverlayState,
     launcher: TerminalTabLauncher,
     route: TerminalRoute,
+    onCloseTab: (String) -> Unit,
 ) {
     val tabs by vm.tabs.collectAsStateWithLifecycle()
     val activeTabId by vm.activeTabId.collectAsStateWithLifecycle()
@@ -158,7 +162,7 @@ private fun TerminalStripBar(
         onTabSelected = vm::selectTab,
         onAddTab = { overlay.showNewTabPicker = true },
         onOpenManager = { overlay.showTabManager = true },
-        onCloseTab = vm::closeTab,
+        onCloseTab = onCloseTab,
         newTabPicker = { TerminalNewTabPicker(vm, overlay, launcher, route) },
     )
 }
@@ -171,6 +175,7 @@ private fun TerminalStripTabManager(
     activeTabId: String?,
     abysshKeys: AbysshKeyBindings,
     onAddTab: () -> Unit,
+    onCloseTab: (String) -> Unit,
 ) {
     TerminalTabManager(
         visible = overlay.showTabManager,
@@ -182,7 +187,7 @@ private fun TerminalStripTabManager(
             vm.selectTab(id)
             overlay.showTabManager = false
         },
-        onCloseTab = vm::closeTab,
+        onCloseTab = onCloseTab,
         onDuplicateTab = { id -> vm.duplicateTab(id) },
         onAddTab = onAddTab,
         onDismiss = { overlay.showTabManager = false },

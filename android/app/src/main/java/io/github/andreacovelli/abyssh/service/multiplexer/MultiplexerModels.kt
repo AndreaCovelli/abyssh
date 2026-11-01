@@ -4,10 +4,13 @@ import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.model.UiText
 
+/** A session on the host, and how many clients (terminals, Abyssh tabs, and so on) show it. */
 data class RemoteMultiplexerSession(
     val name: String,
-    val attached: Boolean,
-)
+    val clients: Int = 0,
+) {
+    val attached: Boolean get() = clients > 0
+}
 
 sealed interface MultiplexerAvailability {
     data object Available : MultiplexerAvailability

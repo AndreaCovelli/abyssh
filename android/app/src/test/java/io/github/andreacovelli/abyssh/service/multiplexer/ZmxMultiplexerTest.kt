@@ -52,6 +52,11 @@ class ZmxMultiplexerTest {
     }
 
     @Test
+    fun killSessionQuotesTheName() {
+        assertEquals("zmx kill 'main tab'", ZmxMultiplexer.killSessionCommand("main tab"))
+    }
+
+    @Test
     fun parsesSessionList() {
         val sessions = ZmxMultiplexer.parseSessions(
             "name=main\tpid=123\tclients=1\tcreated=0\tstart_dir=/tmp\n" +
@@ -60,8 +65,8 @@ class ZmxMultiplexerTest {
 
         assertEquals(
             listOf(
-                RemoteMultiplexerSession(name = "main", attached = true),
-                RemoteMultiplexerSession(name = "work", attached = false),
+                RemoteMultiplexerSession(name = "main", clients = 1),
+                RemoteMultiplexerSession(name = "work", clients = 0),
             ),
             sessions,
         )
@@ -76,8 +81,8 @@ class ZmxMultiplexerTest {
 
         assertEquals(
             listOf(
-                RemoteMultiplexerSession(name = "main", attached = true),
-                RemoteMultiplexerSession(name = "work", attached = false),
+                RemoteMultiplexerSession(name = "main", clients = 1),
+                RemoteMultiplexerSession(name = "work", clients = 0),
             ),
             sessions,
         )

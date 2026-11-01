@@ -91,11 +91,19 @@ class TmuxMultiplexerTest {
 
         assertEquals(
             listOf(
-                RemoteMultiplexerSession(name = "work", attached = false),
-                RemoteMultiplexerSession(name = "main", attached = true),
-                RemoteMultiplexerSession(name = "work space", attached = true),
+                RemoteMultiplexerSession(name = "work", clients = 0),
+                RemoteMultiplexerSession(name = "main", clients = 1),
+                RemoteMultiplexerSession(name = "work space", clients = 2),
             ),
             sessions,
+        )
+    }
+
+    @Test
+    fun killSessionTargetsTheExactQuotedName() {
+        assertEquals(
+            "tmux kill-session -t '=work'\\''space'",
+            TmuxMultiplexer.killSessionCommand("work'space"),
         )
     }
 

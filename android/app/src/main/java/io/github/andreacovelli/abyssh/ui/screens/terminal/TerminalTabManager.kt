@@ -333,7 +333,7 @@ private fun TabManagerRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.medium)
-            .background(if (isFocused) colors.accent.copy(alpha = 0.14f) else Color.Transparent)
+            .tabFocusOutline(isFocused)
             .semantics { contentDescription = rowDescription }
             .onMiddleClick(onClose)
             .clickable(interactionSource = interactionSource, indication = LocalIndication.current, onClick = onSelect)
@@ -349,16 +349,21 @@ private fun TabManagerRow(
         )
         TabManagerRowText(
             label = label,
-            endpoint = terminalTabEndpointLabel(tab),
+            endpoint = listOfNotNull(terminalTabEndpointLabel(tab), terminalTabMultiplexerLabel(tab)).joinToString("  ·  "),
             state = rowState,
             isActive = isActive,
             isFocused = isFocused,
             modifier = Modifier.weight(1f),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // A control-mode tab is a tmux window, so its sibling is a new window in the same session.
+            val newWindow = tab.spec.usesTmuxControlMode
             TabManagerRowAction(
-                text = stringResource(R.string.tab_manager_dup),
-                contentDescription = stringResource(R.string.tab_manager_duplicate, label),
+                text = stringResource(if (newWindow) R.string.tab_manager_new_window else R.string.tab_manager_dup),
+                contentDescription = stringResource(
+                    if (newWindow) R.string.tab_manager_new_window_description else R.string.tab_manager_duplicate,
+                    label,
+                ),
                 color = colors.textSecondary,
                 onClick = onDuplicate,
             )
