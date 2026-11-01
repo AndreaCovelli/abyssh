@@ -122,7 +122,7 @@ internal fun connectingLabel(
     activeTab: TabSession?,
     routeTab: TabSession?,
 ): String {
-    if (multiplexer.preflightLoading) {
+    if (multiplexer.preflightLoading || multiplexer.sessionChoice != null) {
         return "${multiplexer.preflightHostLabel ?: stringResource(R.string.terminal_host_fallback)}..."
     }
     val name = if (stripMode) activeTab?.spec?.tabLabel else routeTab?.spec?.host

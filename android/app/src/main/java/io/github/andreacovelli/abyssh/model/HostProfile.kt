@@ -28,4 +28,8 @@ data class HostProfile(
     // Attach to tmux in control mode, so each tmux window is a tab with local scrollback.
     @ColumnInfo(defaultValue = "0")
     val tmuxControlMode: Boolean = false,
+    // List the multiplexer sessions on connect and let the user pick one, instead of
+    // reusing or creating one automatically.
+    @ColumnInfo(defaultValue = "0")
+    val chooseSessionOnConnect: Boolean = false,
 )

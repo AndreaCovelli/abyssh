@@ -9,6 +9,8 @@ internal data class MultiplexerSessionRowState(
     val current: Boolean,
     /** A client other than the active tab is attached: another device, terminal, or tab. */
     val inUseElsewhere: Boolean,
+    /** Another open tab already shows this session. */
+    val openInTab: Boolean = false,
 )
 
 /** The panel's rows: [currentName] is the active tab's session, which itself counts as one client. */
@@ -21,5 +23,22 @@ internal fun multiplexerSessionRows(
         name = session.name,
         current = current,
         inUseElsewhere = session.clients > if (current) 1 else 0,
+    )
+}
+
+/**
+ * The session picker's rows, for a tab that isn't open yet: each session in [openInTab]
+ * is shown by an open tab, which itself counts as one client.
+ */
+internal fun multiplexerChoiceRows(
+    sessions: List<RemoteMultiplexerSession>,
+    openInTab: Set<String>,
+): List<MultiplexerSessionRowState> = sessions.map { session ->
+    val open = session.name in openInTab
+    MultiplexerSessionRowState(
+        name = session.name,
+        current = false,
+        inUseElsewhere = session.clients > if (open) 1 else 0,
+        openInTab = open,
     )
 }

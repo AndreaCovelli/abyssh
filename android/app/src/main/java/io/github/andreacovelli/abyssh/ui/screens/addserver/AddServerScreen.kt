@@ -353,6 +353,8 @@ private fun AdditionalSettingsSection(form: AddServerForm, vm: AddServerViewMode
         onSelect = vm::updateMultiplexer,
         tmuxControlMode = form.tmuxControlMode,
         onTmuxControlModeChange = vm::updateTmuxControlMode,
+        chooseSessionOnConnect = form.chooseSessionOnConnect,
+        onChooseSessionOnConnectChange = vm::updateChooseSessionOnConnect,
     )
     SectionDivider()
     PostConnectActionSection(
@@ -534,6 +536,8 @@ private fun MultiplexerSection(
     onSelect: (MultiplexerType?) -> Unit,
     tmuxControlMode: Boolean,
     onTmuxControlModeChange: (Boolean) -> Unit,
+    chooseSessionOnConnect: Boolean,
+    onChooseSessionOnConnectChange: (Boolean) -> Unit,
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
@@ -564,20 +568,40 @@ private fun MultiplexerSection(
             color = colors.textMuted,
         )
     }
-    if (selected == MultiplexerType.Tmux) TmuxControlModeRow(tmuxControlMode, onTmuxControlModeChange)
+    if (selected != null && transportSupported && selected.runtimeSupported) {
+        PersistenceSwitchRow(
+            title = stringResource(R.string.server_choose_session),
+            description = stringResource(R.string.server_choose_session_description),
+            checked = chooseSessionOnConnect,
+            onCheckedChange = onChooseSessionOnConnectChange,
+        )
+    }
+    if (selected == MultiplexerType.Tmux) {
+        PersistenceSwitchRow(
+            title = stringResource(R.string.server_tmux_control_mode),
+            description = stringResource(R.string.server_tmux_control_mode_description),
+            checked = tmuxControlMode,
+            onCheckedChange = onTmuxControlModeChange,
+        )
+    }
 }
 
 @Composable
-private fun TmuxControlModeRow(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun PersistenceSwitchRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            AbyssText(stringResource(R.string.server_tmux_control_mode), style = AbyssTypography.current.label)
+            AbyssText(title, style = AbyssTypography.current.label)
             AbyssText(
-                stringResource(R.string.server_tmux_control_mode_description),
+                description,
                 style = AbyssTypography.current.bodySmall,
                 color = AbyssColors.current.textSecondary,
             )

@@ -37,4 +37,25 @@ class MultiplexerSessionRowsTest {
 
         assertEquals(listOf(MultiplexerSessionRowState("old", current = false, inUseElsewhere = false)), rows)
     }
+
+    @Test
+    fun aSessionOpenInATabIsMarkedAndItsOwnClientIsNotElsewhere() {
+        val rows = multiplexerChoiceRows(
+            listOf(
+                RemoteMultiplexerSession("abyssh-1", clients = 1),
+                RemoteMultiplexerSession("work", clients = 1),
+                RemoteMultiplexerSession("old", clients = 0),
+            ),
+            openInTab = setOf("abyssh-1"),
+        )
+
+        assertEquals(
+            listOf(
+                MultiplexerSessionRowState("abyssh-1", current = false, inUseElsewhere = false, openInTab = true),
+                MultiplexerSessionRowState("work", current = false, inUseElsewhere = true),
+                MultiplexerSessionRowState("old", current = false, inUseElsewhere = false),
+            ),
+            rows,
+        )
+    }
 }

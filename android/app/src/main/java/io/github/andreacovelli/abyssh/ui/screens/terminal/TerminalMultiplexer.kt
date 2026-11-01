@@ -6,10 +6,12 @@ import io.github.andreacovelli.abyssh.model.UiText
 
 import io.github.andreacovelli.abyssh.R
 
+import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerRegistry
 import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSession
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
+import io.github.andreacovelli.abyssh.service.terminal.RemoteMultiplexerSessions
 import io.github.andreacovelli.abyssh.service.terminal.TabSpec
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionRepository
 import kotlinx.coroutines.CancellationException
@@ -34,6 +36,17 @@ data class MultiplexerUiState(
     val sessionsSourceTabId: String? = null,
     val sessionsSourceHostId: Long? = null,
     val reconnectRecovery: Boolean = false,
+    val sessionChoice: MultiplexerSessionChoice? = null,
+)
+
+/**
+ * The sessions a tab can attach to on a host that asks which one to use when it
+ * connects. [openInTab] names the sessions an open tab already shows.
+ */
+data class MultiplexerSessionChoice(
+    val type: MultiplexerType,
+    val sessions: List<RemoteMultiplexerSession>,
+    val openInTab: Set<String>,
 )
 
 /**
@@ -49,7 +62,19 @@ class TerminalMultiplexer internal constructor(
     private val scope: CoroutineScope,
 ) {
     private sealed class PendingAction(open val spec: TabSpec) {
-        data class Open(override val spec: TabSpec) : PendingAction(spec)
+        /**
+         * [leaveOnCancel] leaves the screen when the user cancels, as for the first tab a
+         * route opens. [newSession] skips both the session picker and reusing a detached session.
+         */
+        data class Open(
+            override val spec: TabSpec,
+            val leaveOnCancel: Boolean = true,
+            val newSession: Boolean = false,
+        ) : PendingAction(spec) {
+            /** Whether this lists the host's sessions for the user to pick from instead of picking one. */
+            val choosesSession: Boolean
+                get() = !newSession && spec.chooseSessionOnConnect && spec.multiplexerSessionName.isNullOrBlank()
+        }
         data class Reconnect(val tabId: String, override val spec: TabSpec) : PendingAction(spec)
     }
 
@@ -65,6 +90,11 @@ class TerminalMultiplexer internal constructor(
         if (duplicateInFlight) return
         // A host in tmux control mode gets a new window in its session, which opens as a tab.
         if (sessionRepository.openTmuxWindow(spec)) return
+        // A host that asks which session to use shows its sessions instead of creating one.
+        if (spec.chooseSessionOnConnect) {
+            open(spec.withNewSession(), leaveOnCancel = false)
+            return
+        }
         duplicateInFlight = true
         _state.update { it.copy(duplicateLoading = true, preflightError = null) }
         val duplicateSpec = spec.withNewSession()
@@ -90,8 +120,33 @@ class TerminalMultiplexer internal constructor(
         }
     }
 
-    fun open(spec: TabSpec) {
-        begin(PendingAction.Open(spec))
+    /** Opens a tab on [spec]; [leaveOnCancel] leaves the screen when the user cancels. */
+    fun open(spec: TabSpec, leaveOnCancel: Boolean = true) {
+        begin(PendingAction.Open(spec, leaveOnCancel = leaveOnCancel))
+    }
+
+    /**
+     * Attaches the tab waiting in the session picker to session [name], or selects the
+     * tab that already shows it, so one session never gets two sets of tabs.
+     */
+    fun chooseSession(name: String) {
+        val action = pendingAction as? PendingAction.Open ?: return
+        if (_state.value.sessionChoice == null) return
+        val spec = action.spec.withDefaultMultiplexer()
+        val openTab = sessionRepository.multiplexerSessions.tabsShowing(spec, name).firstOrNull()
+        if (openTab != null) {
+            clearPending()
+            sessionRepository.selectTab(openTab.id)
+            return
+        }
+        complete(action, name, createIfMissing = false)
+    }
+
+    /** Opens the tab waiting in the session picker in a new session. */
+    fun chooseNewSession() {
+        val action = pendingAction as? PendingAction.Open ?: return
+        if (_state.value.sessionChoice == null) return
+        begin(action.copy(newSession = true))
     }
 
     fun reconnect(tab: TabSession) {
@@ -121,9 +176,9 @@ class TerminalMultiplexer internal constructor(
         }
     }
 
-    /** Cancels the pending action; [onBack] runs when it was opening a new tab. */
+    /** Cancels the pending action; [onBack] runs when it was opening a tab that leaves on cancel. */
     fun dismissRecovery(onBack: () -> Unit) {
-        val shouldNavigateBack = pendingAction is PendingAction.Open
+        val shouldNavigateBack = (pendingAction as? PendingAction.Open)?.leaveOnCancel == true
         clearPending()
         if (shouldNavigateBack) onBack()
     }
@@ -157,6 +212,47 @@ class TerminalMultiplexer internal constructor(
             preflightHostLabel = spec.tabLabel,
             reconnectRecovery = reconnectRecovery,
         )
+        if (prepared is PendingAction.Open && prepared.choosesSession) {
+            listChoices(generation, prepared)
+        } else {
+            resolve(generation, prepared)
+        }
+    }
+
+
+    /** Lists the sessions on the pending tab's host and shows them in the session picker. */
+    private fun listChoices(generation: Long, action: PendingAction.Open) {
+        // On the main thread: the listing picks a tmux connection from the open tabs, and
+        // moves to the IO thread itself when it opens a new one.
+        scope.launch(Dispatchers.Main) {
+            val result =
+                try {
+                    Result.success(sessionRepository.multiplexerSessions.list(action.spec))
+                } catch (_: CancellationException) {
+                    withContext(NonCancellable) { reportStopped(generation, action) }
+                    return@launch
+                } catch (error: Exception) {
+                    Result.failure(error)
+                }
+            if (!isCurrent(generation, action)) {
+                reportStopped(generation, action)
+                return@launch
+            }
+            result.fold(
+                onSuccess = { sessions ->
+                    _state.value = MultiplexerUiState(
+                        preflightHostLabel = action.spec.tabLabel,
+                        sessionChoice = sessionRepository.multiplexerSessions.choiceFor(action.spec, sessions),
+                    )
+                },
+                onFailure = { error -> _state.update { it.failed(error, UiText.Resource(R.string.multiplexer_list_failed)) } },
+            )
+        }
+    }
+
+    /** Picks the pending tab's session over SSH, then opens or reconnects the tab in it. */
+    private fun resolve(generation: Long, prepared: PendingAction) {
+        val spec = prepared.spec
         scope.launch(Dispatchers.IO) {
             val result =
                 try {
@@ -164,7 +260,9 @@ class TerminalMultiplexer internal constructor(
                         sessionRepository.multiplexerSessions.resolveName(
                             spec = spec,
                             reuseDetachedAbysshSession =
-                                prepared is PendingAction.Open && spec.multiplexerSessionName.isNullOrBlank(),
+                                prepared is PendingAction.Open &&
+                                    !prepared.newSession &&
+                                    spec.multiplexerSessionName.isNullOrBlank(),
                         ),
                     )
                 } catch (_: CancellationException) {
@@ -181,13 +279,7 @@ class TerminalMultiplexer internal constructor(
                 result.fold(
                     onSuccess = { sessionName -> complete(prepared, sessionName) },
                     onFailure = { error ->
-                        _state.update {
-                            it.copy(
-                                preflightLoading = false,
-                                preflightHostLabel = null,
-                                preflightError = error.toUiText(UiText.Resource(R.string.multiplexer_prepare_failed)),
-                            )
-                        }
+                        _state.update { it.failed(error, UiText.Resource(R.string.multiplexer_prepare_failed)) }
                     },
                 )
             }
@@ -207,10 +299,15 @@ class TerminalMultiplexer internal constructor(
     private fun isCurrent(generation: Long, action: PendingAction): Boolean =
         actionGeneration == generation && pendingAction == action
 
-    private fun complete(action: PendingAction, sessionName: String) {
+    private fun complete(
+        action: PendingAction,
+        sessionName: String,
+        createIfMissing: Boolean = action.spec.multiplexerCreateIfMissing,
+    ) {
         val nextSpec = action.spec.copy(
             multiplexer = action.spec.multiplexer ?: MultiplexerRegistry.defaultType,
             multiplexerSessionName = sessionName,
+            multiplexerCreateIfMissing = createIfMissing,
         )
         pendingAction = null
         _state.value = MultiplexerUiState()
@@ -384,6 +481,26 @@ class TerminalMultiplexer internal constructor(
         return false
     }
 }
+
+/** The sessions in [sessions] that a new tab on [spec]'s host can attach to, and which ones a tab shows. */
+private fun RemoteMultiplexerSessions.choiceFor(
+    spec: TabSpec,
+    sessions: List<RemoteMultiplexerSession>,
+): MultiplexerSessionChoice = MultiplexerSessionChoice(
+    type = spec.multiplexer ?: MultiplexerRegistry.defaultType,
+    sessions = sessions,
+    openInTab = sessions.mapNotNullTo(mutableSetOf()) { session ->
+        session.name.takeIf { tabsShowing(spec, it).isNotEmpty() }
+    },
+)
+
+/** This state after a multiplexer check failed with [error], explained by [fallback] when it has no message. */
+private fun MultiplexerUiState.failed(error: Throwable, fallback: UiText): MultiplexerUiState = copy(
+    preflightLoading = false,
+    preflightHostLabel = null,
+    preflightError = error.toUiText(fallback),
+    sessionChoice = null,
+)
 
 private fun TabSpec.withDefaultMultiplexer(): TabSpec =
     copy(multiplexer = multiplexer ?: MultiplexerRegistry.defaultType)

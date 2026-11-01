@@ -34,6 +34,8 @@
     <string name="auth_none_hint" tools:ignore="TypographyDashes">No SSH auth uses Tailscale SSH policy (`tailscale up --ssh`) on the server. Connect through Tailscale SSH instead of regular sshd credentials.</string>
     <string name="server_additional_settings">Additional settings</string>
     <string name="server_require_biometric">Require biometric auth</string>
+    <string name="server_choose_session">Choose session on connect</string>
+    <string name="server_choose_session_description">Lists the sessions on the host when you connect, so you pick one or start a new one. No session is created until you do.</string>
     <string name="server_tmux_control_mode">tmux control mode</string>
     <string name="server_tmux_control_mode_description">Shows each tmux window as a tab with local scrollback, search, and selection. Needs tmux 3.2 or later.</string>
     <string name="connection_test">Test connection</string>
@@ -355,6 +357,9 @@
     <string name="multiplexer_sessions_on">%1$s sessions on %2$s</string>
     <string name="action_refresh">Refresh</string>
     <string name="multiplexer_new_session">New session</string>
+    <string name="multiplexer_choose_title">Choose a %1$s session</string>
+    <string name="multiplexer_choose_empty">No sessions on %1$s yet.</string>
+    <string name="multiplexer_open_in_tab">Open in a tab</string>
     <string name="multiplexer_current">Current</string>
     <string name="multiplexer_in_use_elsewhere">In use elsewhere</string>
     <string name="multiplexer_attach">Attach</string>

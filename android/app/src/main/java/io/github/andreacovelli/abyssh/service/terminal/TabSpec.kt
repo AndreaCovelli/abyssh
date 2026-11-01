@@ -25,6 +25,8 @@ data class TabSpec(
     val multiplexerSessionName: String? = null,
     val multiplexerCreateIfMissing: Boolean = true,
     val tmuxControlMode: Boolean = false,
+    /** Whether opening the host lists its sessions to pick from, rather than picking one itself. */
+    val chooseSessionOnConnect: Boolean = false,
 ) {
     /**
      * The same for every tab to one host: a saved host, the local shell, or an unsaved
@@ -91,6 +93,7 @@ data class TabSpec(
                     host.transport != Transport.LocalShell
             },
             tmuxControlMode = host.tmuxControlMode,
+            chooseSessionOnConnect = host.chooseSessionOnConnect,
         )
     }
 }
@@ -111,6 +114,9 @@ internal fun TabSpec.withHostUpdate(updated: TabSpec): TabSpec {
     )
 }
 
-/** Whether a running session would connect differently with [other]. The name doesn't count. */
+/**
+ * Whether a running session would connect differently with [other]. The name doesn't
+ * count, nor does choosing a session on connect, which only applies to new tabs.
+ */
 internal fun TabSpec.connectsDifferentlyThan(other: TabSpec): Boolean =
-    copy(displayName = other.displayName) != other
+    copy(displayName = other.displayName, chooseSessionOnConnect = other.chooseSessionOnConnect) != other

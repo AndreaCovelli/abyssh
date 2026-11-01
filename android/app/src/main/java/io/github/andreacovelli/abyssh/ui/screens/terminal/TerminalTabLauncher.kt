@@ -54,7 +54,8 @@ internal class TerminalTabLauncher(
 
     /**
      * Opens a tab on [spec]. With [newSession], a multiplexer host gets a new multiplexer
-     * session, as when duplicating a tab, rather than attaching to a detached one.
+     * session, as when duplicating a tab, rather than attaching to a detached one, unless
+     * the host asks which session to use.
      */
     fun open(spec: TabSpec, requiresVerification: Boolean, leaveOnCancel: Boolean = false, newSession: Boolean = false) {
         if (!requiresVerification) {
@@ -125,6 +126,9 @@ internal class TerminalTabLauncher(
     private fun launch(spec: TabSpec, newSession: Boolean) {
         when {
             !spec.usesRuntimeMultiplexer -> vm.openTab(spec)
+            // A host that asks which session to use shows its sessions instead; cancelling
+            // that keeps the tabs that are already open.
+            newSession && spec.chooseSessionOnConnect -> vm.multiplexer.open(spec, leaveOnCancel = false)
             newSession -> vm.multiplexer.duplicate(spec)
             else -> vm.multiplexer.open(spec)
         }
