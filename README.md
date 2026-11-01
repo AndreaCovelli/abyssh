@@ -100,8 +100,9 @@ terminal emulation, libssh2 and OpenSSL for SSH, and a Zig Mosh client.
 
 ## Releases
 
-Pushing a tag such as `v1.2.3` builds a signed APK and app bundle and attaches them to
-a draft release as `abyssh-1.2.3-arm64-v8a.apk` and `abyssh-1.2.3.aab`.
+Pushing a tag such as `v1.2.3` waits for CI to pass on the tagged commit, which must be
+on `main`, then builds a signed APK and app bundle and publishes them in a release with
+generated notes as `abyssh-1.2.3-arm64-v8a.apk` and `abyssh-1.2.3.aab`.
 
 `mise run release` creates the next tag from the Conventional Commits since the last
 one. Before 1.0, a breaking change bumps the minor version and anything else bumps the
