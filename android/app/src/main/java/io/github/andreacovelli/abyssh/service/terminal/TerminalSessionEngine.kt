@@ -43,17 +43,39 @@ class TerminalSessionEngine internal constructor(
     private val hostKeys = tmuxControl?.hostKeys ?: HostKeyVerifier(hostKeyStore)
     val hostKeyPrompt: StateFlow<HostKeyPrompt?> = hostKeys.prompt
 
-    private val emulator = TerminalEmulator(bridge, nativeVersion, scope, dispatcher, _state, publishClipboardText, scrollbackLimitBytes)
     private val connection: TabConnection
+    private val terminals: TabTerminals
 
     /** SFTP over this session's SSH connection, which a tmux window's tab shares with its control session. */
     val sftp: SftpSession
 
     init {
         if (tmuxControl != null) {
-            connection = TmuxPaneConnection(scope, dispatcher, _state, emulator, tmuxControl, tmuxWindowId)
+            val tmux = TmuxPaneConnection(
+                scope = scope,
+                dispatcher = dispatcher,
+                state = _state,
+                nativeVersion = nativeVersion,
+                newEmulator = { paneState, onPublished ->
+                    TerminalEmulator(
+                        bridge,
+                        nativeVersion,
+                        scope,
+                        dispatcher,
+                        paneState,
+                        publishClipboardText,
+                        scrollbackLimitBytes,
+                        onPublished,
+                    )
+                },
+                control = tmuxControl,
+                windowId = tmuxWindowId,
+            )
+            connection = tmux
+            terminals = tmux.panes
             sftp = tmuxControl.sftp
         } else {
+            val emulator = TerminalEmulator(bridge, nativeVersion, scope, dispatcher, _state, publishClipboardText, scrollbackLimitBytes)
             val transports = SessionTransports(hostKeys, localShellService, thread)
             connection =
                 SessionConnection(
@@ -66,6 +88,7 @@ class TerminalSessionEngine internal constructor(
                     localNetwork = localNetwork,
                     onShellExited = onShellExited,
                 )
+            terminals = SingleTerminal(emulator, connection)
             sftp = SftpSession(transports.ssh, dispatcher)
         }
     }
@@ -103,8 +126,21 @@ class TerminalSessionEngine internal constructor(
         y: Float,
         anyButtonPressed: Boolean,
         trackLastCell: Boolean,
-    ) = sendEncoded { handle ->
-        bridge.nativeEncodeMouse(handle, action, button, mods, x, y, anyButtonPressed, trackLastCell)
+    ) {
+        scope.launch(dispatcher) {
+            val target = terminals.pointer(x, y, action) ?: return@launch
+            val encoded = bridge.nativeEncodeMouse(
+                target.emulator.handle,
+                action,
+                button,
+                mods,
+                x - target.xPx,
+                y - target.yPx,
+                anyButtonPressed,
+                trackLastCell,
+            )
+            if (encoded != null && encoded.isNotEmpty()) target.send(encoded)
+        }
     }
 
     /**
@@ -114,20 +150,20 @@ class TerminalSessionEngine internal constructor(
      * pause.
      */
     fun addViewer() {
-        scope.launch(dispatcher) { emulator.addViewer() }
+        scope.launch(dispatcher) { terminals.addViewer() }
     }
 
     fun removeViewer() {
-        scope.launch(dispatcher) { emulator.removeViewer() }
+        scope.launch(dispatcher) { terminals.removeViewer() }
     }
 
     fun setColorScheme(isDark: Boolean) {
-        scope.launch(dispatcher) { emulator.setColorScheme(isDark) }
+        scope.launch(dispatcher) { terminals.setColorScheme(isDark) }
     }
 
     fun setDefaultColors(fg: IntArray?, bg: IntArray?, cursor: IntArray?, palette: ByteArray?) {
         val colors = TerminalColors(fg, bg, cursor, palette)
-        scope.launch(dispatcher) { emulator.setDefaultColors(colors) }
+        scope.launch(dispatcher) { terminals.setDefaultColors(colors) }
     }
 
     fun resize(cols: Int, rows: Int, cellWidth: Int, cellHeight: Int, screenWidth: Int, screenHeight: Int) {
@@ -136,36 +172,51 @@ class TerminalSessionEngine internal constructor(
         scope.launch(dispatcher) { connection.resize(geometry) }
     }
 
+    /** Scrolls the terminal under pixel ([x], [y]), or sends it wheel reports when its program wants them. */
     fun scroll(delta: Int, x: Float, y: Float) {
         if (delta == 0) return
-        onTerminal { handle ->
-            bridge.nativeScroll(handle, delta, x, y)
-            connection.flushPtyWrites()
+        scope.launch(dispatcher) {
+            val target = terminals.pointer(x, y, action = null) ?: return@launch
+            bridge.nativeScroll(target.emulator.handle, delta, x - target.xPx, y - target.yPx)
+            target.flush()
+            target.emulator.requestSnapshot(force = true)
         }
     }
 
-    fun scrollToActive() = onTerminal { handle -> bridge.nativeScrollToActive(handle) }
+    fun scrollToActive() = onFocused { target -> bridge.nativeScrollToActive(target.emulator.handle) }
 
-    fun scrollToScreenRow(screenRow: Int) = onTerminal { handle -> bridge.nativeScrollToScreenRow(handle, screenRow) }
+    fun scrollToScreenRow(screenRow: Int) = onFocused { target ->
+        bridge.nativeScrollToScreenRow(target.emulator.handle, screenRow - target.row)
+    }
 
-    /** Where [query] matches, as the flat array the native search returns. */
+    /**
+     * Where [query] matches in the terminal keys go to, as the flat array the native
+     * search returns: four ints per match, rows counted from the oldest scrollback row
+     * and moved, like the columns, to where that terminal sits in the tab.
+     */
     suspend fun search(query: String): IntArray = withContext(dispatcher) {
-        if (!emulator.isOpen || query.isEmpty()) IntArray(0) else bridge.nativeSearch(emulator.handle, query)
+        val target = terminals.focused()
+        if (target == null || query.isEmpty()) return@withContext IntArray(0)
+        val matches = bridge.nativeSearch(target.emulator.handle, query)
+        IntArray(matches.size) { i -> matches[i] + if (i % 2 == 0) target.row else target.col }
     }
 
     suspend fun hyperlinkAt(col: Int, row: Int): String? = withContext(dispatcher) {
-        if (emulator.isOpen) bridge.nativeHyperlinkAt(emulator.handle, col, row) else null
+        val target = terminals.at(col, row) ?: return@withContext null
+        bridge.nativeHyperlinkAt(target.emulator.handle, col - target.col, row - target.row)
     }
 
     /**
      * The text of screen cells [screenStart]..[screenEnd], counted from the oldest
      * scrollback row, or of visible cells [visibleStart]..[visibleEnd] when that fails.
+     * Null when the tab shows several terminals, whose text then comes from the snapshot.
      */
     suspend fun selectionText(screenStart: Int, screenEnd: Int, visibleStart: Int, visibleEnd: Int): String? =
         withContext(dispatcher) {
-            if (!emulator.isOpen) return@withContext null
-            bridge.nativeFormatSelectionScreenRange(emulator.handle, screenStart, screenEnd)
-                ?: bridge.nativeFormatSelectionRange(emulator.handle, visibleStart, visibleEnd)
+            val target = terminals.focused()?.takeIf { it.fillsTab } ?: return@withContext null
+            val handle = target.emulator.handle
+            bridge.nativeFormatSelectionScreenRange(handle, screenStart, screenEnd)
+                ?: bridge.nativeFormatSelectionRange(handle, visibleStart, visibleEnd)
         }
 
     fun respondToHostKey(accepted: Boolean) = hostKeys.respond(accepted)
@@ -174,7 +225,7 @@ class TerminalSessionEngine internal constructor(
         // A tmux window's tab shares the prompt with the other windows' tabs.
         if (tmuxControl == null) hostKeys.cancel()
         connection.disconnect {
-            emulator.reset()
+            terminals.reset()
             _state.value =
                 SessionState(
                     status = SessionStatus.Disconnected,
@@ -191,21 +242,21 @@ class TerminalSessionEngine internal constructor(
         thread.close()
     }
 
-    /** Sends the bytes [encode] returns for the open terminal, when there are any. */
+    /** Sends the bytes [encode] returns for the terminal keys go to, when there are any. */
     private fun sendEncoded(encode: (handle: Long) -> ByteArray?) {
         scope.launch(dispatcher) {
-            if (!emulator.isOpen) return@launch
-            val encoded = encode(emulator.handle)
-            if (encoded != null && encoded.isNotEmpty()) connection.writeBestEffort(encoded)
+            val target = terminals.focused() ?: return@launch
+            val encoded = encode(target.emulator.handle)
+            if (encoded != null && encoded.isNotEmpty()) target.send(encoded)
         }
     }
 
-    /** Runs [action] on the open terminal, then publishes the screen it leaves. */
-    private fun onTerminal(action: (handle: Long) -> Unit) {
+    /** Runs [action] on the terminal keys go to, then publishes the screen it leaves. */
+    private fun onFocused(action: (TerminalTarget) -> Unit) {
         scope.launch(dispatcher) {
-            if (!emulator.isOpen) return@launch
-            action(emulator.handle)
-            emulator.requestSnapshot(force = true)
+            val target = terminals.focused() ?: return@launch
+            action(target)
+            target.emulator.requestSnapshot(force = true)
         }
     }
 }

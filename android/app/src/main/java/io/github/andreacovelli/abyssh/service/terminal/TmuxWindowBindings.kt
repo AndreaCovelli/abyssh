@@ -6,6 +6,7 @@ import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSeed
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSize
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneState
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxWindow
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxWindowLayout
 
 /** What [TmuxWindowBindings] asks of the tabs; the control session passes each call to the main thread. */
 internal interface TmuxWindowTabs {
@@ -17,11 +18,11 @@ internal interface TmuxWindowTabs {
 }
 
 /**
- * Which tab shows which tmux window, and which pane each one shows. Keeps the tabs in
+ * Which tab shows which tmux window, and where the window's panes sit. Keeps the tabs in
  * step with the session's windows: closes tabs whose window is gone, asks [tabs] to
- * open one for each new window, and fills each tab in from `capture-pane` when its pane
- * or the pane's size changes. Every call runs on the control session's thread; commands
- * go out only while [attached] says tmux has reported the session.
+ * open one for each new window, and fills each pane in from `capture-pane` when it
+ * appears or its size changes. Every call runs on the control session's thread;
+ * commands go out only while [attached] says tmux has reported the session.
  */
 internal class TmuxWindowBindings(
     private val link: TmuxControlLink,
@@ -30,8 +31,13 @@ internal class TmuxWindowBindings(
 ) {
     private class Binding(val view: TmuxPaneView) {
         var windowId: Int? = null
-        var paneId: Int? = null
-        var size: TmuxPaneSize? = null
+        var layout: TmuxWindowLayout? = null
+        var activePane: Int? = null
+
+        // The size each pane was last captured at.
+        val captured = mutableMapOf<Int, TmuxPaneSize>()
+
+        fun shows(paneId: Int): Boolean = layout?.pane(paneId) != null
     }
 
     private val bindings = mutableListOf<Binding>()
@@ -61,7 +67,7 @@ internal class TmuxWindowBindings(
         if (!attached()) return
         // A window missing from the last list may be new; listing again closes the tab if it is gone.
         val window = windows[windowId]
-        if (window == null) listWindows() else updatePane(binding, window)
+        if (window == null) listWindows() else showLayout(binding, window.layout, window.paneId)
     }
 
     fun detach(view: TmuxPaneView) {
@@ -82,8 +88,15 @@ internal class TmuxWindowBindings(
         link.send(TmuxControlCommands.selectWindow(windowId))
     }
 
-    /** The pane [view] shows, once it has one. */
-    fun paneOf(view: TmuxPaneView): Int? = bindings.firstOrNull { it.view === view }?.paneId
+    /** Whether pane [paneId] is in the window [view] shows. */
+    fun shows(view: TmuxPaneView, paneId: Int): Boolean = bindings.any { it.view === view && it.shows(paneId) }
+
+    /** The user picked pane [paneId] in [view]'s window; tmux reports the change back, which then changes nothing. */
+    fun selectPane(view: TmuxPaneView, paneId: Int) {
+        val binding = bindings.firstOrNull { it.view === view && it.shows(paneId) } ?: return
+        binding.activePane = paneId
+        link.send(TmuxControlCommands.selectPane(paneId))
+    }
 
     /** This client created window [windowId]: its tab becomes the active one. */
     fun created(windowId: Int) {
@@ -93,33 +106,36 @@ internal class TmuxWindowBindings(
 
     /** After a reconnect, every pane is captured again. */
     fun forgetPanes() {
-        bindings.forEach { it.paneId = null }
+        bindings.forEach { binding ->
+            binding.layout = null
+            binding.activePane = null
+            binding.captured.clear()
+        }
         seeding.clear()
     }
 
     fun output(paneId: Int, data: ByteArray) {
         if (paneId in seeding) return
-        bindings.firstOrNull { it.paneId == paneId }?.view?.paneOutput(data)
+        bindings.firstOrNull { it.shows(paneId) }?.view?.paneOutput(paneId, data)
     }
 
     /** tmux paused [paneId], dropping its output, so the pane is captured again after it continues. */
     fun paused(paneId: Int) {
         link.send(TmuxControlCommands.continuePane(paneId))
-        bindings.filter { it.paneId == paneId }.forEach(::seed)
+        if (bindings.any { it.shows(paneId) }) seed(paneId)
     }
 
     fun layoutChanged(windowId: Int, layout: String) {
         val binding = bindings.firstOrNull { it.windowId == windowId } ?: return
-        val size = binding.paneId?.let { TmuxLayout.paneSizes(layout)[it] }
-        if (size == null) {
+        val parsed = TmuxLayout.parse(layout)
+        // A pane that was split off becomes the active one, which only a new list reports.
+        val activePane = binding.activePane?.takeIf { parsed?.pane(it) != null }
+        if (parsed == null || activePane == null) {
             listWindows()
             return
         }
-        windows[windowId]?.let { windows = windows + (windowId to it.copy(size = size)) }
-        if (size != binding.size) {
-            binding.size = size
-            seed(binding)
-        }
+        windows[windowId]?.let { windows = windows + (windowId to it.copy(layout = parsed)) }
+        showLayout(binding, parsed, activePane)
     }
 
     fun listWindows() {
@@ -147,7 +163,7 @@ internal class TmuxWindowBindings(
             opening += window.id
             tabs.open(window.id, select = requested.remove(window.id) || (replacing && window.active))
         }
-        bindings.forEach { binding -> windows[binding.windowId]?.let { updatePane(binding, it) } }
+        bindings.forEach { binding -> windows[binding.windowId]?.let { showLayout(binding, it.layout, it.paneId) } }
     }
 
     private fun bindTo(binding: Binding, windowId: Int) {
@@ -156,32 +172,39 @@ internal class TmuxWindowBindings(
         if (binding.view === focused) selectFocused()
     }
 
-    private fun updatePane(binding: Binding, window: TmuxWindow) {
-        if (binding.paneId != window.paneId || binding.size != window.size) {
-            binding.paneId = window.paneId
-            binding.size = window.size
-            seed(binding)
+    /** Shows [layout] in the binding's tab, and captures each pane that is new or changed size. */
+    private fun showLayout(binding: Binding, layout: TmuxWindowLayout, activePane: Int) {
+        if (layout != binding.layout || activePane != binding.activePane) {
+            binding.layout = layout
+            binding.activePane = activePane
+            binding.view.showLayout(layout, activePane)
+        }
+        binding.captured.keys.retainAll(layout.panes.map { it.paneId }.toSet())
+        layout.panes.forEach { pane ->
+            if (binding.captured[pane.paneId] != pane.size) {
+                binding.captured[pane.paneId] = pane.size
+                seed(pane.paneId)
+            }
         }
     }
 
     /**
-     * Captures the binding's pane and shows it; the pane's output waits until then, since
-     * the capture includes it. A resize captures again too: when tmux resizes a pane it
+     * Captures pane [paneId] and shows it; the pane's output waits until then, since the
+     * capture includes it. A resize captures again too: when tmux resizes a pane it
      * reflows the lines and moves lines between the history and the screen in its own
      * way, which resizing the local terminal can't match.
      */
-    private fun seed(binding: Binding) {
-        val paneId = binding.paneId ?: return
+    private fun seed(paneId: Int) {
         val number = ++seedCount
         seeding[paneId] = number
         link.sendAll(TmuxControlCommands.capturePane(paneId)) { replies ->
             if (seeding[paneId] != number) return@sendAll
             seeding -= paneId
-            val target = bindings.firstOrNull { it.paneId == paneId } ?: return@sendAll
+            val target = bindings.firstOrNull { it.shows(paneId) } ?: return@sendAll
             val state = replies[0].takeUnless { it.failed }?.lines?.firstOrNull()?.let(TmuxPaneState::parse)
                 ?: return@sendAll
-            target.size = state.size
-            target.view.showPane(state.size, TmuxPaneSeed.build(state, replies[1].lines, replies[2].lines, replies[3].lines))
+            target.captured[paneId] = state.size
+            target.view.showPane(paneId, state.size, TmuxPaneSeed.build(state, replies[1].lines, replies[2].lines, replies[3].lines))
         }
     }
 }

@@ -9,6 +9,7 @@ import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TMUX_PAUSE_AFTER_
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlCommands
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlEvent
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSize
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxWindowLayout
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
 import kotlinx.coroutines.CancellationException
@@ -37,15 +38,18 @@ internal data class TmuxControlStatus(
     val reconnectAttempt: Int = 0,
 )
 
-/** A tab that shows one tmux window's active pane. Calls come from the control session's thread. */
+/** A tab that shows one tmux window and its panes. Calls come from the control session's thread. */
 internal interface TmuxPaneView {
     /** The tab now shows window [windowId]. */
     fun bindWindow(windowId: Int)
 
-    /** Replaces the terminal with a blank one of [size] and writes [seed] into it, as when the pane changes or resizes. */
-    fun showPane(size: TmuxPaneSize, seed: ByteArray)
+    /** The window's panes and where they sit, and [activePane], which keys go to. Panes left out are gone. */
+    fun showLayout(layout: TmuxWindowLayout, activePane: Int)
 
-    fun paneOutput(data: ByteArray)
+    /** Replaces pane [paneId]'s terminal with a blank one of [size] and writes [seed] into it, as when it appears or resizes. */
+    fun showPane(paneId: Int, size: TmuxPaneSize, seed: ByteArray)
+
+    fun paneOutput(paneId: Int, data: ByteArray)
 }
 
 /** What a control session asks of the tabs around it. Calls arrive on the main thread. */
@@ -66,9 +70,9 @@ internal interface TmuxControlHost {
 }
 
 /**
- * One `tmux -CC` connection to a session. Each window of the session is a tab whose
- * terminal shows the window's active pane: filled in from `capture-pane` when the tab
- * binds to the pane, then fed the pane's output. Calls return at once and run in order
+ * One `tmux -CC` connection to a session. Each window of the session is a tab that shows
+ * the window's panes, each with its own terminal: filled in from `capture-pane` when the
+ * pane appears, then fed the pane's output. Calls return at once and run in order
  * on the session's own thread; [host] hears about window changes on the main thread.
  */
 // Connecting and reading cross JNI and the network, which throw many exception types;
@@ -154,10 +158,15 @@ internal class TmuxControlSession(
     /** [view]'s tab became the active one, or none of this session's tabs did when null. */
     fun focus(view: TmuxPaneView?) = onThread { windows.focus(view) }
 
-    fun sendKeys(view: TmuxPaneView, data: ByteArray) = onThread {
-        if (!attached || data.isEmpty()) return@onThread
-        val paneId = windows.paneOf(view) ?: return@onThread
+    /** Sends [data] to pane [paneId] of [view]'s window. */
+    fun sendKeys(view: TmuxPaneView, paneId: Int, data: ByteArray) = onThread {
+        if (!attached || data.isEmpty() || !windows.shows(view, paneId)) return@onThread
         link.sendAll(TmuxControlCommands.sendKeys(paneId, data))
+    }
+
+    /** Makes [paneId] the active pane of [view]'s window. */
+    fun selectPane(view: TmuxPaneView, paneId: Int) = onThread {
+        if (attached) windows.selectPane(view, paneId)
     }
 
     /** Creates a window in the session; its tab opens and becomes the active one. */

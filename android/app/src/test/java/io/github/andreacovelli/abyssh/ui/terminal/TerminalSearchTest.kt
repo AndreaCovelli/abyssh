@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
+import io.github.andreacovelli.abyssh.service.terminal.TerminalCellArea
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -43,6 +44,23 @@ class TerminalSearchTest {
     @Test
     fun `match outside the viewport gives nothing`() {
         assertEquals(emptyList<SearchSpan>(), newest.viewportSpans(viewportTop = 0, rows = 24, cols = 80))
+    }
+
+    @Test
+    fun `matches in a pane stay inside the pane`() {
+        // The right pane of a window 81 cells wide: columns 41 to 80, rows 0 to 11.
+        val pane = TerminalCellArea(col = 41, row = 0, cols = 40, rows = 12)
+        val wrapped = SearchMatch(startRow = 100, startCol = 79, endRow = 101, endCol = 42)
+
+        assertEquals(
+            listOf(SearchSpan(5, 79, 80), SearchSpan(6, 41, 42)),
+            wrapped.viewportSpans(viewportTop = 95, rows = 24, cols = 81, area = pane),
+        )
+        // Below the pane's last row, where another pane shows.
+        assertEquals(
+            emptyList<SearchSpan>(),
+            SearchMatch(110, 45, 110, 47).viewportSpans(viewportTop = 95, rows = 24, cols = 81, area = pane),
+        )
     }
 
     @Test

@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
+import io.github.andreacovelli.abyssh.service.terminal.TerminalCellArea
+
 /**
  * A search hit in screen coordinates. Rows count from the oldest scrollback row, like
  * [TerminalSnapshot.viewportScrollY]. The end cell is included.
@@ -13,17 +15,23 @@ data class SearchSpan(val row: Int, val firstCol: Int, val lastCol: Int)
 fun parseSearchMatches(raw: IntArray): List<SearchMatch> =
     List(raw.size / 4) { i -> SearchMatch(raw[i * 4], raw[i * 4 + 1], raw[i * 4 + 2], raw[i * 4 + 3]) }
 
-/** The parts of this match inside a viewport whose top row is [viewportTop]. */
-fun SearchMatch.viewportSpans(viewportTop: Int, rows: Int, cols: Int): List<SearchSpan> {
-    if (cols <= 0) return emptyList()
-    val first = maxOf(startRow, viewportTop)
-    val last = minOf(endRow, viewportTop + rows - 1)
+/**
+ * The parts of this match inside a viewport whose top row is [viewportTop], kept inside
+ * [area] when the viewport shows several terminals and the match is in the one there.
+ */
+fun SearchMatch.viewportSpans(viewportTop: Int, rows: Int, cols: Int, area: TerminalCellArea? = null): List<SearchSpan> {
+    val bounds = area ?: TerminalCellArea(0, 0, cols, rows)
+    val leftCol = bounds.col.coerceAtLeast(0)
+    val rightCol = minOf(bounds.col + bounds.cols, cols) - 1
+    if (leftCol > rightCol) return emptyList()
+    val first = maxOf(startRow, viewportTop + bounds.row)
+    val last = minOf(endRow, viewportTop + minOf(bounds.row + bounds.rows, rows) - 1)
     if (first > last) return emptyList()
     return (first..last).map { row ->
         SearchSpan(
             row = row - viewportTop,
-            firstCol = if (row == startRow) startCol.coerceIn(0, cols - 1) else 0,
-            lastCol = if (row == endRow) endCol.coerceIn(0, cols - 1) else cols - 1,
+            firstCol = if (row == startRow) startCol.coerceIn(leftCol, rightCol) else leftCol,
+            lastCol = if (row == endRow) endCol.coerceIn(leftCol, rightCol) else rightCol,
         )
     }
 }

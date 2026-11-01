@@ -268,18 +268,18 @@ private fun TerminalResizeEffect(
 private class SearchSpanCache {
     private var matches: List<SearchMatch>? = null
     private var current: SearchMatch? = null
-    private var viewport = Triple(-1, -1, -1)
+    private var viewport: Any? = null
     private var spans: Map<Int, List<Pair<SearchSpan, Boolean>>> = emptyMap()
 
     fun get(matches: List<SearchMatch>, current: SearchMatch?, snapshot: TerminalSnapshot): Map<Int, List<Pair<SearchSpan, Boolean>>> {
-        val viewport = Triple(snapshot.viewportScrollY, snapshot.rows, snapshot.cols)
+        val viewport = listOf(snapshot.viewportScrollY, snapshot.rows, snapshot.cols, snapshot.activeArea)
         if (matches !== this.matches || current != this.current || viewport != this.viewport) {
             this.matches = matches
             this.current = current
             this.viewport = viewport
             spans = matches
                 .flatMap { match ->
-                    match.viewportSpans(snapshot.viewportScrollY, snapshot.rows, snapshot.cols).map { span -> span to (match == current) }
+                    match.viewportSpans(snapshot.viewportScrollY, snapshot.rows, snapshot.cols, snapshot.activeArea).map { span -> span to (match == current) }
                 }
                 .groupBy { it.first.row }
         }

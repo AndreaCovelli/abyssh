@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSize
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxWindowLayout
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -9,15 +10,16 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * A tab that shows the active pane of one window of [control]. The terminal keeps the
- * pane's size, whatever the view's, and its replies to the program are dropped, since
- * tmux already answered; only what the user does goes to the pane, through `send-keys`.
+ * A tab that shows one window of [control], with a terminal per pane kept at the pane's
+ * size, whatever the view's. The terminals' replies to programs are dropped, since tmux
+ * already answered; only what the user does goes to a pane, through `send-keys`.
  */
 internal class TmuxPaneConnection(
     private val scope: CoroutineScope,
     private val dispatcher: CoroutineDispatcher,
     private val state: MutableStateFlow<SessionState>,
-    private val emulator: TerminalEmulator,
+    nativeVersion: String?,
+    newEmulator: (MutableStateFlow<SessionState>, () -> Unit) -> TerminalEmulator,
     val control: TmuxControlSession,
     windowId: Int?,
 ) : TabConnection,
@@ -26,9 +28,17 @@ internal class TmuxPaneConnection(
     @Volatile var windowId: Int? = windowId
         private set
 
+    /** The window's panes, which take the tab's input. */
+    val panes = TmuxWindowPanes(
+        state = state,
+        nativeVersion = nativeVersion,
+        newEmulator = newEmulator,
+        sendKeys = { paneId, data -> control.sendKeys(this, paneId, data) },
+        selectPane = { paneId -> control.selectPane(this, paneId) },
+    )
+
     private var statusJob: Job? = null
     private var attached = false
-    private var paneSize: TmuxPaneSize? = null
 
     override fun connect(spec: TabSpec, sessionKey: String) {
         scope.launch(dispatcher) {
@@ -38,7 +48,6 @@ internal class TmuxPaneConnection(
             }
             attached = true
             state.update { it.copy(sessionKey = sessionKey) }
-            if (!emulator.isOpen) emulator.open()
             statusJob = scope.launch(dispatcher) {
                 control.status.collect { status ->
                     state.update { it.copy(status = status.status, error = status.error, reconnectAttempt = status.reconnectAttempt) }
@@ -54,55 +63,32 @@ internal class TmuxPaneConnection(
             statusJob?.cancel()
             statusJob = null
             attached = false
-            paneSize = null
             onClosed()
         }
     }
 
     override fun resize(geometry: TerminalGeometry) {
-        val size = paneSize
-        emulator.geometry = if (size == null) geometry else geometry.copy(cols = size.cols, rows = size.rows)
+        panes.resize(geometry)
         control.resizeClient(geometry)
-        if (!emulator.isOpen) return
-        emulator.applyGeometry()
-        emulator.drainPtyWrites()
-        emulator.setMouseEncodingSize()
-        emulator.requestSnapshot(force = true)
     }
 
-    override fun writeBestEffort(data: ByteArray) = control.sendKeys(this, data)
+    override fun writeBestEffort(data: ByteArray) {
+        panes.focused()?.send?.invoke(data)
+    }
 
-    // Called after the user scrolls, whose mouse wheel reports are input for the pane.
     override fun flushPtyWrites() {
-        val writes = emulator.drainPtyWrites()
-        if (writes.isNotEmpty()) control.sendKeys(this, writes)
+        panes.focused()?.flush?.invoke()
     }
 
     override fun bindWindow(windowId: Int) {
         this.windowId = windowId
     }
 
-    override fun showPane(size: TmuxPaneSize, seed: ByteArray) = onSessionThread {
-        paneSize = size
-        emulator.geometry = emulator.geometry.copy(cols = size.cols, rows = size.rows)
-        emulator.open()
-        emulator.writeRemote(seed)
-        emulator.drainPtyWrites()
-        emulator.setMouseEncodingSize()
-        emulator.requestSnapshot(force = true)
-    }
+    override fun showLayout(layout: TmuxWindowLayout, activePane: Int) = onSessionThread { panes.showLayout(layout, activePane) }
 
-    override fun paneOutput(data: ByteArray) = onSessionThread {
-        if (!emulator.isOpen) return@onSessionThread
-        val wasImageLoading = emulator.isImageLoading()
-        emulator.writeRemote(data)
-        emulator.drainPtyWrites()
-        val isImageLoading = emulator.isImageLoading()
-        when {
-            wasImageLoading && !isImageLoading -> emulator.requestSnapshot(force = true)
-            !isImageLoading -> emulator.requestSnapshot()
-        }
-    }
+    override fun showPane(paneId: Int, size: TmuxPaneSize, seed: ByteArray) = onSessionThread { panes.showPane(paneId, size, seed) }
+
+    override fun paneOutput(paneId: Int, data: ByteArray) = onSessionThread { panes.paneOutput(paneId, data) }
 
     private fun onSessionThread(block: () -> Unit) {
         scope.launch(dispatcher) { if (attached) block() }
