@@ -175,10 +175,9 @@ and `NativeWakeBridge`. Zig implements each one as
 - GitHub Actions: CI (`ci.yml`) runs `mise run check` through the shared workflow in
   AndreaCovelli/repo-baseline, without the native library, and scans new commits with
   Gitleaks (`.gitleaks.toml`). Its `Validate` job is the only check the `main` ruleset
-  requires. Add any new CI job to `Validate`'s
-  `needs`. Nightly publishes an APK on every push to `main`; Release builds signed
-  artifacts from `v*.*.*` tags; Dependency Submission sends the Gradle dependency graph
-  to GitHub when build files change on `main`. The signing secrets live in the `release`
+  requires. Add any new CI job to `Validate`'s `needs`. Release builds signed artifacts
+  from `v*.*.*` tags; Dependency Submission sends the Gradle dependency graph to GitHub
+  when build files change on `main`. The signing secrets live in the `release`
   environment, which admits only `main` and `v*` tags; a job that signs must declare
   `environment: release`. Pin actions to a full commit SHA with a version
   comment, and run `mise run check:actions` after editing workflows.
