@@ -15,6 +15,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Markdown-only changes, including pushes to main, run just the Markdown lint here
+  # and skip the Gradle checks below.
+  docs:
+    name: Docs
+    uses: AndreaCovelli/repo-baseline/.github/workflows/check.yml@a3cd314a40868370e41af02ecf02af60df5614ee # v1.0.1
+    permissions:
+      contents: read
+      pull-requests: read
+    with:
+      timeout-minutes: 10
+      task: check:docs
+      install-args: github:rvben/rumdl
+      paths: |
+        **/*.md
+        .rumdl.toml
+
   check:
     name: Check
     uses: AndreaCovelli/repo-baseline/.github/workflows/check.yml@a3cd314a40868370e41af02ecf02af60df5614ee # v1.0.1
@@ -24,7 +40,7 @@ jobs:
     with:
       timeout-minutes: 35
       # The checks build the APK without the native library, so skip Zig.
-      install-args: java github:kjanat/actionlint
+      install-args: java github:kjanat/actionlint github:rvben/rumdl
       cache-path: |
         ~/.gradle/caches
         ~/.gradle/wrapper
@@ -37,6 +53,7 @@ jobs:
         .editorconfig
         mise.toml
         mise.lock
+        mise-tasks/check
         .github/workflows/**
 
   secrets:
@@ -65,7 +82,7 @@ jobs:
 
   validate:
     name: Validate
-    needs: [check, secrets]
+    needs: [docs, check, secrets]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

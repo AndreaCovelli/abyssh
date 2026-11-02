@@ -1,0 +1,20 @@
+# Markdown lint settings for rumdl, run by `mise run check:docs`.
+
+[global]
+respect-gitignore = true
+# The attribution note ships inside the APK assets; leave it as written.
+exclude = ["android/app/src/main/assets/**"]
+
+[MD013]
+# Prose wraps at 90 columns. Tables and code blocks can run longer.
+line-length = 90
+code-blocks = false
+tables = false
+
+[MD033]
+# The README header centers the logo and title with HTML.
+allowed-elements = ["p", "img", "h1"]
+
+[per-file-ignores]
+# The README opens with the HTML header and labels feature groups in bold.
+"README.md" = ["MD036", "MD041"]

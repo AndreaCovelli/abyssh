@@ -5,6 +5,7 @@ lockfile = true
 java = "temurin-21.0.13+9.0.LTS"
 zig = "0.17.0"
 "github:kjanat/actionlint" = "1.17.0"
+"github:rvben/rumdl" = "0.3.2"
 
 # The native build needs ANDROID_NDK_HOME (or ANDROID_NDK_ROOT) set to one
 # installed NDK version, such as $ANDROID_HOME/ndk/28.2.13676358.
@@ -67,13 +68,9 @@ run = "./gradlew detekt"
 description = "Lint GitHub Actions workflows"
 run = "actionlint"
 
-[tasks.check]
-description = "Run every repository check that needs no device"
-dir = "android"
-# One Gradle call instead of one per check: with the configuration cache on, Gradle
-# runs independent tasks of the module in parallel, and --continue reports every
-# failure in one run. Keep the task list in step with the tasks above.
-run = [
-  { task = "check:actions" },
-  "./gradlew --continue spotlessCheck detekt lintDebug testDebugUnitTest compileDebugAndroidTestKotlin assembleDebug",
-]
+[tasks."check:docs"]
+description = "Lint Markdown files"
+run = "rumdl check ."
+
+# `mise run check` is the file task mise-tasks/check, which runs only check:docs when
+# a branch changes nothing but Markdown.
