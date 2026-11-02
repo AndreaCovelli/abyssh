@@ -68,6 +68,9 @@ internal object TmuxControlCommands {
 
     fun continuePane(paneId: Int): String = "refresh-client -A '%$paneId:continue'"
 
+    /** Stops tmux sending [paneId]'s output to this client; tmux still reads the pane, so its program runs on. */
+    fun pausePane(paneId: Int): String = "refresh-client -A '%$paneId:pause'"
+
     /** Lists the windows with the layout they show, which has only the zoomed pane while one is zoomed. */
     const val LIST_WINDOWS =
         "list-windows -F '#{window_id} #{window_active} #{pane_id} #{pane_width} #{pane_height} #{window_visible_layout}'"

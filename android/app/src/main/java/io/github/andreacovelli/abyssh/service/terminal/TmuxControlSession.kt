@@ -165,6 +165,9 @@ internal class TmuxControlSession(
         }
     }
 
+    /** Pauses the panes of [view]'s window while [quiet], and resumes them once it isn't. */
+    fun setWindowQuiet(view: TmuxPaneView, quiet: Boolean) = onThread { windows.setQuiet(view, quiet) }
+
     /** [view]'s tab became the active one, or none of this session's tabs did when null. */
     fun focus(view: TmuxPaneView?) = onThread { windows.focus(view) }
 

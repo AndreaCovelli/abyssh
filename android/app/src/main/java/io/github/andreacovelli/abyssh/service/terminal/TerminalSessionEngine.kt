@@ -151,7 +151,7 @@ class TerminalSessionEngine internal constructor(
      * preview; pair each call with [removeViewer]. While nothing shows it, output builds
      * no snapshots, the title and bell update about once a second, and Kitty animations
      * pause. After [QUIET_AFTER_HIDDEN_MS] hidden, a Mosh tab stops its network traffic
-     * until shown again.
+     * and a tmux window's panes pause until it is shown again.
      */
     fun addViewer() {
         scope.launch(dispatcher) {

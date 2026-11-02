@@ -25,6 +25,13 @@ class TmuxControlCommandsTest {
     }
 
     @Test
+    fun paneFlowCommandsPauseAndContinueThePane() {
+        // `pause`, unlike `off`, keeps tmux reading the pane, so its program doesn't stall.
+        assertEquals("refresh-client -A '%4:pause'", TmuxControlCommands.pausePane(4))
+        assertEquals("refresh-client -A '%4:continue'", TmuxControlCommands.continuePane(4))
+    }
+
+    @Test
     fun sendKeysSplitsLongInputIntoHexCommands() {
         val commands = TmuxControlCommands.sendKeys(4, ByteArray(300) { 0x1b })
 
