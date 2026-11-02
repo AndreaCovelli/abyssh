@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val TAG = "TerminalSession"
-internal const val SNAPSHOT_INTERVAL_MS = 16L
 
 /** The grid and the pixel sizes behind it. */
 internal data class TerminalGeometry(
@@ -40,7 +39,8 @@ internal fun GhosttyBridge.versionOrNull(): String? =
 /**
  * One session's Ghostty terminal: its native handle, size, and colors, and the snapshots
  * it publishes to [state] at most once a frame. Every call must run on the session
- * thread, [dispatcher]. [scrollbackLimitBytes] is read each time a terminal is created.
+ * thread, [dispatcher]. [scrollbackLimitBytes] is read each time a terminal is created,
+ * and [snapshotIntervalMs], the length of that frame, each time a snapshot is due.
  */
 internal class TerminalEmulator(
     val bridge: GhosttyBridge,
@@ -52,6 +52,7 @@ internal class TerminalEmulator(
     private val scrollbackLimitBytes: () -> Int,
     // Runs after each update to [state], as when a tmux pane's terminal feeds its window's view.
     private val onPublished: () -> Unit = {},
+    private val snapshotIntervalMs: () -> Long = { DEFAULT_SNAPSHOT_INTERVAL_MS },
 ) {
     var handle: Long = 0L
         private set
@@ -176,7 +177,8 @@ internal class TerminalEmulator(
         watchSyncHold()
         val now = System.currentTimeMillis()
         val elapsed = now - lastSnapshotAtMs
-        if (force || elapsed >= SNAPSHOT_INTERVAL_MS) {
+        val interval = snapshotIntervalMs()
+        if (force || elapsed >= interval) {
             snapshotScheduled = false
             emitSnapshot()
             lastSnapshotAtMs = now
@@ -185,7 +187,7 @@ internal class TerminalEmulator(
         if (snapshotScheduled) return
         snapshotScheduled = true
         scope.launch(dispatcher) {
-            delay((SNAPSHOT_INTERVAL_MS - elapsed).coerceAtLeast(1L))
+            delay((interval - elapsed).coerceAtLeast(1L))
             snapshotScheduled = false
             if (!isOpen) return@launch
             emitSnapshot()

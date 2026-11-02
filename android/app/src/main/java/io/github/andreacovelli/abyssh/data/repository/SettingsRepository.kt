@@ -58,6 +58,10 @@ class SettingsRepository(context: Context) {
     private val _keepScreenAwake = MutableStateFlow(prefs.getBoolean(KEY_KEEP_SCREEN_AWAKE, false))
     val keepScreenAwake: StateFlow<Boolean> = _keepScreenAwake.asStateFlow()
 
+    // Off by default: on a 90 or 120 Hz display, streaming output redraws more often.
+    private val _matchDisplayRefreshRate = MutableStateFlow(prefs.getBoolean(KEY_MATCH_DISPLAY_REFRESH_RATE, false))
+    val matchDisplayRefreshRate: StateFlow<Boolean> = _matchDisplayRefreshRate.asStateFlow()
+
     private val _hideScreenContents = MutableStateFlow(prefs.getBoolean(KEY_HIDE_SCREEN_CONTENTS, false))
     val hideScreenContents: StateFlow<Boolean> = _hideScreenContents.asStateFlow()
 
@@ -147,6 +151,11 @@ class SettingsRepository(context: Context) {
         _keepScreenAwake.value = enabled
     }
 
+    fun setMatchDisplayRefreshRate(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_MATCH_DISPLAY_REFRESH_RATE, enabled) }
+        _matchDisplayRefreshRate.value = enabled
+    }
+
     fun setHideScreenContents(enabled: Boolean) {
         prefs.edit { putBoolean(KEY_HIDE_SCREEN_CONTENTS, enabled) }
         _hideScreenContents.value = enabled
@@ -225,6 +234,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_REQUIRE_AUTH_ON_CONNECT = "require_auth_on_connect"
         private const val KEY_LOCAL_SHELL_ENABLED = "local_shell_enabled"
         private const val KEY_KEEP_SCREEN_AWAKE = "keep_screen_awake"
+        private const val KEY_MATCH_DISPLAY_REFRESH_RATE = "match_display_refresh_rate"
         private const val KEY_HIDE_SCREEN_CONTENTS = "hide_screen_contents"
         private const val KEY_DISABLE_AUTOCORRECT = "disable_autocorrect"
         private const val KEY_REMOTE_CLIPBOARD_WRITE_ENABLED = "remote_clipboard_write_enabled"

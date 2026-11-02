@@ -57,6 +57,10 @@ class TerminalSessionRepository private constructor(application: Application) {
         tabs = { _tabs.value },
     )
     private val foreground = SessionForegroundTracker(appContext)
+
+    // A frame of the display while the setting asks to match its refresh rate.
+    private val frameInterval =
+        DisplayFrameInterval(appContext, settingsRepository.matchDisplayRefreshRate, scope)
     private var attachedClients = 0
 
     private val _notices = MutableSharedFlow<UiText>(extraBufferCapacity = 4)
@@ -177,6 +181,7 @@ class TerminalSessionRepository private constructor(application: Application) {
                 scrollbackLimitBytes = {
                     settingsRepository.terminalScrollbackMb.value * SettingsRepository.BYTES_PER_MB
                 },
+                snapshotIntervalMs = { frameInterval.ms },
                 scope = scope,
                 localShellService = NativeLocalShellService(appContext.filesDir, appContext.cacheDir),
                 hostKeyStore = hostKeyStore,
