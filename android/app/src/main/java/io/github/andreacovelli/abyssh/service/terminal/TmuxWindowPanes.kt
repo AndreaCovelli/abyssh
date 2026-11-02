@@ -25,6 +25,8 @@ internal class TmuxWindowPanes(
     private val newEmulator: (MutableStateFlow<SessionState>, () -> Unit) -> TerminalEmulator,
     private val sendKeys: (paneId: Int, data: ByteArray) -> Unit,
     private val selectPane: (paneId: Int) -> Unit,
+    // The shortest time between two compositions of the window, read each time one is due.
+    private val snapshotIntervalMs: () -> Long = { DEFAULT_SNAPSHOT_INTERVAL_MS },
 ) : TabTerminals {
     private class Pane(val emulator: TerminalEmulator, val state: MutableStateFlow<SessionState>) {
         val passthrough = TmuxPassthrough()
@@ -172,14 +174,15 @@ internal class TmuxWindowPanes(
     private fun onPanePublished(pane: Pane) {
         pendingBells += pane.state.value.bellCount
         val elapsed = System.currentTimeMillis() - lastComposeAtMs
-        if (elapsed >= SNAPSHOT_INTERVAL_MS) {
+        val interval = snapshotIntervalMs()
+        if (elapsed >= interval) {
             compose()
             return
         }
         if (composeScheduled) return
         composeScheduled = true
         scope.launch(dispatcher) {
-            delay(SNAPSHOT_INTERVAL_MS - elapsed)
+            delay(interval - elapsed)
             composeScheduled = false
             compose()
         }

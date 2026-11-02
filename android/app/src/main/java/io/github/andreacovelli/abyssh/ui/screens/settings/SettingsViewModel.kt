@@ -38,6 +38,7 @@ data class TerminalSettingsState(
     val remoteClipboardWriteEnabled: Boolean = true,
     val ctrlVPastes: Boolean = true,
     val keepScreenAwake: Boolean = false,
+    val matchDisplayRefreshRate: Boolean = false,
     val hideScreenContents: Boolean = false,
     val disableAutocorrect: Boolean = true,
 )
@@ -70,6 +71,7 @@ interface TerminalSettingsActions {
     fun setRemoteClipboardWriteEnabled(enabled: Boolean)
     fun setCtrlVPastes(enabled: Boolean)
     fun setKeepScreenAwake(enabled: Boolean)
+    fun setMatchDisplayRefreshRate(enabled: Boolean)
     fun setHideScreenContents(enabled: Boolean)
     fun setDisableAutocorrect(enabled: Boolean)
 }
@@ -92,7 +94,8 @@ class SettingsViewModel(
                 settings.terminalTabMode, settings.accessoryLayoutIds, settings.accessoryBarSingleRow,
                 settings.terminalCustomKeyGroups, settings.showCustomActionsFab, settings.builtinShortcuts,
                 settings.localShellEnabled, settings.remoteClipboardWriteEnabled, settings.ctrlVPastes,
-                settings.keepScreenAwake, settings.hideScreenContents, settings.disableAutocorrect,
+                settings.keepScreenAwake, settings.matchDisplayRefreshRate, settings.hideScreenContents,
+                settings.disableAutocorrect,
             ),
         ) { currentState() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), currentState())
@@ -120,6 +123,7 @@ class SettingsViewModel(
             remoteClipboardWriteEnabled = settings.remoteClipboardWriteEnabled.value,
             ctrlVPastes = settings.ctrlVPastes.value,
             keepScreenAwake = settings.keepScreenAwake.value,
+            matchDisplayRefreshRate = settings.matchDisplayRefreshRate.value,
             hideScreenContents = settings.hideScreenContents.value,
             disableAutocorrect = settings.disableAutocorrect.value,
         ),
@@ -145,6 +149,7 @@ class SettingsViewModel(
     override fun setRemoteClipboardWriteEnabled(enabled: Boolean) = settings.setRemoteClipboardWriteEnabled(enabled)
     override fun setCtrlVPastes(enabled: Boolean) = settings.setCtrlVPastes(enabled)
     override fun setKeepScreenAwake(enabled: Boolean) = settings.setKeepScreenAwake(enabled)
+    override fun setMatchDisplayRefreshRate(enabled: Boolean) = settings.setMatchDisplayRefreshRate(enabled)
     override fun setHideScreenContents(enabled: Boolean) = settings.setHideScreenContents(enabled)
     override fun setDisableAutocorrect(enabled: Boolean) = settings.setDisableAutocorrect(enabled)
 

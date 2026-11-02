@@ -21,6 +21,8 @@ class TerminalSessionEngine internal constructor(
     publishClipboardText: (String) -> Unit,
     // The scrollback budget in bytes, read each time the terminal is created.
     scrollbackLimitBytes: () -> Int,
+    // The shortest time between two snapshots, read each time one is due.
+    snapshotIntervalMs: () -> Long = { DEFAULT_SNAPSHOT_INTERVAL_MS },
     private val scope: CoroutineScope,
     localShellService: NativeLocalShellService,
     hostKeyStore: HostKeyStore,
@@ -69,16 +71,27 @@ class TerminalSessionEngine internal constructor(
                         publishClipboardText,
                         scrollbackLimitBytes,
                         onPublished,
+                        snapshotIntervalMs,
                     )
                 },
                 control = tmuxControl,
                 windowId = tmuxWindowId,
+                snapshotIntervalMs = snapshotIntervalMs,
             )
             connection = tmux
             terminals = tmux.panes
             sftp = tmuxControl.sftp
         } else {
-            val emulator = TerminalEmulator(bridge, nativeVersion, scope, dispatcher, _state, publishClipboardText, scrollbackLimitBytes)
+            val emulator = TerminalEmulator(
+                bridge,
+                nativeVersion,
+                scope,
+                dispatcher,
+                _state,
+                publishClipboardText,
+                scrollbackLimitBytes,
+                snapshotIntervalMs = snapshotIntervalMs,
+            )
             val transports = SessionTransports(hostKeys, localShellService, thread)
             connection =
                 SessionConnection(

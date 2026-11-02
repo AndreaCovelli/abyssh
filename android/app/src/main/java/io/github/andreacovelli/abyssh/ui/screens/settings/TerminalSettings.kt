@@ -113,6 +113,12 @@ internal fun TerminalSettings(
             onCheckedChange = actions::setKeepScreenAwake,
         )
         SettingSwitchCard(
+            title = stringResource(R.string.settings_match_display_refresh_rate),
+            hint = stringResource(R.string.settings_match_display_refresh_rate_hint),
+            checked = state.matchDisplayRefreshRate,
+            onCheckedChange = actions::setMatchDisplayRefreshRate,
+        )
+        SettingSwitchCard(
             title = stringResource(R.string.settings_hide_screen_contents),
             hint = stringResource(R.string.settings_hide_screen_contents_hint),
             checked = state.hideScreenContents,

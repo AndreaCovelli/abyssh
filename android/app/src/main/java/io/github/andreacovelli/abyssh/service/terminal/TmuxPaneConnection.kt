@@ -22,6 +22,7 @@ internal class TmuxPaneConnection(
     newEmulator: (MutableStateFlow<SessionState>, () -> Unit) -> TerminalEmulator,
     val control: TmuxControlSession,
     windowId: Int?,
+    snapshotIntervalMs: () -> Long = { DEFAULT_SNAPSHOT_INTERVAL_MS },
 ) : TabConnection,
     TmuxPaneView {
     /** The window this tab shows, or null until the control session gives it one. */
@@ -37,6 +38,7 @@ internal class TmuxPaneConnection(
         newEmulator = newEmulator,
         sendKeys = { paneId, data -> control.sendKeys(this, paneId, data) },
         selectPane = { paneId -> control.selectPane(this, paneId) },
+        snapshotIntervalMs = snapshotIntervalMs,
     )
 
     private var statusJob: Job? = null
