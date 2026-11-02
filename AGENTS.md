@@ -7,13 +7,14 @@ backup encryption. It is a fork of jossephus/chuchu.
 
 ## Commands
 
-mise pins JDK 21, Zig 0.17.0, and actionlint; the Gradle wrapper pins Gradle; the
+mise pins JDK 21, Zig 0.17.0, actionlint, and rumdl; the Gradle wrapper pins Gradle; the
 version catalog pins AGP, Kotlin, and libraries. Run `mise install` once.
 
 | Command | Use |
 | --- | --- |
 | `mise run native` | Build `libabyssh_jni.so` for every ABI into `android/app/src/main/jniLibs/`. Needs `ANDROID_NDK_HOME` set to one NDK version, such as `$ANDROID_HOME/ndk/28.2.13676358`. Add `-Dtarget=aarch64-linux-android` to build arm64 only |
-| `mise run check` | Formatting, Detekt, Android Lint, unit tests, compiling the instrumented tests, the debug build, and actionlint. Run before every commit |
+| `mise run check` | Formatting, Detekt, Android Lint, unit tests, compiling the instrumented tests, the debug build, actionlint, and the Markdown lint. Run before every commit. When every file changed since the merge base with `origin/main` is Markdown, it runs only `check:docs`; pass `--full` to run everything |
+| `mise run check:docs` | Lint Markdown with rumdl, configured in `.rumdl.toml`. Prose wraps at 90 columns |
 | `mise run format` | Format Kotlin sources and Gradle scripts with ktlint through Spotless. `mise run format:check` only reports |
 | `mise run detekt` | Detekt static analysis, configured in `android/config/detekt/detekt.yml`, with no baseline |
 | `mise run test` | Unit tests only. Filter with `cd android && ./gradlew testDebugUnitTest --tests '<pattern>'` |
@@ -28,7 +29,7 @@ build arm64 only while iterating.
 
 ## Layout
 
-```
+```text
 android/app/src/main/java/io/github/andreacovelli/abyssh/
   data/       Room database, DAOs, repositories, backup planning
   model/      Plain data types (HostProfile, Transport, AuthMethod, SshKey)
@@ -173,7 +174,8 @@ and `NativeWakeBridge`. Zig implements each one as
   `Chuchu` → `Abyssh`, `Chu*` classes → `Abyss*`, and upstream's `chuchu_*` Zig files and
   `Java_com_jossephus_chuchu_*` exports to their `abyssh` names.
 - GitHub Actions: CI (`ci.yml`) runs `mise run check` through the shared workflow in
-  AndreaCovelli/repo-baseline, without the native library, and scans new commits with
+  AndreaCovelli/repo-baseline, without the native library (on a pull request that changes
+  only Markdown, that is just the Markdown lint), and scans new commits with
   Gitleaks (`.gitleaks.toml`). Its `Validate` job is the only check the `main` ruleset
   requires. Add any new CI job to `Validate`'s `needs`. Release builds signed artifacts
   from `v*.*.*` tags; Dependency Submission sends the Gradle dependency graph to GitHub

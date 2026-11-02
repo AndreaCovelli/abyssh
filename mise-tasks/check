@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+#MISE description="Run every repository check that needs no device"
+# Run the repository checks. When every file changed since the merge base with
+# origin/main, committed or not, is Markdown or the Markdown lint config, run only the
+# docs checks. Pass --full to run everything regardless.
+set -euo pipefail
+
+cd "${MISE_PROJECT_ROOT:-$(git rev-parse --show-toplevel)}"
+
+full=false
+case "${1:-}" in
+  "") ;;
+  --full) full=true ;;
+  *)
+    echo "usage: mise run check [--full]" >&2
+    exit 2
+    ;;
+esac
+
+docs_only() {
+  local base changed
+  base="$(git merge-base HEAD origin/main 2>/dev/null)" || return 1
+  changed="$(
+    git diff --name-only "$base"
+    git ls-files --others --exclude-standard
+  )"
+  # A clean tree on main has nothing to compare, so it gets every check.
+  [ -n "$changed" ] || return 1
+  ! grep -qvE '(^|/)[^/]*\.md$|^\.rumdl\.toml$' <<<"$changed"
+}
+
+if ! "$full" && docs_only; then
+  echo "Only Markdown changed since origin/main; running the docs checks"
+  exec mise run check:docs
+fi
+
+mise run check:actions
+mise run check:docs
+
+# One Gradle call instead of one per check: with the configuration cache on, Gradle
+# runs independent tasks of the module in parallel, and --continue reports every
+# failure in one run. Keep the task list in step with the tasks in mise.toml.
+cd android
+./gradlew --continue spotlessCheck detekt lintDebug testDebugUnitTest \
+  compileDebugAndroidTestKotlin assembleDebug

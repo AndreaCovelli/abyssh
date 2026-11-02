@@ -66,8 +66,8 @@ nearly all current devices.
 
 You need:
 
-- [mise](https://mise.jdx.dev), which installs the pinned JDK 21, Zig 0.17.0, and
-  actionlint
+- [mise](https://mise.jdx.dev), which installs the pinned JDK 21, Zig 0.17.0,
+  actionlint, and rumdl
 - The Android SDK, with `ANDROID_HOME` set and an NDK installed
 
 ```sh
@@ -90,7 +90,7 @@ Other tasks (`mise tasks ls` lists them all):
 | Task | What it does |
 | --- | --- |
 | `mise run build` | Build the debug APK |
-| `mise run check` | Every check that needs no device: formatting, Detekt, Android Lint, unit tests, compiling the device tests, the debug build, and a lint of the GitHub workflows |
+| `mise run check` | Every check that needs no device: formatting, Detekt, Android Lint, unit tests, compiling the device tests, the debug build, and lints of the GitHub workflows and Markdown. If only Markdown changed since `origin/main`, just the Markdown lint |
 | `mise run format` | Format the Kotlin sources and Gradle scripts |
 | `mise run detekt` | Detekt static analysis |
 | `mise run test` | Unit tests only |

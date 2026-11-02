@@ -24,7 +24,7 @@ jobs:
     with:
       timeout-minutes: 35
       # The checks build the APK without the native library, so skip Zig.
-      install-args: java github:kjanat/actionlint
+      install-args: java github:kjanat/actionlint github:rvben/rumdl
       cache-path: |
         ~/.gradle/caches
         ~/.gradle/wrapper
@@ -32,12 +32,16 @@ jobs:
         android/gradle/libs.versions.toml
         android/gradle/wrapper/gradle-wrapper.properties
         android/**/*.gradle.kts
+      # A pull request that changes only Markdown runs just the docs checks.
       paths: |
         android/**
         .editorconfig
         mise.toml
         mise.lock
+        mise-tasks/check
         .github/workflows/**
+        **/*.md
+        .rumdl.toml
 
   secrets:
     name: Secrets

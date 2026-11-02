@@ -25,6 +25,29 @@ url = "https://github.com/kjanat/actionlint/releases/download/v1.17.0/actionlint
 url_api = "https://api.github.com/repos/kjanat/actionlint/releases/assets/561506341"
 provenance = "github-attestations"
 
+[[tools."github:rvben/rumdl"]]
+version = "0.3.2"
+backend = "github:rvben/rumdl"
+specifiers = ["0.3.2"]
+
+[tools."github:rvben/rumdl"."platforms.linux-arm64"]
+checksum = "sha256:bdfca7a602f893fbe5d73d5e38f73b31f45a21d3bcf385b6ea819997d0449ec3"
+url = "https://github.com/rvben/rumdl/releases/download/v0.3.2/rumdl-v0.3.2-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/685449365"
+provenance = "github-attestations"
+
+[tools."github:rvben/rumdl"."platforms.linux-x64"]
+checksum = "sha256:f527d1374765d826c1627ceab3d1f46e548268731a495b5b12a3af529b3d79e8"
+url = "https://github.com/rvben/rumdl/releases/download/v0.3.2/rumdl-v0.3.2-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/685449359"
+provenance = "github-attestations"
+
+[tools."github:rvben/rumdl"."platforms.macos-arm64"]
+checksum = "sha256:a1eefb1cd2e0cafa42f0ca98d3f8713d7e73f9eba77fc8ef0ed6836875197935"
+url = "https://github.com/rvben/rumdl/releases/download/v0.3.2/rumdl-v0.3.2-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/685449362"
+provenance = "github-attestations"
+
 [[tools.java]]
 version = "temurin-21.0.13+9.0.LTS"
 backend = "core:java"
