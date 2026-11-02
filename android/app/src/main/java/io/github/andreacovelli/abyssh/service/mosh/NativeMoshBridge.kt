@@ -36,6 +36,10 @@ class NativeMoshBridge {
     // Returns 0 on success.
     external fun nativePollState(handle: Long, outState: LongArray): Int
 
+    // Stops (or resumes) heartbeats and ack-only datagrams, so the server goes quiet too.
+    // Returns 0 on success.
+    external fun nativeSetQuiet(handle: Long, quiet: Boolean): Int
+
     // Sends Mosh's shutdown so mosh-server exits; nativeIsShutdownAcknowledged reports its ack.
     external fun nativeStartShutdown(handle: Long): Int
     external fun nativeIsShutdownAcknowledged(handle: Long): Boolean

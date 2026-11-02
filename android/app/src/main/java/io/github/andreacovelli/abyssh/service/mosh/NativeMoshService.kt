@@ -140,6 +140,15 @@ class NativeMoshService(
         )
     }
 
+    /**
+     * Stops or resumes the datagrams sent only to keep the session alive, so an unwatched
+     * session lets the radio sleep. Returns false when there is no client.
+     */
+    fun setQuiet(quiet: Boolean): Boolean {
+        if (handle == 0L) return false
+        return bridge.nativeSetQuiet(handle, quiet) == 0
+    }
+
     /** Asks the server to end the session. Returns false when the client isn't running. */
     fun startShutdown(): Boolean {
         if (handle == 0L) return false

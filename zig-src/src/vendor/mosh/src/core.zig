@@ -122,6 +122,10 @@ pub const Client = struct {
     // Circuit breaker
     consecutive_recv_failures: u32 = 0,
 
+    // Set by `setQuiet` while nobody is watching: no heartbeats or ack-only datagrams go
+    // out, so the server stops sending once it hasn't heard from the client for a while.
+    quiet: bool = false,
+
     // Shutdown handshake: set once `startShutdown` sends the reserved final state.
     shutdown_started_at_ms: ?u64 = null,
     shutdown_last_sent_at_ms: u64 = 0,
@@ -260,7 +264,21 @@ pub const Client = struct {
         if (self.shutdown_started_at_ms != null) return;
         log.info("shutdown: requesting server exit", .{});
         self.shutdown_started_at_ms = now_ms;
+        self.quiet = false;
         try self.sendShutdown(now_ms);
+    }
+
+    /// Stops or resumes the datagrams the client sends only to keep the session alive:
+    /// heartbeats and ack-only datagrams. Mosh-server stops sending to a client it hasn't
+    /// heard from in 40 s, so a quiet session lets the radio sleep. Input, resizes, and
+    /// their retransmissions still go out. Ending quiet acks the latest state at once, so
+    /// the server sends what changed meanwhile.
+    pub fn setQuiet(self: *Self, quiet: bool, now_ms: u64) !void {
+        if (self.quiet == quiet) return;
+        self.quiet = quiet;
+        if (!quiet and self.state == .running and self.shutdown_started_at_ms == null) {
+            try self.sendAckOnly(now_ms);
+        }
     }
 
     pub fn isShutdownAcknowledged(self: *const Self) bool {
@@ -565,7 +583,7 @@ pub const Client = struct {
             });
         }
 
-        if (self.latest_received_state_num > self.last_ack_reported_num) {
+        if (!self.quiet and self.latest_received_state_num > self.last_ack_reported_num) {
             if (self.ack_dirty_at_ms) |ack_dirty_at_ms| {
                 const delay_elapsed = now_ms >= ack_dirty_at_ms and
                     now_ms - ack_dirty_at_ms >= self.config.ack_delay_ms;
@@ -584,7 +602,7 @@ pub const Client = struct {
             }
         }
 
-        if (now_ms >= self.last_outbound_at_ms and
+        if (!self.quiet and now_ms >= self.last_outbound_at_ms and
             now_ms - self.last_outbound_at_ms >= self.config.heartbeat_interval_ms)
         {
             try self.sendAckOnly(now_ms);
@@ -607,12 +625,14 @@ pub const Client = struct {
         if (self.network_datagrams.items.len > 0) return blocked_send_retry_ms;
 
         var deadline = self.last_received_at_ms +| self.config.network_timeout_ms;
-        deadline = @min(deadline, self.last_outbound_at_ms +| self.config.heartbeat_interval_ms);
+        if (!self.quiet) {
+            deadline = @min(deadline, self.last_outbound_at_ms +| self.config.heartbeat_interval_ms);
+        }
         for (self.pending_outbound_order.items) |state_num| {
             const pending = self.pending_outbound.get(state_num) orelse continue;
             deadline = @min(deadline, pending.next_retry_at_ms);
         }
-        if (self.latest_received_state_num > self.last_ack_reported_num) {
+        if (!self.quiet and self.latest_received_state_num > self.last_ack_reported_num) {
             deadline = @min(deadline, self.last_ack_sent_at_ms +| self.config.ack_interval_ms);
             if (self.ack_dirty_at_ms) |dirty_at_ms| {
                 deadline = @min(deadline, dirty_at_ms +| self.config.ack_delay_ms);
@@ -1393,6 +1413,35 @@ test "ack delay emits echo_ack after threshold" {
     }
 
     try std.testing.expect(saw_ack);
+}
+
+test "a quiet client sends no heartbeats or acks until it ends quiet" {
+    const allocator = std.testing.allocator;
+    const endpoint: types.MoshEndpoint = .{
+        .host = "127.0.0.1",
+        .port = 60001,
+        .key_base64_22 = "ABCDEFGHIJKLMNOPQRSTUV",
+    };
+
+    var client = try Client.init(allocator, endpoint, .{ .ack_delay_ms = 5, .heartbeat_interval_ms = 100 });
+    defer client.deinit();
+
+    try client.start(0);
+    try client.processInboundInstruction(.{
+        .protocol_version = types.PROTOCOL_VERSION,
+        .old_num = 0,
+        .new_num = 1,
+    }, 10);
+    try client.setQuiet(true, 10);
+
+    var dg_buf: [1024]u8 = undefined;
+    try client.maintenanceTick(1_000);
+    try std.testing.expect(try client.pollNetworkDatagram(&dg_buf) == null);
+    const wait_ms = client.msUntilNextTimer(1_000) orelse return error.TestUnexpectedResult;
+    try std.testing.expect(wait_ms > 10_000);
+
+    try client.setQuiet(false, 1_000);
+    try std.testing.expect(try client.pollNetworkDatagram(&dg_buf) != null);
 }
 
 test "sendInput produces network datagram" {

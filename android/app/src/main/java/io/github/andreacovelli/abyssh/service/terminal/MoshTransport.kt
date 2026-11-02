@@ -63,6 +63,15 @@ internal class MoshTransport(
         service.resize(cols, rows)
     }
 
+    // Kept across clients, so a reconnect while the tab is hidden stays quiet.
+    private var quiet = false
+
+    /** Stops or resumes heartbeats and acks, now and for clients started later. */
+    fun setQuiet(quiet: Boolean) {
+        this.quiet = quiet
+        service.setQuiet(quiet)
+    }
+
     override fun close() = service.close()
 
     /**
@@ -251,5 +260,6 @@ internal class MoshTransport(
         check(service.start()) { "Failed to start mosh client" }
         Log.d(TAG, "MOSH: mosh client started, resizing ${geometry.cols} x ${geometry.rows}")
         service.resize(geometry.cols, geometry.rows)
+        if (quiet) service.setQuiet(true)
     }
 }

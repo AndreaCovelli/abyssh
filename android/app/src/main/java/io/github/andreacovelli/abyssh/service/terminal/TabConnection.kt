@@ -19,4 +19,11 @@ internal interface TabConnection {
 
     /** Sends the terminal's replies to the far end, such as answers to size queries. */
     fun flushPtyWrites()
+
+    /**
+     * Stops or resumes the traffic that only keeps a hidden tab up to date, so its radio
+     * can sleep; the tab catches up once [quiet] is false again. Applies to later
+     * connections too.
+     */
+    fun setQuiet(quiet: Boolean)
 }

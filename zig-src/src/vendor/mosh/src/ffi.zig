@@ -188,6 +188,12 @@ pub export fn mosh_client_wait_params(handle: ?*anyopaque, out_fd: ?*c_int, out_
     return @backingInt(types.ErrorCode.ok);
 }
 
+pub export fn mosh_client_set_quiet(handle: ?*anyopaque, quiet: c_int) callconv(.c) c_int {
+    const client = fromHandle(handle) orelse return @backingInt(types.ErrorCode.bad_handle);
+    client.setQuiet(quiet != 0, nowMs()) catch |err| return @backingInt(mapCoreError(err));
+    return @backingInt(types.ErrorCode.ok);
+}
+
 pub export fn mosh_client_start_shutdown(handle: ?*anyopaque) callconv(.c) c_int {
     const client = fromHandle(handle) orelse return @backingInt(types.ErrorCode.bad_handle);
     client.startShutdown(nowMs()) catch |err| return @backingInt(mapCoreError(err));

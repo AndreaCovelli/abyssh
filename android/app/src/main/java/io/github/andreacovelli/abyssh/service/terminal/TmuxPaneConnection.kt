@@ -80,6 +80,9 @@ internal class TmuxPaneConnection(
         panes.focused()?.flush?.invoke()
     }
 
+    // The control session's own connection carries every window, so it stays as it is.
+    override fun setQuiet(quiet: Boolean) = Unit
+
     override fun bindWindow(windowId: Int) {
         this.windowId = windowId
     }

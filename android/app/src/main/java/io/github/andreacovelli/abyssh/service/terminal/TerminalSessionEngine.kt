@@ -93,6 +93,9 @@ class TerminalSessionEngine internal constructor(
         }
     }
 
+    // A tab stops the traffic that only keeps it fresh while nothing shows it.
+    private val quietWhenHidden = QuietWhenHidden(scope, dispatcher, setQuiet = connection::setQuiet)
+
     /** The tmux window this tab shows, when it is part of a control session. */
     internal val tmuxWindowId: Int? get() = (connection as? TmuxPaneConnection)?.windowId
 
@@ -147,14 +150,21 @@ class TerminalSessionEngine internal constructor(
      * Something now shows this tab's terminal, such as its pane or the tab switcher's
      * preview; pair each call with [removeViewer]. While nothing shows it, output builds
      * no snapshots, the title and bell update about once a second, and Kitty animations
-     * pause.
+     * pause. After [QUIET_AFTER_HIDDEN_MS] hidden, a Mosh tab stops its network traffic
+     * until shown again.
      */
     fun addViewer() {
-        scope.launch(dispatcher) { terminals.addViewer() }
+        scope.launch(dispatcher) {
+            terminals.addViewer()
+            quietWhenHidden.addViewer()
+        }
     }
 
     fun removeViewer() {
-        scope.launch(dispatcher) { terminals.removeViewer() }
+        scope.launch(dispatcher) {
+            terminals.removeViewer()
+            quietWhenHidden.removeViewer()
+        }
     }
 
     fun setColorScheme(isDark: Boolean) {
@@ -241,6 +251,7 @@ class TerminalSessionEngine internal constructor(
     fun dispose() {
         if (disposed) return
         disposed = true
+        scope.launch(dispatcher) { quietWhenHidden.cancel() }
         disconnect()
         thread.close()
     }
