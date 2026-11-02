@@ -56,6 +56,9 @@ class NativeMoshService(
 
     private var handle: Long = 0L
     private val outputMeta = LongArray(5)
+
+    // Reused across polls, since most of them find nothing; grows to fit the largest event.
+    private var outputBuf = ByteArray(INITIAL_OUTPUT_BUFFER_SIZE)
     private val stateBuf = LongArray(7)
 
     val isLoaded: Boolean get() = bridge.isLoaded()
@@ -101,15 +104,14 @@ class NativeMoshService(
     // Poll one output event. Returns null if no event is queued.
     fun pollOutput(): MoshOutputEvent? {
         if (handle == 0L) return null
-        var capacity = INITIAL_OUTPUT_BUFFER_SIZE
         while (true) {
-            val buf = ByteArray(capacity)
+            val buf = outputBuf
             val rc = bridge.nativePollOutput(handle, buf, outputMeta)
-            if (rc == OUTPUT_BUFFER_TOO_SMALL && capacity < MAX_OUTPUT_BUFFER_SIZE) {
-                capacity = (capacity * 2).coerceAtMost(MAX_OUTPUT_BUFFER_SIZE)
+            if (rc == OUTPUT_BUFFER_TOO_SMALL && buf.size < MAX_OUTPUT_BUFFER_SIZE) {
+                outputBuf = ByteArray((buf.size * 2).coerceAtMost(MAX_OUTPUT_BUFFER_SIZE))
                 continue
             }
-            check(rc == 0) { "Failed to poll mosh output (error $rc, buffer $capacity bytes)" }
+            check(rc == 0) { "Failed to poll mosh output (error $rc, buffer ${buf.size} bytes)" }
 
             val eventType = outputMeta[0].toInt()
             if (eventType == 0) return null // MOSH_EVENT_NONE
