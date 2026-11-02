@@ -19,6 +19,11 @@ pub const shutdown_state_num: u64 = std.math.maxInt(u64);
 const shutdown_resend_interval_ms: u64 = 200;
 // How soon to retry a datagram the socket refused with EAGAIN.
 const blocked_send_retry_ms: u64 = 2;
+// The longest wait between resends of a state while the server is silent, so a dead
+// network wakes the radio a few times a minute rather than every RTO.
+const max_retransmit_interval_ms: u64 = 30_000;
+// Enough doublings for any RTO to reach `max_retransmit_interval_ms`.
+const max_retransmit_doublings: u6 = 16;
 
 pub const OutputEvent = struct {
     event_type: types.OutputEventType,
@@ -104,6 +109,8 @@ pub const Client = struct {
     next_echo_ack: u64 = 1,
 
     current_rto_ms: u32,
+    // How many times the retransmit interval has doubled since the server was last heard.
+    retransmit_doublings: u6 = 0,
     transport_cipher: ?crypto.OCBTransportCipher = null,
     next_outgoing_sequence: u64 = 0,
     last_outbound_at_ms: u64 = 0,
@@ -220,6 +227,7 @@ pub const Client = struct {
         self.last_received_at_ms = now_ms;
         self.ack_dirty_at_ms = null;
         self.current_rto_ms = self.config.initial_rto_ms;
+        self.retransmit_doublings = 0;
         self.srtt_ms = -1;
         self.rttvar_ms = 0;
         self.last_received_timestamp = std.math.maxInt(u16);
@@ -360,6 +368,7 @@ pub const Client = struct {
         const envelope = wire.PacketEnvelope.decode(plaintext[0..wire.PacketEnvelope.bytes]);
         const protobuf_payload = plaintext[wire.PacketEnvelope.bytes..];
         self.last_received_timestamp = envelope.timestamp;
+        self.serverHeard(now_ms);
 
         // Update RTT from timestamp_reply
         if (envelope.timestamp_reply != std.math.maxInt(u16)) {
@@ -549,6 +558,10 @@ pub const Client = struct {
             return error.NetworkTimeout;
         }
 
+        // Each round of resends the server leaves unanswered doubles the wait before the next.
+        const doublings = @min(self.retransmit_doublings + 1, max_retransmit_doublings);
+        const retry_interval_ms = self.retransmitIntervalMs(doublings);
+        var retransmitted = false;
         var index: usize = 0;
         while (index < self.pending_outbound_order.items.len) : (index += 1) {
             const state_num = self.pending_outbound_order.items[index];
@@ -563,8 +576,9 @@ pub const Client = struct {
 
             pending.retry_count +|= 1;
             pending.last_sent_at_ms = now_ms;
-            pending.next_retry_at_ms = now_ms + self.current_rto_ms;
+            pending.next_retry_at_ms = now_ms + retry_interval_ms;
             try self.pending_outbound.put(state_num, pending);
+            retransmitted = true;
 
             // Re-fragment + re-encrypt with fresh sequence numbers, matching
             // the swift reference. `pending.payload` holds the compressed
@@ -582,6 +596,7 @@ pub const Client = struct {
                 .echo_ack = 0,
             });
         }
+        if (retransmitted) self.retransmit_doublings = doublings;
 
         if (!self.quiet and self.latest_received_state_num > self.last_ack_reported_num) {
             if (self.ack_dirty_at_ms) |ack_dirty_at_ms| {
@@ -917,11 +932,30 @@ pub const Client = struct {
             .payload = compressed,
             .retry_count = 0,
             .last_sent_at_ms = now_ms,
-            .next_retry_at_ms = now_ms + self.current_rto_ms,
+            .next_retry_at_ms = now_ms + self.retransmitIntervalMs(self.retransmit_doublings),
             .sent_timestamp = timestamp,
         };
         try self.pending_outbound.put(state_num, pending);
         try self.pending_outbound_order.append(self.allocator, state_num);
+    }
+
+    /// The wait before resending a state: the RTO doubled `doublings` times, at most
+    /// `max_retransmit_interval_ms`.
+    fn retransmitIntervalMs(self: *const Self, doublings: u6) u64 {
+        return @min(@as(u64, self.current_rto_ms) << doublings, max_retransmit_interval_ms);
+    }
+
+    /// Ends any retransmit backoff once a datagram from the server arrives, and pulls
+    /// backed-off resends in to one RTO, so states lost while the network was down go
+    /// out again soon after it returns.
+    fn serverHeard(self: *Self, now_ms: u64) void {
+        if (self.retransmit_doublings == 0) return;
+        self.retransmit_doublings = 0;
+        const retry_at_ms = now_ms + self.current_rto_ms;
+        var pending = self.pending_outbound.valueIterator();
+        while (pending.next()) |instruction| {
+            instruction.next_retry_at_ms = @min(instruction.next_retry_at_ms, retry_at_ms);
+        }
     }
 
     fn acknowledgePendingOutbound(self: *Self, ack_num: u64) void {
