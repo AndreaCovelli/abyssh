@@ -38,9 +38,10 @@ internal class NativeWakeSignal(private val bridge: NativeWakeBridge = NativeWak
 }
 
 // The longest one native wait for output blocks. Work dispatched to the session thread
-// ends it early; this bounds how late a read loop notices a cancellation that dispatches
-// nothing.
-internal const val MAX_OUTPUT_WAIT_MS = 1_000
+// ends it early, and every read loop is cancelled from work dispatched there, so this
+// only bounds how late a loop notices a cancellation that dispatches nothing. It is long
+// so an idle session wakes the CPU rarely.
+internal const val MAX_OUTPUT_WAIT_MS = 30_000
 
 /** Blocks the session thread until output arrives or other work is dispatched to it. */
 internal interface OutputWaiter {

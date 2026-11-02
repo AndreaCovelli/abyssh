@@ -131,6 +131,9 @@ internal class SessionConnection(
         runCatching { transports.write(data) }
     }
 
+    // Only Mosh has traffic to stop: an SSH connection is silent while its shell is.
+    override fun setQuiet(quiet: Boolean) = transports.mosh.setQuiet(quiet)
+
     override fun flushPtyWrites() {
         repeat(MAX_PTY_DRAINS) {
             val ptyWrites = emulator.drainPtyWrites()

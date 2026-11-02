@@ -1187,8 +1187,8 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
 }
 
 /// Waits up to `timeout_ms` for output, or for `wake_fd` to be signalled; returns one of
-/// the `wake.wait_*` values. Returns `wait_cannot` while libssh2 waits to send, because
-/// the socket must then be polled for writing too.
+/// the `wake.wait_*` values. While libssh2 waits to send, a writable socket counts as
+/// ready too, so the next read or write sends what it holds.
 export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeWaitReadable(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, wake_fd: c.jint, timeout_ms: c.jint) callconv(.c) c.jint {
     _ = env;
     _ = thiz;
@@ -1199,10 +1199,9 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     // reading stdout, or data beyond what fit in the buffer; the socket won't show them.
     if (c.libssh2_poll_channel_read(channel, 1) != 0) return wake.wait_ready;
     if (c.libssh2_channel_eof(channel) != 0) return wake.wait_ready;
-    if ((c.libssh2_session_block_directions(ssh_session) & c.LIBSSH2_SESSION_BLOCK_OUTBOUND) != 0) {
-        return wake.wait_cannot;
-    }
-    return wake.waitReadable(session.socket_fd, wake_fd, timeout_ms);
+    const sending = (c.libssh2_session_block_directions(ssh_session) & c.LIBSSH2_SESSION_BLOCK_OUTBOUND) != 0;
+    const events: c_short = if (sending) c.POLLIN | c.POLLOUT else c.POLLIN;
+    return wake.wait(session.socket_fd, events, wake_fd, timeout_ms);
 }
 
 // The most one write copies out of the Java array at a time.

@@ -253,6 +253,18 @@ export fn Java_io_github_andreacovelli_abyssh_service_mosh_NativeMoshBridge_nati
     return rc;
 }
 
+export fn Java_io_github_andreacovelli_abyssh_service_mosh_NativeMoshBridge_nativeSetQuiet(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+    quiet: c.jboolean,
+) callconv(.c) c.jint {
+    _ = env;
+    _ = thiz;
+    const raw = clientFromHandle(handle);
+    return mosh.ffi.mosh_client_set_quiet(raw, if (quiet != c.JNI_FALSE) 1 else 0);
+}
+
 export fn Java_io_github_andreacovelli_abyssh_service_mosh_NativeMoshBridge_nativeStartShutdown(
     env: *c.JNIEnv,
     thiz: c.jobject,

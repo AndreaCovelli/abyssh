@@ -39,6 +39,7 @@ internal class TmuxPaneConnection(
 
     private var statusJob: Job? = null
     private var attached = false
+    private var quiet = false
 
     override fun connect(spec: TabSpec, sessionKey: String) {
         scope.launch(dispatcher) {
@@ -54,6 +55,7 @@ internal class TmuxPaneConnection(
                 }
             }
             control.attach(this@TmuxPaneConnection, windowId)
+            if (quiet) control.setWindowQuiet(this@TmuxPaneConnection, true)
         }
     }
 
@@ -78,6 +80,13 @@ internal class TmuxPaneConnection(
 
     override fun flushPtyWrites() {
         panes.focused()?.flush?.invoke()
+    }
+
+    // Pauses this window's panes rather than the control session's connection, which
+    // carries every window.
+    override fun setQuiet(quiet: Boolean) {
+        this.quiet = quiet
+        if (attached) control.setWindowQuiet(this, quiet)
     }
 
     override fun bindWindow(windowId: Int) {

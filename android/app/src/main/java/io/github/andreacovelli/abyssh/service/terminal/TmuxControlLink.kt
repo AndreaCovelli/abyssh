@@ -75,12 +75,9 @@ internal class TmuxControlLink(hostKeyPolicy: HostKeyPolicy, private val outputW
                     yield()
                 }
                 ssh.isChannelEof() -> return
-                // Commands the channel hasn't taken yet go out on the next read, so poll
-                // at the active cadence until it has.
-                ssh.hasPendingWrites -> {
-                    pacer.onActivity()
-                    pacer.idle()
-                }
+                // The read may have taken in the window adjust that lets queued commands
+                // out; once the channel is full again, the wait returns when it frees up.
+                ssh.hasPendingWrites && ssh.flushPendingWrites() -> pacer.onActivity()
                 // Block until output or other work for the thread, or poll when that can't wait.
                 !outputWaiter.awaitOutput { wakeFd -> ssh.waitReadable(wakeFd, MAX_OUTPUT_WAIT_MS) } -> pacer.idle()
             }

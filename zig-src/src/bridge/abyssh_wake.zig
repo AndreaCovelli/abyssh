@@ -13,9 +13,15 @@ pub const wait_woken = 2;
 /// `wait_cannot`, so the caller falls back to polling and its next read reports the
 /// cause instead of the wait returning at once forever.
 pub fn waitReadable(fd: c_int, wake_fd: c_int, timeout_ms: c_int) c_int {
+    return wait(fd, c.POLLIN, wake_fd, timeout_ms);
+}
+
+/// Like `waitReadable`, but `fd` is ready when any of the poll `events` is set, such as
+/// `POLLIN | POLLOUT` for a socket that is waiting to send.
+pub fn wait(fd: c_int, events: c_short, wake_fd: c_int, timeout_ms: c_int) c_int {
     if (fd < 0 or wake_fd < 0) return wait_cannot;
     var poll_fds: [2]c.struct_pollfd = .{
-        .{ .fd = fd, .events = c.POLLIN, .revents = 0 },
+        .{ .fd = fd, .events = events, .revents = 0 },
         .{ .fd = wake_fd, .events = c.POLLIN, .revents = 0 },
     };
     const rc = c.poll(&poll_fds, poll_fds.len, @max(timeout_ms, 0));
@@ -24,7 +30,7 @@ pub fn waitReadable(fd: c_int, wake_fd: c_int, timeout_ms: c_int) c_int {
 
     const woken = (poll_fds[1].revents & c.POLLIN) != 0;
     if (woken) drain(wake_fd);
-    if ((poll_fds[0].revents & c.POLLIN) != 0) return wait_ready;
+    if ((poll_fds[0].revents & events) != 0) return wait_ready;
     if ((poll_fds[0].revents & (c.POLLERR | c.POLLHUP | c.POLLNVAL)) != 0) return wait_cannot;
     if ((poll_fds[1].revents & (c.POLLERR | c.POLLHUP | c.POLLNVAL)) != 0) return wait_cannot;
     return if (woken) wait_woken else wait_timeout;
