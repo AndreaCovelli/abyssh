@@ -64,7 +64,9 @@ class SessionForegroundService : Service() {
                     buildNotification(currentLabel ?: getString(R.string.session_notification_fallback)),
                     type,
                 )
-                return START_STICKY
+                // Sessions die with the process, so a restarted service would show a
+                // session that no longer exists and keep the process in the foreground.
+                return START_NOT_STICKY
             }
         }
     }
