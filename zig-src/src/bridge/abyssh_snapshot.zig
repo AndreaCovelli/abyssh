@@ -692,10 +692,10 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     return if (abyssh_scroll(handle, delta, x, y, momentum != c.JNI_FALSE)) c.JNI_TRUE else c.JNI_FALSE;
 }
 
-export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeScrollToActive(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) void {
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeScrollToActive(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jboolean {
     _ = env;
     _ = thiz;
-    abyssh_scroll_to_active(handle);
+    return if (abyssh_scroll_to_active(handle)) c.JNI_TRUE else c.JNI_FALSE;
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeSnapshot(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, full: c.jboolean) callconv(.c) c.jobject {
@@ -1745,10 +1745,15 @@ fn sendCursorKeys(terminal: *AbysshTerminal, delta: i32) bool {
     return true;
 }
 
-export fn abyssh_scroll_to_active(handle: c.jlong) callconv(.c) void {
-    const terminal = abysshFromHandle(handle) orelse return;
+/// Scrolls the viewport to the active area, and returns whether it moved. Every key
+/// calls this, and the view is nearly always there already, so the caller skips the
+/// snapshot that would only delay the key and the echo after it.
+export fn abyssh_scroll_to_active(handle: c.jlong) callconv(.c) bool {
+    const terminal = abysshFromHandle(handle) orelse return false;
+    if (terminal.terminal.screens.active.pages.viewport == .active) return false;
     terminal.terminal.scrollViewport(.{ .bottom = {} });
     update_render_state(terminal);
+    return true;
 }
 
 const default_word_boundaries: [20]u21 = .{

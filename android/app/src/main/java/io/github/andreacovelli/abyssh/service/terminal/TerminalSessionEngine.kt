@@ -200,7 +200,17 @@ class TerminalSessionEngine internal constructor(
         }
     }
 
-    fun scrollToActive() = onFocused { target -> bridge.nativeScrollToActive(target.emulator.handle) }
+    /**
+     * Brings the terminal keys go to back to its live screen. Every key calls this, so it
+     * publishes a snapshot only when the view moved: one built for nothing would hold up
+     * the key queued behind it, and the echo after it would wait out the frame interval.
+     */
+    fun scrollToActive() {
+        scope.launch(dispatcher) {
+            val target = terminals.focused() ?: return@launch
+            if (bridge.nativeScrollToActive(target.emulator.handle)) target.emulator.requestSnapshot(force = true)
+        }
+    }
 
     fun scrollToScreenRow(screenRow: Int) = onFocused { target ->
         bridge.nativeScrollToScreenRow(target.emulator.handle, screenRow - target.row)

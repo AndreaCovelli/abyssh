@@ -31,7 +31,7 @@ class GhosttyBridge {
      * whether anything changed.
      */
     external fun nativeScroll(handle: Long, delta: Int, x: Float, y: Float, momentum: Boolean): Boolean
-    external fun nativeScrollToActive(handle: Long)
+    external fun nativeScrollToActive(handle: Long): Boolean
     external fun nativeSnapshot(handle: Long, full: Boolean): ByteBuffer
     external fun nativePollTitle(handle: Long): String?
     external fun nativePollPwd(handle: Long): String?
