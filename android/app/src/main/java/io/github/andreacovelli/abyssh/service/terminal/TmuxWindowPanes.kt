@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSize
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPassthrough
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxWindowLayout
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -19,7 +20,9 @@ internal class TmuxWindowPanes(
     private val sendKeys: (paneId: Int, data: ByteArray) -> Unit,
     private val selectPane: (paneId: Int) -> Unit,
 ) : TabTerminals {
-    private class Pane(val emulator: TerminalEmulator, val state: MutableStateFlow<SessionState>)
+    private class Pane(val emulator: TerminalEmulator, val state: MutableStateFlow<SessionState>) {
+        val passthrough = TmuxPassthrough()
+    }
 
     private val panes = mutableMapOf<Int, Pane>()
     private val compositor = TmuxWindowCompositor()
@@ -47,7 +50,9 @@ internal class TmuxWindowPanes(
 
     /** Replaces pane [paneId]'s terminal with a blank one of [size] and writes [seed] into it. */
     fun showPane(paneId: Int, size: TmuxPaneSize, seed: ByteArray) {
-        val emulator = panes[paneId]?.emulator ?: return
+        val pane = panes[paneId] ?: return
+        val emulator = pane.emulator
+        pane.passthrough.reset()
         emulator.geometry = paneGeometry(size)
         emulator.open()
         emulator.writeRemote(seed)
@@ -58,9 +63,10 @@ internal class TmuxWindowPanes(
 
     // The terminal's replies are dropped, since tmux already answered the program.
     fun paneOutput(paneId: Int, data: ByteArray) {
-        val emulator = panes[paneId]?.emulator?.takeIf { it.isOpen } ?: return
+        val pane = panes[paneId]?.takeIf { it.emulator.isOpen } ?: return
+        val emulator = pane.emulator
         val wasImageLoading = emulator.isImageLoading()
-        emulator.writeRemote(data)
+        emulator.writeRemote(pane.passthrough.unwrap(data))
         emulator.drainPtyWrites()
         val isImageLoading = emulator.isImageLoading()
         when {
