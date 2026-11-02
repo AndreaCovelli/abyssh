@@ -9,6 +9,15 @@ private const val MIN_MINOR = 2
 private const val HEX = "0123456789abcdef"
 private val VERSION_NUMBER = Regex("(\\d+)\\.(\\d+)")
 
+/*
+ * The TERM tmux records for the control-mode client, as #{client_termname}. A control
+ * client never answers XTVERSION, so its #{client_termtype} is empty, and programs in
+ * the panes that look for a Kitty graphics terminal, such as render-latex.nvim, read
+ * this instead. Only tmux gets it: the shell and the panes keep their own TERM, and
+ * control mode needs no terminfo entry for it on the server.
+ */
+private const val CONTROL_CLIENT_TERM = "xterm-ghostty"
+
 /** The seconds of unread output after which tmux pauses a pane, so a slow link can't fall far behind. */
 internal const val TMUX_PAUSE_AFTER_SECONDS = 30
 
@@ -22,9 +31,9 @@ internal data class TmuxWindow(val id: Int, val active: Boolean, val paneId: Int
 internal object TmuxControlCommands {
     /** The shell command that attaches to [sessionName] in control mode, creating it when [createIfMissing]. */
     fun attach(sessionName: String, createIfMissing: Boolean): String = if (createIfMissing) {
-        "exec tmux -CC new-session -A -s ${shellQuote(sessionName)}"
+        "exec env TERM=$CONTROL_CLIENT_TERM tmux -CC new-session -A -s ${shellQuote(sessionName)}"
     } else {
-        "exec tmux -CC attach-session -t ${shellQuote("=$sessionName")}"
+        "exec env TERM=$CONTROL_CLIENT_TERM tmux -CC attach-session -t ${shellQuote("=$sessionName")}"
     }
 
     /**
