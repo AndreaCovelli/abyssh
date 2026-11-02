@@ -22,15 +22,21 @@ Mosh, and renders the session with the same terminal engine as
 - A local shell on the phone
 - Host key checks on first connect, with a warning when a known key changes
 - A command per host that runs after each connect or reconnect
-- tmux and zmx session lists, so you can reattach to a session from the app
+- tmux and zmx session lists, so you can reattach to a session, end one, or choose
+  which one to attach to each time you connect
+- tmux control mode, which shows each tmux window as a tab with its own scrollback,
+  search, and selection, and draws every pane of a split window (needs tmux 3.2 or
+  later)
 
 **Terminal**
 
 - Ghostty's terminal emulation, with scrollback, mouse support, and images through
   the Kitty graphics protocol
-- 463 color themes from Ghostty, with separate light and dark choices
+- 463 color themes from Ghostty, with separate light and dark choices, and a pure
+  black option for OLED screens
 - Fira Code, Geist Mono, Hack, and JetBrains Mono, with Nerd Font symbols
 - Search through the scrollback, and tap links in the output to open or copy them
+- Fling to scroll the scrollback, and scroll by touch in `less` and `man`
 - Mouse and touchpad support: scroll with the wheel, select by dragging
 - A configurable row of extra keys above the keyboard, and custom actions
 - Several sessions at once in tabs
@@ -50,9 +56,11 @@ Mosh, and renders the session with the same terminal engine as
 
 ## Install
 
-There is no published release yet. Build the APK from source, as described below.
-Abyssh needs Android 7.0 or later. Release builds include the native library only for
-64-bit ARM phones (`arm64-v8a`), which covers nearly all current devices.
+Download the signed APK (`abyssh-<version>-arm64-v8a.apk`) from the
+[latest release](https://github.com/AndreaCovelli/abyssh/releases/latest), or build it
+from source as described below. Abyssh needs Android 7.0 or later. Release builds
+include the native library only for 64-bit ARM phones (`arm64-v8a`), which covers
+nearly all current devices.
 
 ## Build from source
 
@@ -82,7 +90,9 @@ Other tasks (`mise tasks ls` lists them all):
 | Task | What it does |
 | --- | --- |
 | `mise run build` | Build the debug APK |
-| `mise run check` | Android Lint, unit tests, the debug build, and a lint of the GitHub workflows |
+| `mise run check` | Every check that needs no device: formatting, Detekt, Android Lint, unit tests, compiling the device tests, the debug build, and a lint of the GitHub workflows |
+| `mise run format` | Format the Kotlin sources and Gradle scripts |
+| `mise run detekt` | Detekt static analysis |
 | `mise run test` | Unit tests only |
 | `mise run test:device` | Tests on a connected phone or emulator |
 
