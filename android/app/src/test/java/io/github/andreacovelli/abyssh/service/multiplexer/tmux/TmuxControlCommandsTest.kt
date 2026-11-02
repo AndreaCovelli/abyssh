@@ -9,8 +9,8 @@ import org.junit.Test
 class TmuxControlCommandsTest {
     @Test
     fun attachQuotesTheSessionName() {
-        assertEquals("exec tmux -CC new-session -A -s 'it'\\''s'", TmuxControlCommands.attach("it's", createIfMissing = true))
-        assertEquals("exec tmux -CC attach-session -t '=work'", TmuxControlCommands.attach("work", createIfMissing = false))
+        assertEquals("exec env TERM=xterm-ghostty tmux -CC new-session -A -s 'it'\\''s'", TmuxControlCommands.attach("it's", createIfMissing = true))
+        assertEquals("exec env TERM=xterm-ghostty tmux -CC attach-session -t '=work'", TmuxControlCommands.attach("work", createIfMissing = false))
     }
 
     @Test
