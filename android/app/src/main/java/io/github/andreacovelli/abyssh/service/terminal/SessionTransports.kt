@@ -137,12 +137,9 @@ internal class SessionTransports(
                 // The native read reports a closed channel the same way as "no data
                 // yet", so check EOF here; otherwise a finished shell is polled forever.
                 ssh.isChannelEof() -> return true
-                // Input the channel hasn't taken yet goes out on the next read, so poll
-                // at the active cadence until it has.
-                ssh.hasPendingWrites -> {
-                    pacer.onActivity()
-                    pacer.idle()
-                }
+                // The read may have taken in the window adjust that lets queued input
+                // out; once the channel is full again, the wait returns when it frees up.
+                ssh.hasPendingWrites && ssh.flushPendingWrites() -> pacer.onActivity()
                 else -> awaitOutput { wakeFd -> ssh.waitReadable(wakeFd, MAX_OUTPUT_WAIT_MS) }
             }
         }

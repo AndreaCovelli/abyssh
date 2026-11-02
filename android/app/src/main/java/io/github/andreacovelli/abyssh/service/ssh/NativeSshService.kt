@@ -191,20 +191,29 @@ class NativeSshService(
         flushPendingWrites()
     }
 
-    private fun flushPendingWrites() {
+    /**
+     * Sends queued input as far as the channel takes it now, and returns whether any of it
+     * went out. A full channel leaves libssh2 waiting on the socket, so [waitReadable]
+     * then returns once it can take more.
+     */
+    fun flushPendingWrites(): Boolean {
+        if (handle == 0L) return false
+        var sent = false
         while (pendingWrites.isNotEmpty()) {
             val head = pendingWrites.first()
             val remaining = head.size - pendingOffset
             val written = bridge.nativeWrite(handle, head, pendingOffset, remaining)
             if (written < 0) error(bridge.nativeGetLastError(handle) ?: "Native SSH write failed")
             check(written <= remaining) { "Invalid native SSH write size: $written (remaining=$remaining)" }
-            if (written == 0) return
+            if (written == 0) return sent
+            sent = true
             pendingOffset += written
             if (pendingOffset == head.size) {
                 pendingWrites.removeFirst()
                 pendingOffset = 0
             }
         }
+        return sent
     }
 
     /** What the channel holds now: empty when nothing has arrived, null when not connected. */
@@ -216,8 +225,8 @@ class NativeSshService(
     }
 
     /**
-     * Waits up to [timeoutMs] for output or for [wakeFd] to be signalled; returns -1 when
-     * it can't wait, such as while libssh2 still has data to send.
+     * Waits up to [timeoutMs] for output, for the socket to take data libssh2 is waiting
+     * to send, or for [wakeFd] to be signalled; returns -1 when it can't wait.
      */
     fun waitReadable(wakeFd: Int, timeoutMs: Int): Int =
         if (handle == 0L) -1 else bridge.nativeWaitReadable(handle, wakeFd, timeoutMs)
