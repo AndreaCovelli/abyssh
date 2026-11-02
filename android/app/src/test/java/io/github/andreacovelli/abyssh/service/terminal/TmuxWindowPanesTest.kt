@@ -16,6 +16,8 @@ class TmuxWindowPanesTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val selected = mutableListOf<Int>()
         val panes = TmuxWindowPanes(
+            scope = backgroundScope,
+            dispatcher = dispatcher,
             state = MutableStateFlow(SessionState()),
             nativeVersion = null,
             newEmulator = { state, onPublished ->

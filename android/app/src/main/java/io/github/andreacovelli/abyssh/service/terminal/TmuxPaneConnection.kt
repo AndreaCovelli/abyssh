@@ -30,6 +30,8 @@ internal class TmuxPaneConnection(
 
     /** The window's panes, which take the tab's input. */
     val panes = TmuxWindowPanes(
+        scope = scope,
+        dispatcher = dispatcher,
         state = state,
         nativeVersion = nativeVersion,
         newEmulator = newEmulator,
