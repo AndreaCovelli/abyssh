@@ -22,7 +22,10 @@ const blocked_send_retry_ms: u64 = 2;
 // The longest wait between resends of a state while the server is silent, so a dead
 // network wakes the radio a few times a minute rather than every RTO.
 const max_retransmit_interval_ms: u64 = 30_000;
-// Enough doublings for any RTO to reach `max_retransmit_interval_ms`.
+// The longest wait while the session is quiet: nobody is watching, so input the server
+// hasn't acknowledged still gets through, but a dead server wakes the radio rarely.
+const quiet_max_retransmit_interval_ms: u64 = 300_000;
+// Enough doublings for any RTO to reach `quiet_max_retransmit_interval_ms`.
 const max_retransmit_doublings: u6 = 16;
 
 pub const OutputEvent = struct {
@@ -278,13 +281,19 @@ pub const Client = struct {
 
     /// Stops or resumes the datagrams the client sends only to keep the session alive:
     /// heartbeats and ack-only datagrams. Mosh-server stops sending to a client it hasn't
-    /// heard from in 40 s, so a quiet session lets the radio sleep. Input, resizes, and
-    /// their retransmissions still go out. Ending quiet acks the latest state at once, so
-    /// the server sends what changed meanwhile.
+    /// heard from in 40 s, so a quiet session lets the radio sleep. Input and resizes still
+    /// go out, but their retransmissions back off to `quiet_max_retransmit_interval_ms`.
+    /// Ending quiet resends them and acks the latest state at once, so the server sends
+    /// what changed meanwhile.
     pub fn setQuiet(self: *Self, quiet: bool, now_ms: u64) !void {
         if (self.quiet == quiet) return;
         self.quiet = quiet;
         if (!quiet and self.state == .running and self.shutdown_started_at_ms == null) {
+            // Resends backed off while quiet go out on the next tick.
+            var pending = self.pending_outbound.valueIterator();
+            while (pending.next()) |instruction| {
+                instruction.next_retry_at_ms = @min(instruction.next_retry_at_ms, now_ms);
+            }
             try self.sendAckOnly(now_ms);
         }
     }
@@ -940,9 +949,10 @@ pub const Client = struct {
     }
 
     /// The wait before resending a state: the RTO doubled `doublings` times, at most
-    /// `max_retransmit_interval_ms`.
+    /// `max_retransmit_interval_ms`, or `quiet_max_retransmit_interval_ms` while quiet.
     fn retransmitIntervalMs(self: *const Self, doublings: u6) u64 {
-        return @min(@as(u64, self.current_rto_ms) << doublings, max_retransmit_interval_ms);
+        const cap = if (self.quiet) quiet_max_retransmit_interval_ms else max_retransmit_interval_ms;
+        return @min(@as(u64, self.current_rto_ms) << doublings, cap);
     }
 
     /// Ends any retransmit backoff once a datagram from the server arrives, and pulls

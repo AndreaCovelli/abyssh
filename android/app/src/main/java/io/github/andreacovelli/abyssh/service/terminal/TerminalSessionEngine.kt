@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
+import io.github.andreacovelli.abyssh.service.network.NetworkWaiter
 
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
 import kotlinx.coroutines.CoroutineDispatcher
@@ -24,6 +25,8 @@ class TerminalSessionEngine internal constructor(
     localShellService: NativeLocalShellService,
     hostKeyStore: HostKeyStore,
     localNetwork: LocalNetworkAccess? = null,
+    // Reconnects wait here while the device is offline.
+    network: NetworkWaiter = NetworkWaiter.None,
     // Called when the shell ends on its own (exit, Ctrl+D), so the owner can close the tab.
     onShellExited: () -> Unit = {},
     // The tmux control session whose window this tab shows, or null when the tab has its own connection.
@@ -86,6 +89,7 @@ class TerminalSessionEngine internal constructor(
                     transports = transports,
                     multiplexers = RemoteMultiplexerProbe(hostKeys),
                     localNetwork = localNetwork,
+                    network = network,
                     onShellExited = onShellExited,
                 )
             terminals = SingleTerminal(emulator, connection)

@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
+import io.github.andreacovelli.abyssh.service.network.NetworkAvailability
 
 import android.app.Application
 import android.content.ClipData
@@ -46,6 +47,7 @@ class TerminalSessionRepository private constructor(application: Application) {
     private val hostKeyStore =
         HostKeyStore(appContext.getSharedPreferences(HostKeyStore.PREFS_NAME, Application.MODE_PRIVATE))
     private val localNetwork = LocalNetworkAccess(appContext)
+    private val network = NetworkAvailability(appContext)
     private val clipboard = appContext.getSystemService(ClipboardManager::class.java)
     private val settingsRepository = SettingsRepository.getInstance(appContext)
     private val preflight = MultiplexerPreflight(hostKeyStore)
@@ -116,6 +118,7 @@ class TerminalSessionRepository private constructor(application: Application) {
             scope = scope,
             hostKeyStore = hostKeyStore,
             localNetwork = localNetwork,
+            network = network,
             tabs = { _tabs.value },
             addTab = { spec, control, windowId, select -> addTab(spec, control, windowId, select) },
             removeTab = ::removeTab,
@@ -178,6 +181,7 @@ class TerminalSessionRepository private constructor(application: Application) {
                 localShellService = NativeLocalShellService(appContext.filesDir, appContext.cacheDir),
                 hostKeyStore = hostKeyStore,
                 localNetwork = localNetwork,
+                network = network,
                 onShellExited = { scope.launch { closeTab(id) } },
                 tmuxControl = tmuxControl,
                 tmuxWindowId = tmuxWindowId,

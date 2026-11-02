@@ -13,6 +13,7 @@ import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlEvent
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSize
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxWindowLayout
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
+import io.github.andreacovelli.abyssh.service.network.NetworkWaiter
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -94,6 +95,7 @@ internal class TmuxControlSession(
     private val host: TmuxControlHost,
     hostKeyStore: HostKeyStore,
     private val localNetwork: LocalNetworkAccess?,
+    private val network: NetworkWaiter = NetworkWaiter.None,
 ) : TmuxSessionLister {
     private val thread = SessionThread(name = "tmux-control")
     private val dispatcher: CoroutineDispatcher = thread.dispatcher
@@ -307,6 +309,8 @@ internal class TmuxControlSession(
         _status.value = TmuxControlStatus(SessionStatus.Reconnecting, reason, attempt)
         reconnectJob = scope.launch(dispatcher) {
             delay(reconnectDelayMs(attempt))
+            // An attempt made offline fails at once, so time without a network uses none up.
+            network.awaitNetwork()
             connect(attempt)
         }
     }

@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
+import io.github.andreacovelli.abyssh.service.network.NetworkWaiter
 
 import android.os.SystemClock
 import android.util.Log
@@ -56,6 +57,7 @@ internal class SessionConnection(
     private val transports: SessionTransports,
     private val multiplexers: RemoteMultiplexerProbe,
     private val localNetwork: LocalNetworkAccess?,
+    private val network: NetworkWaiter,
     private val onShellExited: () -> Unit,
 ) : TabConnection {
     private val moshStaleness = MoshConnectionStalenessTracker()
@@ -294,6 +296,8 @@ internal class SessionConnection(
             attempt += 1
             state.update { it.copy(status = SessionStatus.Reconnecting, reconnectAttempt = attempt, error = reason) }
             delay(reconnectDelayMs(attempt))
+            // An attempt made offline fails at once, so time without a network uses none up.
+            if (spec.transport != Transport.LocalShell) network.awaitNetwork()
             done = reconnectOnce(spec, attempt)
         }
     }

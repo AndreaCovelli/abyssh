@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
+import io.github.andreacovelli.abyssh.service.network.NetworkWaiter
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
 import kotlinx.coroutines.CoroutineScope
 
@@ -14,6 +15,7 @@ internal class TmuxControlTabs(
     private val scope: CoroutineScope,
     private val hostKeyStore: HostKeyStore,
     private val localNetwork: LocalNetworkAccess,
+    private val network: NetworkWaiter,
     private val tabs: () -> List<TabSession>,
     private val addTab: (spec: TabSpec, control: TmuxControlSession, windowId: Int?, select: Boolean) -> TabSession,
     private val removeTab: (TabSession) -> Unit,
@@ -36,7 +38,7 @@ internal class TmuxControlTabs(
                 return tab
             }
         }
-        val control = TmuxControlSession(spec, scope, this, hostKeyStore, localNetwork)
+        val control = TmuxControlSession(spec, scope, this, hostKeyStore, localNetwork, network)
         sessions += control
         val tab = addTab(spec, control, null, true)
         control.start()
