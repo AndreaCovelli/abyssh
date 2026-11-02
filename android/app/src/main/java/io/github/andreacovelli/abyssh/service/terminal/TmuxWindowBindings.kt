@@ -61,6 +61,9 @@ internal class TmuxWindowBindings(
     // The view whose tab is the app's active one, if it belongs to this session.
     private var focused: TmuxPaneView? = null
 
+    /** Whether the session has tabs and every one of them is quiet. */
+    val allQuiet: Boolean get() = bindings.isNotEmpty() && bindings.all { it.quiet }
+
     /** Binds [view] to window [windowId], or to a window that has no tab yet when null. */
     fun attach(view: TmuxPaneView, windowId: Int?) {
         val binding = Binding(view)

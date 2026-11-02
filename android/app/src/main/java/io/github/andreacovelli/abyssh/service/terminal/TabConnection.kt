@@ -22,8 +22,9 @@ internal interface TabConnection {
 
     /**
      * Stops or resumes the traffic that only keeps a hidden tab up to date, so its radio
-     * can sleep; the tab catches up once [quiet] is false again. Applies to later
-     * connections too.
+     * can sleep; the tab catches up once [quiet] is false again. While quiet, a failed
+     * reconnect attempt waits for [quiet] to be false before the next one. Applies to
+     * later connections too.
      */
     fun setQuiet(quiet: Boolean)
 }
