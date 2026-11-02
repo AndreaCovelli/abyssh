@@ -53,8 +53,31 @@ jobs:
         .editorconfig
         mise.toml
         mise.lock
-        mise-tasks/check
+        mise-tasks/check/_default
         .github/workflows/**
+
+  # Builds the arm64 native library with the pinned NDK and checks that every Kotlin
+  # external fun has a JNI export, which nothing else catches before runtime.
+  native:
+    name: Native
+    uses: AndreaCovelli/repo-baseline/.github/workflows/check.yml@a3cd314a40868370e41af02ecf02af60df5614ee # v1.0.1
+    permissions:
+      contents: read
+      pull-requests: read
+    with:
+      timeout-minutes: 30
+      task: check:native
+      # sdkmanager, which installs the NDK, needs Java.
+      install-args: java zig
+      cache-path: zig-src/zig-pkg
+      cache-key-files: zig-src/build.zig.zon
+      paths: |
+        zig-src/**
+        android/app/src/main/java/**/*Bridge.kt
+        mise.toml
+        mise.lock
+        mise-tasks/check/native
+        .github/workflows/ci.yml
 
   secrets:
     name: Secrets
@@ -82,7 +105,7 @@ jobs:
 
   validate:
     name: Validate
-    needs: [docs, check, secrets]
+    needs: [docs, check, native, secrets]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5
