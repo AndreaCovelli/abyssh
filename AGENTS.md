@@ -173,9 +173,10 @@ and `NativeWakeBridge`. Zig implements each one as
   `com.jossephus.chuchu` → `io.github.andreacovelli.abyssh`, `chuchu` → `abyssh`,
   `Chuchu` → `Abyssh`, `Chu*` classes → `Abyss*`, and upstream's `chuchu_*` Zig files and
   `Java_com_jossephus_chuchu_*` exports to their `abyssh` names.
-- GitHub Actions: CI (`ci.yml`) runs `mise run check` through the shared workflow in
-  AndreaCovelli/repo-baseline, without the native library (on a pull request that changes
-  only Markdown, that is just the Markdown lint), and scans new commits with
+- GitHub Actions: CI (`ci.yml`) calls the shared workflow in AndreaCovelli/repo-baseline
+  twice, each gated by its own path filter: `Docs` runs `mise run check:docs` when
+  Markdown changes, and `Check` runs `mise run check`, without the native library, when
+  anything else it lists changes. CI also scans new commits with
   Gitleaks (`.gitleaks.toml`). Its `Validate` job is the only check the `main` ruleset
   requires. Add any new CI job to `Validate`'s `needs`. Release builds signed artifacts
   from `v*.*.*` tags; Dependency Submission sends the Gradle dependency graph to GitHub

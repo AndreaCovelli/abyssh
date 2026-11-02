@@ -15,6 +15,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Markdown-only changes, including pushes to main, run just the Markdown lint here
+  # and skip the Gradle checks below.
+  docs:
+    name: Docs
+    uses: AndreaCovelli/repo-baseline/.github/workflows/check.yml@a3cd314a40868370e41af02ecf02af60df5614ee # v1.0.1
+    permissions:
+      contents: read
+      pull-requests: read
+    with:
+      timeout-minutes: 10
+      task: check:docs
+      install-args: github:rvben/rumdl
+      paths: |
+        **/*.md
+        .rumdl.toml
+
   check:
     name: Check
     uses: AndreaCovelli/repo-baseline/.github/workflows/check.yml@a3cd314a40868370e41af02ecf02af60df5614ee # v1.0.1
@@ -32,7 +48,6 @@ jobs:
         android/gradle/libs.versions.toml
         android/gradle/wrapper/gradle-wrapper.properties
         android/**/*.gradle.kts
-      # A pull request that changes only Markdown runs just the docs checks.
       paths: |
         android/**
         .editorconfig
@@ -40,8 +55,6 @@ jobs:
         mise.lock
         mise-tasks/check
         .github/workflows/**
-        **/*.md
-        .rumdl.toml
 
   secrets:
     name: Secrets
@@ -69,7 +82,7 @@ jobs:
 
   validate:
     name: Validate
-    needs: [check, secrets]
+    needs: [docs, check, secrets]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5
