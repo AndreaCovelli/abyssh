@@ -121,6 +121,7 @@ internal class TmuxControlSession(
     private var readJob: Job? = null
     private var reconnectJob: Job? = null
     private var resizeJob: Job? = null
+    private val reconnectWait = ReconnectWait()
     private var clientGeometry: TerminalGeometry? = null
     private var sentClientSize: TmuxPaneSize? = null
 
@@ -153,9 +154,15 @@ internal class TmuxControlSession(
     }
 
     /** Binds [view] to window [windowId], or to a window that has no tab yet when null. */
-    fun attach(view: TmuxPaneView, windowId: Int?) = onThread { windows.attach(view, windowId) }
+    fun attach(view: TmuxPaneView, windowId: Int?) = onThread {
+        windows.attach(view, windowId)
+        reconnectWait.setHidden(windows.allQuiet)
+    }
 
-    fun detach(view: TmuxPaneView) = onThread { windows.detach(view) }
+    fun detach(view: TmuxPaneView) = onThread {
+        windows.detach(view)
+        reconnectWait.setHidden(windows.allQuiet)
+    }
 
     /** The size the app's terminal view has, which tmux gives the session's windows once it settles. */
     fun resizeClient(geometry: TerminalGeometry) = onThread {
@@ -167,8 +174,14 @@ internal class TmuxControlSession(
         }
     }
 
-    /** Pauses the panes of [view]'s window while [quiet], and resumes them once it isn't. */
-    fun setWindowQuiet(view: TmuxPaneView, quiet: Boolean) = onThread { windows.setQuiet(view, quiet) }
+    /**
+     * Pauses the panes of [view]'s window while [quiet], and resumes them once it isn't.
+     * While every tab is quiet, a failed reconnect waits for one to be shown.
+     */
+    fun setWindowQuiet(view: TmuxPaneView, quiet: Boolean) = onThread {
+        windows.setQuiet(view, quiet)
+        reconnectWait.setHidden(windows.allQuiet)
+    }
 
     /** [view]'s tab became the active one, or none of this session's tabs did when null. */
     fun focus(view: TmuxPaneView?) = onThread { windows.focus(view) }
@@ -308,7 +321,7 @@ internal class TmuxControlSession(
         if (disposed) return
         _status.value = TmuxControlStatus(SessionStatus.Reconnecting, reason, attempt)
         reconnectJob = scope.launch(dispatcher) {
-            delay(reconnectDelayMs(attempt))
+            reconnectWait.awaitAttempt(attempt)
             // An attempt made offline fails at once, so time without a network uses none up.
             network.awaitNetwork()
             connect(attempt)

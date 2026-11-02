@@ -29,6 +29,10 @@ private const val RECONNECT_MAX_DOUBLINGS = 5
 private const val RECONNECT_MAX_DELAY_MS = 60_000L
 private const val MAX_PTY_DRAINS = 8
 
+// The view's size changes on every frame while the keyboard slides in or out, so the far
+// end hears only the size that settles, as tmux control mode does.
+private const val REMOTE_RESIZE_SETTLE_MS = 150L
+
 /** How long to wait before reconnect [attempt] (1-based): 1 s, doubling up to 32 s. */
 internal fun reconnectDelayMs(attempt: Int): Long =
     (RECONNECT_BASE_DELAY_MS shl (attempt - 1).coerceIn(0, RECONNECT_MAX_DOUBLINGS))
@@ -76,6 +80,14 @@ internal class SessionConnection(
 
     @Volatile private var reconnectJob: Job? = null
 
+    private val reconnectWait = ReconnectWait()
+
+    // The view's latest size, and the size the far end was given, or null while no
+    // transport is open. They differ while a resize settles.
+    private var viewGeometry: TerminalGeometry? = null
+    private var remoteGeometry: TerminalGeometry? = null
+    private var remoteResizeJob: Job? = null
+
     override fun connect(spec: TabSpec, sessionKey: String) {
         // A Retry shouldn't queue behind an attempt that is still waiting on the network.
         transports.cancelConnect()
@@ -105,12 +117,16 @@ internal class SessionConnection(
         scope.launch(dispatcher) {
             readJob?.cancel()
             readJob = null
+            remoteResizeJob?.cancel()
+            remoteResizeJob = null
+            remoteGeometry = null
             transports.closeAll()
             onClosed()
         }
     }
 
     override fun resize(geometry: TerminalGeometry) {
+        viewGeometry = geometry
         try {
             emulator.geometry = geometry
             if (!emulator.isOpen) return
@@ -119,8 +135,31 @@ internal class SessionConnection(
             // so Textual-based TUIs detect the resize.
             flushPtyWrites()
             emulator.setMouseEncodingSize()
-            transports.resize(geometry)
             emulator.requestSnapshot(force = true)
+        } catch (e: Exception) {
+            Log.e(TAG, "Resize failed", e)
+            onResizeFailed(e)
+            return
+        }
+        remoteResizeJob?.cancel()
+        remoteResizeJob = scope.launch(dispatcher) {
+            delay(REMOTE_RESIZE_SETTLE_MS)
+            syncRemoteSize()
+        }
+    }
+
+    /**
+     * Gives the far end the view's size, unless it already has it or nothing is open. The
+     * view's, not the terminal's: a Mosh server can still be resizing the terminal to an
+     * older size.
+     */
+    private fun syncRemoteSize() {
+        val sent = remoteGeometry ?: return
+        val geometry = viewGeometry ?: return
+        if (geometry == sent) return
+        try {
+            transports.resize(geometry)
+            remoteGeometry = geometry
         } catch (e: Exception) {
             Log.e(TAG, "Resize failed", e)
             onResizeFailed(e)
@@ -134,7 +173,11 @@ internal class SessionConnection(
     }
 
     // Only Mosh has traffic to stop: an SSH connection is silent while its shell is.
-    override fun setQuiet(quiet: Boolean) = transports.mosh.setQuiet(quiet)
+    // A quiet tab also stops retrying a failed reconnect until it is shown.
+    override fun setQuiet(quiet: Boolean) {
+        transports.mosh.setQuiet(quiet)
+        reconnectWait.setHidden(quiet)
+    }
 
     override fun flushPtyWrites() {
         repeat(MAX_PTY_DRAINS) {
@@ -180,15 +223,20 @@ internal class SessionConnection(
     }
 
     private suspend fun open(spec: TabSpec) {
+        remoteGeometry = null
         transports.closeAll()
         emulator.open()
         if (spec.transport == Transport.Mosh) moshStaleness.reset()
-        transports.open(spec, emulator.geometry)
+        val geometry = emulator.geometry
+        transports.open(spec, geometry)
+        remoteGeometry = geometry
     }
 
     private fun onOpened(spec: TabSpec) {
         state.update { it.copy(status = SessionStatus.Connected, error = null, reconnectAttempt = 0) }
         emulator.requestSnapshot(force = true)
+        // The view may have changed size while the transport was opening.
+        syncRemoteSize()
         startReadLoop(spec.transport)
         sendPostConnectCommand(spec.postConnectCommand)
     }
@@ -232,6 +280,7 @@ internal class SessionConnection(
     }
 
     private fun onReadLoopEnded(transport: Transport, outcome: ReadOutcome) {
+        remoteGeometry = null
         when (readLoopExitAction(transport, outcome.shellExited && !outcome.failed)) {
             ReadLoopExitAction.Disconnect -> {
                 when (transport) {
@@ -261,6 +310,7 @@ internal class SessionConnection(
     }
 
     private fun onResizeFailed(error: Exception) {
+        remoteGeometry = null
         val transport = spec?.transport
         val reconnects = !disconnectRequested &&
             transport != null &&
@@ -295,7 +345,7 @@ internal class SessionConnection(
         while (!done && currentCoroutineContext().isActive && !disconnectRequested) {
             attempt += 1
             state.update { it.copy(status = SessionStatus.Reconnecting, reconnectAttempt = attempt, error = reason) }
-            delay(reconnectDelayMs(attempt))
+            reconnectWait.awaitAttempt(attempt)
             // An attempt made offline fails at once, so time without a network uses none up.
             if (spec.transport != Transport.LocalShell) network.awaitNetwork()
             done = reconnectOnce(spec, attempt)
