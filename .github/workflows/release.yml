@@ -64,6 +64,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     env:
+      # Keep in step with ndk_version in mise-tasks/check/native.
       NDK_VERSION: 28.2.13676358
 
     steps:

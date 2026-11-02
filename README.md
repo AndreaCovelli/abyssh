@@ -93,6 +93,7 @@ Other tasks (`mise tasks ls` lists them all):
 | `mise run check` | Every check that needs no device: formatting, Detekt, Android Lint, unit tests, compiling the device tests, the debug build, and lints of the GitHub workflows and Markdown. If only Markdown changed since `origin/main`, just the Markdown lint |
 | `mise run format` | Format the Kotlin sources and Gradle scripts |
 | `mise run detekt` | Detekt static analysis |
+| `mise run check:native` | Build the 64-bit ARM native library and check that every Kotlin bridge method has a native export |
 | `mise run test` | Unit tests only |
 | `mise run test:device` | Tests on a connected phone or emulator |
 

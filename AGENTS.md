@@ -15,6 +15,7 @@ version catalog pins AGP, Kotlin, and libraries. Run `mise install` once.
 | `mise run native` | Build `libabyssh_jni.so` for every ABI into `android/app/src/main/jniLibs/`. Needs `ANDROID_NDK_HOME` set to one NDK version, such as `$ANDROID_HOME/ndk/28.2.13676358`. Add `-Dtarget=aarch64-linux-android` to build arm64 only |
 | `mise run check` | Formatting, Detekt, Android Lint, unit tests, compiling the instrumented tests, the debug build, actionlint, and the Markdown lint. Run before every commit. When every file changed since the merge base with `origin/main` is Markdown, it runs only `check:docs`; pass `--full` to run everything |
 | `mise run check:docs` | Lint Markdown with rumdl, configured in `.rumdl.toml`. Prose wraps at 90 columns |
+| `mise run check:native` | Build the arm64 native library with the pinned NDK and check that every Kotlin `external fun` has a `Java_*` export. Uses `ANDROID_NDK_HOME`, or NDK 28.2.13676358 under `ANDROID_HOME`. Run it after changing a bridge or Zig code |
 | `mise run format` | Format Kotlin sources and Gradle scripts with ktlint through Spotless. `mise run format:check` only reports |
 | `mise run detekt` | Detekt static analysis, configured in `android/config/detekt/detekt.yml`, with no baseline |
 | `mise run test` | Unit tests only. Filter with `cd android && ./gradlew testDebugUnitTest --tests '<pattern>'` |
@@ -50,9 +51,10 @@ and `NativeWakeBridge`. Zig implements each one as
 
 - The JNI symbol name encodes the Kotlin package, class, and method. Renaming or moving
   any of them in Kotlin without renaming the Zig export compiles cleanly and then fails
-  at runtime with `UnsatisfiedLinkError`. Change both sides, rebuild with
-  `mise run native`, and confirm the export with
-  `nm -D --defined-only android/app/src/main/jniLibs/arm64-v8a/libabyssh_jni.so`.
+  at runtime with `UnsatisfiedLinkError`. Change both sides and run
+  `mise run check:native`, which rebuilds the arm64 library and fails on any
+  `external fun` without a matching export. It handles `external fun`s that are
+  members of a top-level class, as all bridges are, and rejects overloads.
 - Keep the Kotlin and Zig signatures in step: JNI types (`jlong`, `jbyteArray`, …) map
   to Kotlin `Long`, `ByteArray`, and so on, and nothing checks them at build time.
 - A new bridge file is compiled only if `src/bridge/zignal_png.zig`, the root module,
@@ -174,9 +176,10 @@ and `NativeWakeBridge`. Zig implements each one as
   `Chuchu` → `Abyssh`, `Chu*` classes → `Abyss*`, and upstream's `chuchu_*` Zig files and
   `Java_com_jossephus_chuchu_*` exports to their `abyssh` names.
 - GitHub Actions: CI (`ci.yml`) calls the shared workflow in AndreaCovelli/repo-baseline
-  twice, each gated by its own path filter: `Docs` runs `mise run check:docs` when
-  Markdown changes, and `Check` runs `mise run check`, without the native library, when
-  anything else it lists changes. CI also scans new commits with
+  three times, each gated by its own path filter: `Docs` runs `mise run check:docs` when
+  Markdown changes, `Check` runs `mise run check`, without the native library, when the
+  app or tooling changes, and `Native` runs `mise run check:native` when Zig code, a
+  `*Bridge.kt` file, or the tool pins change. CI also scans new commits with
   Gitleaks (`.gitleaks.toml`). Its `Validate` job is the only check the `main` ruleset
   requires. Add any new CI job to `Validate`'s `needs`. Release builds signed artifacts
   from `v*.*.*` tags; Dependency Submission sends the Gradle dependency graph to GitHub

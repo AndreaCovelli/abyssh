@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+#MISE description="Build the arm64 native library and match its JNI exports to the Kotlin bridges"
+# Build libabyssh_jni.so for arm64 with the pinned NDK, then check that every Kotlin
+# `external fun` has a matching Java_* export. A missing export compiles cleanly and
+# fails only at runtime with UnsatisfiedLinkError.
+#
+# Uses ANDROID_NDK_HOME when set; otherwise the pinned NDK under ANDROID_HOME, which it
+# installs with sdkmanager when running in CI.
+set -euo pipefail
+
+cd "${MISE_PROJECT_ROOT:-$(git rev-parse --show-toplevel)}"
+
+# Keep in step with NDK_VERSION in .github/workflows/release.yml.
+ndk_version=28.2.13676358
+target=aarch64-linux-android.24
+lib=android/app/src/main/jniLibs/arm64-v8a/libabyssh_jni.so
+bridges=android/app/src/main/java
+
+if [ -z "${ANDROID_NDK_HOME:-}" ]; then
+  sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+  if [ -z "$sdk" ]; then
+    echo "error: set ANDROID_NDK_HOME, or ANDROID_HOME with NDK $ndk_version installed" >&2
+    exit 1
+  fi
+  export ANDROID_NDK_HOME="$sdk/ndk/$ndk_version"
+  if [ ! -d "$ANDROID_NDK_HOME" ]; then
+    if [ -z "${CI:-}" ]; then
+      echo "error: NDK $ndk_version is not installed; run:" >&2
+      echo "  \"$sdk/cmdline-tools/latest/bin/sdkmanager\" --install \"ndk;$ndk_version\"" >&2
+      exit 1
+    fi
+    "$sdk/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ndk_version" >/dev/null
+  fi
+fi
+
+mise run native "-Dtarget=$target"
+
+nm_tool=$(compgen -G "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/*/bin/llvm-nm" | head -n1 || true)
+nm_tool="${nm_tool:-nm}"
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+"$nm_tool" -D --defined-only "$lib" | awk '$3 ~ /^Java_/ { print $3 }' | sort -u >"$tmp/exported"
+
+# Expected names from top-level classes: Java_<package>_<Class>_<method>, with "_"
+# escaped as "_1" (JNI name mangling). Nested classes and overloads aren't handled, so
+# reject them rather than guess.
+grep -rl --include='*.kt' -E '^\s*external fun ' "$bridges" | sort | while read -r file; do
+  awk -v file="$file" '
+    function mangle(s) { gsub(/_/, "_1", s); gsub(/\./, "_", s); return s }
+    /^package / { pkg = $2 }
+    /^(public |internal )?(class|object) / {
+      for (i = 1; i <= NF; i++) if ($i == "class" || $i == "object") { cls = $(i + 1); break }
+      sub(/[^A-Za-z0-9_].*/, "", cls)
+    }
+    /^[[:space:]]*(public |internal |private )?external fun / {
+      match($0, /^[[:space:]]*/)
+      if (RLENGTH != 4) { printf "error: %s: external fun outside a top-level class\n", file > "/dev/stderr"; exit 1 }
+      name = $0; sub(/.*external fun /, "", name); sub(/\(.*/, "", name)
+      if (seen[name]++) { printf "error: %s: overloaded external fun %s\n", file, name > "/dev/stderr"; exit 1 }
+      print "Java_" mangle(pkg) "_" mangle(cls) "_" mangle(name)
+    }
+  ' "$file" || exit 1
+done | sort -u >"$tmp/declared"
+
+missing=$(comm -23 "$tmp/declared" "$tmp/exported")
+unused=$(comm -13 "$tmp/declared" "$tmp/exported")
+
+if [ -n "$unused" ]; then
+  echo "warning: exports with no Kotlin external fun:" >&2
+  echo "  ${unused//$'\n'/$'\n'  }" >&2
+fi
+if [ -n "$missing" ]; then
+  echo "error: Kotlin external funs with no export in $lib:" >&2
+  echo "  ${missing//$'\n'/$'\n'  }" >&2
+  exit 1
+fi
+echo "All $(wc -l <"$tmp/declared") external funs have a JNI export"
