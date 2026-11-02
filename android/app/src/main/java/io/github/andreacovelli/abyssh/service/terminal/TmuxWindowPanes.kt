@@ -55,6 +55,8 @@ internal class TmuxWindowPanes(
         pane.passthrough.reset()
         emulator.geometry = paneGeometry(size)
         emulator.open()
+        // A new terminal knows only its grid: without the cell size, Kitty images get 1-pixel cells
+        emulator.applyGeometry()
         emulator.writeRemote(seed)
         emulator.drainPtyWrites()
         emulator.setMouseEncodingSize()
