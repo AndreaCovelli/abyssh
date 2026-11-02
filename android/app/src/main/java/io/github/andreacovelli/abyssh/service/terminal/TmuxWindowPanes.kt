@@ -3,16 +3,22 @@ package io.github.andreacovelli.abyssh.service.terminal
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSize
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPassthrough
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxWindowLayout
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 /**
  * The panes of a tab's tmux window, each with its own terminal at the pane's size,
- * drawn together into the tab's [state] by [TmuxWindowCompositor]. Keys go to the
- * active pane, and a press on another pane makes that one active through [selectPane].
- * Every call runs on the tab's session thread.
+ * drawn together into the tab's [state] by [TmuxWindowCompositor] at most once a frame.
+ * Keys go to the active pane, and a press on another pane makes that one active through
+ * [selectPane]. Every call runs on the tab's session thread, [dispatcher].
  */
 internal class TmuxWindowPanes(
+    private val scope: CoroutineScope,
+    private val dispatcher: CoroutineDispatcher,
     private val state: MutableStateFlow<SessionState>,
     private val nativeVersion: String?,
     // A terminal that publishes to the given state and calls the given function after each update.
@@ -28,6 +34,11 @@ internal class TmuxWindowPanes(
     private val compositor = TmuxWindowCompositor()
     private var layout: TmuxWindowLayout? = null
     private var activePane: Int? = null
+
+    // Bells the panes rang since the window was last composed, and when that was.
+    private var pendingBells = 0
+    private var lastComposeAtMs = 0L
+    private var composeScheduled = false
 
     // The pane a drag started in, which gets the rest of the drag.
     private var pointerPane: Int? = null
@@ -45,7 +56,7 @@ internal class TmuxWindowPanes(
         val paneIds = layout.panes.map { it.paneId }.toSet()
         panes.keys.filter { it !in paneIds }.forEach { paneId -> panes.remove(paneId)?.emulator?.destroy() }
         paneIds.forEach { paneId -> panes.getOrPut(paneId) { newPane() } }
-        compose(trigger = null)
+        compose()
     }
 
     /** Replaces pane [paneId]'s terminal with a blank one of [size] and writes [seed] into it. */
@@ -134,12 +145,13 @@ internal class TmuxWindowPanes(
         layout = null
         activePane = null
         pointerPane = null
+        pendingBells = 0
     }
 
     private fun newPane(): Pane {
         val paneState = MutableStateFlow(SessionState(nativeVersion = nativeVersion))
         lateinit var pane: Pane
-        val emulator = newEmulator(paneState) { compose(trigger = pane) }
+        val emulator = newEmulator(paneState) { onPanePublished(pane) }
         pane = Pane(emulator, paneState)
         isDark?.let(emulator::setColorScheme)
         colors?.let(emulator::setDefaultColors)
@@ -150,22 +162,45 @@ internal class TmuxWindowPanes(
     private fun select(paneId: Int) {
         activePane = paneId
         selectPane(paneId)
-        compose(trigger = null)
+        compose()
     }
 
-    /** Publishes the window to the tab, with the bells of [trigger], the pane that just published. */
-    private fun compose(trigger: Pane?) {
+    /**
+     * Composes the window after [pane] published, now if a frame has passed since the last
+     * composition and otherwise once it has, so panes that publish together compose once.
+     */
+    private fun onPanePublished(pane: Pane) {
+        pendingBells += pane.state.value.bellCount
+        val elapsed = System.currentTimeMillis() - lastComposeAtMs
+        if (elapsed >= SNAPSHOT_INTERVAL_MS) {
+            compose()
+            return
+        }
+        if (composeScheduled) return
+        composeScheduled = true
+        scope.launch(dispatcher) {
+            delay(SNAPSHOT_INTERVAL_MS - elapsed)
+            composeScheduled = false
+            compose()
+        }
+    }
+
+    /** Publishes the window to the tab, with the bells the panes rang since the last time. */
+    private fun compose() {
         val layout = layout ?: return
         val active = activePane?.let(panes::get)
         val snapshots = panes.mapNotNull { (paneId, pane) -> pane.state.value.snapshot?.let { paneId to it } }.toMap()
         val snapshot = compositor.compose(layout, snapshots, activePane ?: -1) ?: return
         val activeState = active?.state?.value
+        val bellCount = pendingBells
+        pendingBells = 0
+        lastComposeAtMs = System.currentTimeMillis()
         state.update {
             it.copy(
                 snapshot = snapshot,
                 title = activeState?.title,
                 pwd = activeState?.pwd,
-                bellCount = trigger?.state?.value?.bellCount ?: 0,
+                bellCount = bellCount,
                 nativeVersion = nativeVersion,
                 handle = active?.emulator?.handle ?: 0L,
             )

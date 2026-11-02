@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 private const val TAG = "TerminalSession"
-private const val SNAPSHOT_INTERVAL_MS = 16L
+internal const val SNAPSHOT_INTERVAL_MS = 16L
 
 /** The grid and the pixel sizes behind it. */
 internal data class TerminalGeometry(

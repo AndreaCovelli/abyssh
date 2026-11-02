@@ -55,7 +55,6 @@ fun TerminalScreen(
     val launcher = rememberTerminalTabLauncher(vm)
     val endSession = rememberTerminalEndSession(vm)
     val abysshKeys = rememberAbysshKeys(vm, repo, settings, overlay, onOpenSettings)
-    KeepScreenOnEffect(settings.keepScreenAwake)
     KeepFocusOnMouseClickEffect()
 
     val tabs by vm.tabs.collectAsStateWithLifecycle()
@@ -63,6 +62,8 @@ fun TerminalScreen(
     val activeTab by vm.activeTab.collectAsStateWithLifecycle()
     val session = rememberTerminalSessionView(vm.sessionState)
     val sessionState = session.info
+    // A closed or failed session has nothing to watch, so the display may sleep.
+    KeepScreenOnEffect(settings.keepScreenAwake && sessionState.status.isLive)
     val hostKeyPrompt by vm.hostKeyPrompt.collectAsStateWithLifecycle()
     val multiplexer by vm.multiplexer.state.collectAsStateWithLifecycle()
     val routeTabs = remember(tabs, route) { route.tabsIn(tabs) }

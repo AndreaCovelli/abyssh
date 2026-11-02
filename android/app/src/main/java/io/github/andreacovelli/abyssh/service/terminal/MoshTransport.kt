@@ -39,7 +39,8 @@ internal class MoshEvents(
     val onHostBytes: (ByteArray) -> Unit,
     val onResize: (cols: Int, rows: Int) -> Unit,
     val onRuntimeState: (MoshRuntimeState) -> Unit,
-    val onEventsDrained: () -> Unit,
+    // After a batch of events that drew or resized the screen; acks and diagnostics don't call it.
+    val onScreenChanged: () -> Unit,
 )
 
 /**
@@ -151,7 +152,7 @@ internal class MoshTransport(
             if (!service.maintenanceTick()) Log.w(TAG, "MOSH: maintenanceTick returned false")
             if (!service.pumpNetwork()) Log.w(TAG, "MOSH: pumpNetwork returned false")
             if (drainEvents(events)) {
-                events.onEventsDrained()
+                events.onScreenChanged()
                 pacer.onActivity()
             }
             val runtime = service.pollState()
@@ -176,27 +177,34 @@ internal class MoshTransport(
         return MoshReadResult(shellExited = shellExited, failureCode = failure?.lastFailureCode)
     }
 
-    /** Handles every queued output event; returns whether there were any. */
+    /** Handles every queued output event; returns whether any of them changed the screen. */
     private fun drainEvents(events: MoshEvents): Boolean {
-        var hadEvent = false
+        var screenChanged = false
         generateSequence { service.pollOutput() }.forEach { event ->
-            hadEvent = true
-            handleEvent(event, events)
+            if (handleEvent(event, events)) screenChanged = true
         }
-        return hadEvent
+        return screenChanged
     }
 
-    private fun handleEvent(event: MoshOutputEvent, events: MoshEvents) {
-        when (event.eventType) {
-            MoshEventType.HostBytes.code -> if (event.payload.isNotEmpty()) events.onHostBytes(event.payload)
-            MoshEventType.Resize.code -> if (event.cols > 0 && event.rows > 0) events.onResize(event.cols, event.rows)
-            MoshEventType.EchoAck.code -> Unit
-            MoshEventType.StateChanged.code -> {
-                Log.d(TAG, "MOSH: STATE_CHANGED: ${String(event.payload)}")
-                service.pollState()?.let(events.onRuntimeState)
-            }
-            MoshEventType.Diagnostic.code -> Log.d(TAG, "MOSH: DIAG: ${String(event.payload)}")
-            else -> Log.d(TAG, "MOSH: unknown event type=${event.eventType}")
+    /** Handles [event]; returns whether it changed the screen. */
+    private fun handleEvent(event: MoshOutputEvent, events: MoshEvents): Boolean = when (event.eventType) {
+        MoshEventType.HostBytes.code ->
+            event.payload.isNotEmpty().also { drew -> if (drew) events.onHostBytes(event.payload) }
+        MoshEventType.Resize.code ->
+            (event.cols > 0 && event.rows > 0).also { resized -> if (resized) events.onResize(event.cols, event.rows) }
+        MoshEventType.EchoAck.code -> false
+        MoshEventType.StateChanged.code -> {
+            Log.d(TAG, "MOSH: STATE_CHANGED: ${String(event.payload)}")
+            service.pollState()?.let(events.onRuntimeState)
+            false
+        }
+        MoshEventType.Diagnostic.code -> {
+            Log.d(TAG, "MOSH: DIAG: ${String(event.payload)}")
+            false
+        }
+        else -> {
+            Log.d(TAG, "MOSH: unknown event type=${event.eventType}")
+            false
         }
     }
 

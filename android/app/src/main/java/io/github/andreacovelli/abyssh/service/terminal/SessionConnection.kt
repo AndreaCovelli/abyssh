@@ -64,7 +64,7 @@ internal class SessionConnection(
             onHostBytes = ::feed,
             onResize = emulator::resizeGrid,
             onRuntimeState = ::onMoshRuntime,
-            onEventsDrained = { emulator.requestSnapshot() },
+            onScreenChanged = { emulator.requestSnapshot() },
         )
 
     @Volatile private var spec: TabSpec? = null

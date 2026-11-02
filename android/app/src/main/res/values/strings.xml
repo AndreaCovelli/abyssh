@@ -163,7 +163,7 @@
     <string name="settings_ctrl_v_pastes">Ctrl+V pastes</string>
     <string name="settings_ctrl_v_pastes_hint">Ctrl+Shift+V always pastes. Turn this off to send Ctrl+V to the shell (e.g. vim block select).</string>
     <string name="settings_keep_screen_awake">Keep screen awake</string>
-    <string name="settings_keep_screen_awake_hint">Prevent the display from sleeping while a terminal is open</string>
+    <string name="settings_keep_screen_awake_hint">Prevent the display from sleeping while a session is connected</string>
     <string name="settings_hide_screen_contents">Hide screen contents</string>
     <string name="settings_hide_screen_contents_hint">Blocks screenshots and hides the terminal in the app switcher</string>
     <string name="settings_disable_autocorrect">Disable autocorrect</string>
