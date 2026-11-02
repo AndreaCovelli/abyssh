@@ -9,6 +9,7 @@ import android.content.ContextWrapper
 import android.app.Activity
 
 import android.content.Context
+import android.content.res.Configuration
 import android.os.SystemClock
 import android.text.Editable
 import android.text.InputType
@@ -31,6 +32,15 @@ fun terminalImeInputType(disableAutocorrect: Boolean): Int {
         InputType.TYPE_TEXT_FLAG_MULTI_LINE or
         InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
 }
+
+/** Whether a physical keyboard is connected and in use, such as a Bluetooth or cover keyboard. */
+private fun Configuration.hasPhysicalKeyboard(): Boolean =
+    hasPhysicalKeyboard(keyboard, hardKeyboardHidden)
+
+internal fun hasPhysicalKeyboard(keyboard: Int, hardKeyboardHidden: Int): Boolean =
+    keyboard != Configuration.KEYBOARD_NOKEYS &&
+        keyboard != Configuration.KEYBOARD_UNDEFINED &&
+        hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
 
 class TerminalInputView(context: Context) : EditText(context) {
 
@@ -329,6 +339,10 @@ class TerminalInputView(context: Context) : EditText(context) {
             requestFocusFromTouch()
         }
         post {
+            // A physical keyboard types into the focused view on its own. Asking for the
+            // on-screen keyboard anyway leaves an empty strip under the terminal holding
+            // the keyboard's hide and switch buttons.
+            if (resources.configuration.hasPhysicalKeyboard()) return@post
             // No restartInput here either, so tapping the terminal keeps the input mode.
             logInput("showKeyboard")
             // The insets controller replaces showSoftInput(SHOW_IMPLICIT), deprecated in API 37.
