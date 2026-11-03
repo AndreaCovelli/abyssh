@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh
 
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.WindowManager
@@ -21,6 +22,7 @@ import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.ui.ApplicationNavController
 import io.github.andreacovelli.abyssh.ui.EscapeKeyBack
 import io.github.andreacovelli.abyssh.ui.LocalEscapeKeyBack
+import io.github.andreacovelli.abyssh.ui.terminal.hasPhysicalKeyboard
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTheme
 import io.github.andreacovelli.abyssh.ui.theme.GhosttyThemeRegistry
@@ -38,6 +40,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        updateSoftInputState(resources.configuration)
         val settings = SettingsRepository.getInstance(this)
         lifecycleScope.launch {
             settings.hideScreenContents.collect { hideScreenContents ->
@@ -57,6 +60,27 @@ class MainActivity : FragmentActivity() {
                 AppRoot()
             }
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updateSoftInputState(newConfig)
+    }
+
+    /**
+     * Keeps the on-screen keyboard hidden when the window gains focus while a physical
+     * keyboard is connected. Otherwise Android shows it on its own when the app returns
+     * to the front on a large screen, and again on every return after that, leaving the
+     * keyboard's empty strip with its hide and switch buttons under the terminal.
+     */
+    private fun updateSoftInputState(config: Configuration) {
+        val state = if (config.hasPhysicalKeyboard()) {
+            WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
+        } else {
+            WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
+        }
+        val adjust = window.attributes.softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST
+        window.setSoftInputMode(state or adjust)
     }
 }
 

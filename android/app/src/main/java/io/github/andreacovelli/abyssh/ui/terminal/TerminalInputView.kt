@@ -34,7 +34,7 @@ fun terminalImeInputType(disableAutocorrect: Boolean): Int {
 }
 
 /** Whether a physical keyboard is connected and in use, such as a Bluetooth or cover keyboard. */
-private fun Configuration.hasPhysicalKeyboard(): Boolean =
+internal fun Configuration.hasPhysicalKeyboard(): Boolean =
     hasPhysicalKeyboard(keyboard, hardKeyboardHidden)
 
 internal fun hasPhysicalKeyboard(keyboard: Int, hardKeyboardHidden: Int): Boolean =
