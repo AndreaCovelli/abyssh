@@ -12,6 +12,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -44,7 +45,7 @@ class SealedDaoTest {
         val id = dao.insert(
             HostProfile(name = "box", host = "10.0.0.1", username = "me", password = "hunter2", keyPassphrase = "pp"),
         )
-        assertTrue(column("SELECT password FROM host_profiles").startsWith("v1:"))
+        assertTrue(column("SELECT password FROM host_profiles").startsWith("v2:"))
         assertFalse(column("SELECT keyPassphrase FROM host_profiles").contains("pp"))
 
         val read = dao.getById(id)!!
@@ -68,5 +69,45 @@ class SealedDaoTest {
         assertEquals(pem, dao.observeAll().first().single().privateKeyPem)
         // The public key stays readable.
         assertEquals("ssh-ed25519 AAAA", column("SELECT publicKeyOpenSsh FROM ssh_keys"))
+    }
+
+    @Test
+    fun `secrets are bound to their row`() = runBlocking {
+        val dao = db.hostProfileDao()
+        val first = dao.insert(HostProfile(name = "a", host = "h", username = "u", password = "one"))
+        val second = dao.insert(HostProfile(name = "b", host = "h", username = "u", password = "two"))
+        db.openHelper.writableDatabase.execSQL(
+            "UPDATE host_profiles SET password = (SELECT password FROM host_profiles WHERE id = $first) " +
+                "WHERE id = $second",
+        )
+        assertEquals("one", dao.getById(first)!!.password)
+        // Copied into another row, the value no longer opens.
+        assertEquals("", dao.getById(second)!!.password)
+        assertEquals(listOf("b"), dao.unreadableNames())
+    }
+
+    @Test
+    fun `hosts with an explicit id and imported rows are sealed for that row`() = runBlocking {
+        val dao = db.hostProfileDao()
+        dao.insert(HostProfile(id = 42, name = "fixed", host = "h", username = "u", password = "pw"))
+        assertEquals("pw", dao.getById(42)!!.password)
+        val imported = dao.insertForImport(HostProfile(name = "imp", host = "h", username = "u", keyPassphrase = "pp"))
+        assertEquals("pp", dao.getById(imported)!!.keyPassphrase)
+        assertEquals(emptyList<String>(), dao.unreadableNames())
+
+        val keyDao = db.sshKeyDao()
+        val keyId = keyDao.insertForImport(SshKey(name = "k", privateKeyPem = "pem", publicKeyOpenSsh = "", createdAtEpochMs = 0))
+        assertEquals("pem", keyDao.getById(keyId)!!.privateKeyPem)
+        assertEquals(emptyList<String>(), keyDao.unreadableNames())
+    }
+
+    @Test
+    fun `deleting a key clears it from hosts`() = runBlocking {
+        val keyId = db.sshKeyDao().insert(SshKey(name = "k", privateKeyPem = "pem", publicKeyOpenSsh = "", createdAtEpochMs = 0))
+        val hostId = db.hostProfileDao().insert(
+            HostProfile(name = "a", host = "h", username = "u", keyId = keyId, authMethod = AuthMethod.Key),
+        )
+        db.sshKeyDao().deleteById(keyId)
+        assertNull(db.hostProfileDao().getById(hostId)!!.keyId)
     }
 }

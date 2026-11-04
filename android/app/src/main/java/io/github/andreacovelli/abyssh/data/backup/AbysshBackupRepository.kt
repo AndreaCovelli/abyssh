@@ -9,8 +9,17 @@ import io.github.andreacovelli.abyssh.model.SshKey
 class AbysshBackupRepository(
     private val db: AppDatabase,
 ) {
+    /**
+     * Throws [UnreadableSecretsException] rather than export saved secrets that can't
+     * be opened, which would otherwise be written as empty.
+     */
     suspend fun createEncryptedBackup(passphrase: CharArray): ByteArray {
         val payload = db.withTransaction {
+            val unreadableKeys = db.sshKeyDao().unreadableNames()
+            val unreadableHosts = db.hostProfileDao().unreadableNames()
+            if (unreadableKeys.isNotEmpty() || unreadableHosts.isNotEmpty()) {
+                throw UnreadableSecretsException(keys = unreadableKeys, hosts = unreadableHosts)
+            }
             BackupPayload(
                 keys = db.sshKeyDao().getAll().map(BackupSshKey::fromEntity),
                 hosts = db.hostProfileDao().getAll().map(BackupHostProfile::fromEntity),
@@ -73,9 +82,13 @@ class AbysshBackupRepository(
             importedHosts = importedHosts,
             renamedKeys = plan.renamedKeyCount,
             renamedHosts = plan.renamedHostCount,
+            skippedHosts = plan.skippedHostCount,
         )
     }
 }
+
+/** Saved keys and hosts whose secrets can't be opened, named so the user can fix them. */
+class UnreadableSecretsException(val keys: List<String>, val hosts: List<String>) : Exception("${keys.size} keys and ${hosts.size} hosts have secrets that can't be opened")
 
 data class BackupImportResult(
     val importedKeys: Int,
@@ -83,6 +96,7 @@ data class BackupImportResult(
     val importedHosts: Int,
     val renamedKeys: Int,
     val renamedHosts: Int,
+    val skippedHosts: Int = 0,
 )
 
 fun buildBackupPayload(

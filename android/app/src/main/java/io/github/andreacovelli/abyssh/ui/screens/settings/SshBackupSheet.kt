@@ -625,6 +625,8 @@ private fun ImportPreviewContent(
             if (keyRenamed > 0) summaryParts += pluralStringResource(R.plurals.backup_summary_renamed_keys, keyRenamed, keyRenamed)
             if (hostImported > 0) summaryParts += pluralStringResource(R.plurals.backup_summary_hosts, hostImported, hostImported)
             if (hostRenamed > 0) summaryParts += pluralStringResource(R.plurals.backup_summary_renamed_hosts, hostRenamed, hostRenamed)
+            val hostSkipped = plan.skippedHostCount
+            if (hostSkipped > 0) summaryParts += pluralStringResource(R.plurals.backup_summary_skipped_hosts, hostSkipped, hostSkipped)
 
             AbyssText(
                 text = summaryParts.joinToString(", ").ifEmpty { stringResource(R.string.backup_nothing_to_import) },
@@ -673,6 +675,7 @@ private fun ImportPreviewContent(
                         style = typography.bodySmall,
                         color = colors.textMuted,
                     )
+                    PostConnectCommand(action.host.postConnectCommand)
                 }
             }
             if (renamedHosts.isNotEmpty()) {
@@ -684,6 +687,7 @@ private fun ImportPreviewContent(
                         style = typography.bodySmall,
                         color = colors.textMuted,
                     )
+                    PostConnectCommand(action.host.postConnectCommand)
                 }
             }
 
@@ -714,6 +718,22 @@ private fun ImportPreviewContent(
         ) {
             AbyssText(stringResource(R.string.backup_confirm_import), style = typography.label)
         }
+    }
+}
+
+/** An imported host's command, shown in full because it runs on every connect. */
+@Composable
+private fun PostConnectCommand(command: String?) {
+    if (command.isNullOrBlank()) return
+    val colors = AbyssColors.current
+    val typography = AbyssTypography.current
+    Column(modifier = Modifier.padding(start = 16.dp)) {
+        AbyssText(
+            text = stringResource(R.string.backup_post_connect_command),
+            style = typography.bodySmall,
+            color = colors.textMuted,
+        )
+        AbyssText(text = command, style = typography.codeSmall, color = colors.textSecondary)
     }
 }
 

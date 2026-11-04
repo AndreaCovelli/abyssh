@@ -25,7 +25,7 @@ class SecretStorageTest {
 
     @Test
     fun dataKeyIsKeptWrappedAndReplacedWhenUnreadable() {
-        AppDatabase.getInstance(context) // creates the key file if needed
+        AppDatabase.getInstance(context).secretBox // creates the key file if needed
         val original = keyFile.readBytes()
         try {
             val loaded = DataKeyStore.load(context)
@@ -34,11 +34,13 @@ class SecretStorageTest {
             assertArrayEquals(loaded.key.encoded, again.key.encoded)
             // The file holds the key encrypted by the Keystore, not the key itself.
             assertFalse(keyFile.readBytes().asList().windowed(32).contains(loaded.key.encoded.asList()))
-            assertEquals("pw", SecretBox(again.key).open(SecretBox(loaded.key).seal("pw")))
+            val slot = SecretBox.hostPassword(1)
+            assertEquals("pw", SecretBox(again.key).open(SecretBox(loaded.key).seal("pw", slot), slot))
 
             keyFile.writeBytes(ByteArray(60))
             val replaced = DataKeyStore.load(context)
             assertTrue(replaced.created)
+            assertTrue(replaced.replaced)
             assertFalse(replaced.key.encoded.contentEquals(loaded.key.encoded))
         } finally {
             keyFile.writeBytes(original)
@@ -63,7 +65,7 @@ class SecretStorageTest {
             fun raw(sql: String, id: Long): String =
                 db.openHelper.readableDatabase.query(sql, arrayOf<Any>(id)).use { it.moveToFirst(); it.getString(0) }
 
-            assertTrue(raw("SELECT password FROM host_profiles WHERE id = ?", hostId).startsWith("v1:"))
+            assertTrue(raw("SELECT password FROM host_profiles WHERE id = ?", hostId).startsWith("v2:"))
             assertFalse(raw("SELECT privateKeyPem FROM ssh_keys WHERE id = ?", keyId).contains("PRIVATE KEY"))
             assertEquals("hunter2", db.hostProfileDao().getById(hostId)!!.password)
             assertTrue(db.sshKeyDao().getById(keyId)!!.privateKeyPem.contains("PRIVATE KEY"))

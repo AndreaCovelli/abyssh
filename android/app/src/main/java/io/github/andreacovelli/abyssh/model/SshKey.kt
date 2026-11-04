@@ -15,4 +15,7 @@ data class SshKey(
     val privateKeyPem: String,
     val publicKeyOpenSsh: String,
     val createdAtEpochMs: Long,
-)
+) {
+    // Leaves out the private key, so logging a key can't leak it.
+    override fun toString(): String = "SshKey(id=$id, name=$name, algorithm=$algorithm)"
+}

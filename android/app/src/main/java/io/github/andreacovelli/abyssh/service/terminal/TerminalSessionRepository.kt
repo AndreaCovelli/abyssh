@@ -4,7 +4,7 @@ import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
 import io.github.andreacovelli.abyssh.service.network.NetworkAvailability
 
 import android.app.Application
-import android.content.ClipData
+import io.github.andreacovelli.abyssh.ui.components.plainTextClip
 import android.content.ClipboardManager
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
@@ -349,7 +349,7 @@ class TerminalSessionRepository private constructor(application: Application) {
         val allowed = settingsRepository.remoteClipboardWriteEnabled.value &&
             attachedClients > 0 &&
             _activeTabId.value == tabId
-        if (allowed) clipboard?.setPrimaryClip(ClipData.newPlainText("terminal clipboard", text))
+        if (allowed) clipboard?.setPrimaryClip(plainTextClip("terminal clipboard", text, sensitive = true))
     }
 
     companion object {

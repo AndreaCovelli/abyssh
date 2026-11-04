@@ -19,11 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -60,53 +56,43 @@ typealias UserVerifier = (Context, String, String, (VerificationResult) -> Unit)
 @Composable
 fun AppLockGate(
     application: Application,
-    unlocked: Boolean,
-    onUnlockedChange: (Boolean) -> Unit,
+    state: AppLockState,
     verify: UserVerifier = ::requireUserVerification,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val currentOnUnlockedChange by rememberUpdatedState(onUnlockedChange)
-    var unlockPromptRequested by rememberSaveable { mutableStateOf(false) }
-    var unlockPromptFailed by rememberSaveable { mutableStateOf(false) }
 
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(lifecycleOwner, state) {
         val observer = LifecycleEventObserver { source, event ->
             val isConfigChange = (source as? Activity)?.isChangingConfigurations == true
-            if (event == Lifecycle.Event.ON_STOP && !isConfigChange) {
-                currentOnUnlockedChange(false)
-                unlockPromptRequested = false
-                unlockPromptFailed = false
-            }
+            if (event == Lifecycle.Event.ON_STOP && !isConfigChange) state.lock()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val appLockEnabled by SettingsRepository.getInstance(application).appLockEnabled.collectAsStateWithLifecycle()
-    val locked = appLockEnabled && !unlocked
+    val lock by state.value.collectAsStateWithLifecycle()
+    val locked = appLockEnabled && !lock.unlocked
     val screens = rememberSaveableStateHolder()
 
-    LaunchedEffect(locked, unlockPromptRequested, unlockPromptFailed) {
-        if (locked && !unlockPromptRequested && !unlockPromptFailed) {
-            unlockPromptRequested = true
+    LaunchedEffect(locked, lock.promptRequested, lock.promptFailed) {
+        if (locked && !lock.promptRequested && !lock.promptFailed) {
+            state.promptShown()
             verify(
                 context,
                 resources.getString(R.string.nav_unlock_title),
                 resources.getString(R.string.nav_unlock_subtitle),
             ) { result ->
-                val opened = result != VerificationResult.Failed
-                currentOnUnlockedChange(opened)
-                unlockPromptFailed = !opened
-                unlockPromptRequested = false
+                state.promptFinished(opened = result != VerificationResult.Failed)
             }
         }
     }
 
     if (locked) {
-        AppLockScreen(onUnlock = { unlockPromptFailed = false })
+        AppLockScreen(onUnlock = state::retry)
     } else {
         screens.SaveableStateProvider(APP_CONTENT_KEY, content)
     }

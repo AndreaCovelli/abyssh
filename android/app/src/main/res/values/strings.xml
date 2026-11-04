@@ -68,6 +68,9 @@
     <string name="backup_import_auth_subtitle">Authenticate to restore an encrypted backup</string>
     <string name="backup_working">Working…</string>
     <string name="action_dismiss">Dismiss</string>
+    <string name="action_ok">OK</string>
+    <string name="data_reset_title">Saved hosts and keys were reset</string>
+    <string name="data_reset_body">The key that encrypts your saved hosts, passwords, and SSH keys could no longer be read on this device, so they were deleted. Import a backup to restore them.</string>
     <string name="key_details_title">SSH key details</string>
     <string name="backup_configured_keys">Configured keys:</string>
     <string name="backup_no_keys">No SSH keys configured yet. Add keys in a server profile.</string>
@@ -117,7 +120,12 @@
         <item quantity="one">%1$d host renamed</item>
         <item quantity="other">%1$d hosts renamed</item>
     </plurals>
+    <plurals name="backup_summary_skipped_hosts">
+        <item quantity="one">%1$d host already saved, skipped</item>
+        <item quantity="other">%1$d hosts already saved, skipped</item>
+    </plurals>
     <string name="backup_nothing_to_import">Nothing to import</string>
+    <string name="backup_post_connect_command">Runs after connecting:</string>
     <string name="backup_reused_keys">Reused keys:</string>
     <string name="backup_new_keys">New keys:</string>
     <string name="backup_renamed_suffix">" (renamed)"</string>
@@ -353,6 +361,8 @@
     <string name="settings_section_security">Security</string>
     <string name="settings_lock_app">Lock app on open</string>
     <string name="settings_lock_app_verify_title">Verify to turn on app lock</string>
+    <string name="settings_lock_app_unavailable">Set up a screen lock on this device to use app lock.</string>
+    <string name="verify_unavailable">This needs a screen lock to verify you. Set one up on this device, or turn off verification before connecting.</string>
     <string name="settings_lock_app_verify_subtitle">Authenticate to require verification each time the app opens</string>
     <string name="settings_verify_before_connect">Verify before server connect</string>
     <string name="settings_verify_hint">Use biometrics or device PIN/pattern.</string>
@@ -486,6 +496,7 @@
     <string name="keys_rename_duplicate">A key named “%1$s” already exists</string>
     <string name="backup_export_success">Backup exported successfully</string>
     <string name="backup_export_failed">Export failed. Choose another location and try again.</string>
+    <string name="backup_export_unreadable">Export stopped. The saved password or key of these items can\'t be read: %1$s. Enter it again or delete the item, then export.</string>
     <string name="backup_wrong_passphrase">Wrong passphrase. Could not decrypt the backup.</string>
     <string name="backup_invalid_file">Import failed. Choose a valid Abyssh backup file.</string>
     <string name="backup_read_failed">Import failed. Could not read the selected backup file.</string>

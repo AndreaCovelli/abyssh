@@ -22,8 +22,7 @@ import io.github.andreacovelli.abyssh.service.terminal.TabSpec
 import io.github.andreacovelli.abyssh.ui.components.AbyssDialog
 import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
 import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
-import io.github.andreacovelli.abyssh.ui.security.VerificationResult
-import io.github.andreacovelli.abyssh.ui.security.requireUserVerification
+import io.github.andreacovelli.abyssh.ui.security.verifyThen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -62,12 +61,12 @@ internal class TerminalTabLauncher(
             openOrPrompt(spec, leaveOnCancel, newSession)
             return
         }
-        requireUserVerification(
+        verifyThen(
             context = context,
             title = resources.getString(R.string.terminal_verify_title),
             subtitle = resources.getString(R.string.terminal_verify_subtitle),
-        ) { result ->
-            if (result == VerificationResult.Success && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+        ) {
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
                 openOrPrompt(spec, leaveOnCancel, newSession)
             }
         }

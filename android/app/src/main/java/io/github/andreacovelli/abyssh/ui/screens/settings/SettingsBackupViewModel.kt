@@ -15,6 +15,7 @@ import io.github.andreacovelli.abyssh.data.backup.BackupImportPlan
 import io.github.andreacovelli.abyssh.data.backup.BackupPayload
 import io.github.andreacovelli.abyssh.data.backup.AbysshBackupRepository
 import io.github.andreacovelli.abyssh.data.backup.InvalidBackupPassphraseException
+import io.github.andreacovelli.abyssh.data.backup.UnreadableSecretsException
 import io.github.andreacovelli.abyssh.data.db.AppDatabase
 import io.github.andreacovelli.abyssh.model.HostProfile
 import io.github.andreacovelli.abyssh.model.SshKey
@@ -28,7 +29,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-internal const val BACKUP_MIN_PASSPHRASE_LENGTH = 8
+internal const val BACKUP_MIN_PASSPHRASE_LENGTH = 12
 
 class SettingsBackupViewModel(
     application: Application,
@@ -135,6 +136,9 @@ class SettingsBackupViewModel(
                     } ?: throw BackupFormatException("Could not open backup destination")
                 }
                 _success.value = UiText.Resource(R.string.backup_export_success)
+            } catch (e: UnreadableSecretsException) {
+                val names = (e.keys + e.hosts).joinToString(", ")
+                _error.value = UiText.Resource(R.string.backup_export_unreadable, names)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -210,6 +214,7 @@ class SettingsBackupViewModel(
                     R.plurals.backup_summary_renamed_keys to result.renamedKeys,
                     R.plurals.backup_summary_hosts to result.importedHosts,
                     R.plurals.backup_summary_renamed_hosts to result.renamedHosts,
+                    R.plurals.backup_summary_skipped_hosts to result.skippedHosts,
                 ).filter { (_, count) -> count > 0 }.map { (id, count) -> UiText.Plural(id, count) }
                 _success.value = UiText.Resource(R.string.backup_import_complete, UiText.Joined(parts))
                 clearImportState()

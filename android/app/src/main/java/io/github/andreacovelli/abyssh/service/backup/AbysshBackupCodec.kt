@@ -10,16 +10,18 @@ import io.github.andreacovelli.abyssh.model.DEFAULT_KEEPALIVE_INTERVAL_SECONDS
 import io.github.andreacovelli.abyssh.model.MAX_KEEPALIVE_INTERVAL_SECONDS
 import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.Transport
+import java.text.Normalizer
 
+/**
+ * Backup files: a payload encoded here, encrypted by the native library. The container
+ * format, key derivation and cipher are described in `abyssh_backup.zig`.
+ */
 object AbysshBackupCodec {
-    const val FORMAT_VERSION: Int = 1
     const val PAYLOAD_VERSION: Int = 5
-    const val KDF_ID_PBKDF2_HMAC_SHA1: Int = 1
-    const val CIPHER_ID_AES_256_GCM: Int = 1
-    const val KDF_ITERATIONS: Int = 210_000
-    const val SALT_SIZE_BYTES: Int = 16
-    const val IV_SIZE_BYTES: Int = 12
     const val MAX_BACKUP_SIZE_BYTES: Int = 32 * 1024 * 1024
+
+    /** Version 1 containers keyed the passphrase as typed; later ones key its NFC form. */
+    private const val LEGACY_CONTAINER_VERSION: Int = 1
 
     private const val PAYLOAD_MAGIC: Int = 0x4348504c // CHPL
     private const val MAX_ITEMS: Int = 100_000
@@ -33,13 +35,15 @@ object AbysshBackupCodec {
     ): ByteArray {
         require(passphrase.isNotEmpty()) { "Backup passphrase must not be empty" }
         val plaintext = encodePayload(payload)
+        val normalized = nfc(passphrase)
         return try {
             if (!nativeBridge.isLoaded()) throw BackupFormatException("Native backup encryption is unavailable")
-            val result = nativeBridge.nativeEncrypt(plaintext, passphrase)
+            val result = nativeBridge.nativeEncrypt(plaintext, normalized)
                 ?: throw BackupFormatException("Native backup encryption failed")
             decodeNativeResult(result, allowInvalidPassphrase = false)
         } finally {
             plaintext.fill(0)
+            normalized.fill('\u0000')
         }
     }
 
@@ -47,8 +51,13 @@ object AbysshBackupCodec {
     fun decrypt(bytes: ByteArray, passphrase: CharArray): BackupPayload {
         require(passphrase.isNotEmpty()) { "Backup passphrase must not be empty" }
         if (!nativeBridge.isLoaded()) throw BackupFormatException("Native backup decryption is unavailable")
-        val result = nativeBridge.nativeDecrypt(bytes, passphrase)
-            ?: throw BackupFormatException("Native backup decryption failed")
+        val key = if (containerVersion(bytes) == LEGACY_CONTAINER_VERSION) passphrase.copyOf() else nfc(passphrase)
+        val result =
+            try {
+                nativeBridge.nativeDecrypt(bytes, key) ?: throw BackupFormatException("Native backup decryption failed")
+            } finally {
+                key.fill('\u0000')
+            }
         val plaintext = decodeNativeResult(result, allowInvalidPassphrase = true)
         return try {
             decodePayload(plaintext)
@@ -215,6 +224,17 @@ object AbysshBackupCodec {
         return BackupPayload(keys = keys, hosts = hosts)
     }
 
+    /**
+     * The passphrase in Unicode NFC, so the same passphrase typed on keyboards that
+     * compose accents differently opens the same backup.
+     */
+    internal fun nfc(passphrase: CharArray): CharArray = Normalizer.normalize(String(passphrase), Normalizer.Form.NFC).toCharArray()
+
+    /** The container format version, the big-endian int after the 4-byte magic, or -1. */
+    internal fun containerVersion(bytes: ByteArray): Int {
+        if (bytes.size < 2 * Int.SIZE_BYTES) return -1
+        return (4 until 8).fold(0) { acc, i -> (acc shl 8) or (bytes[i].toInt() and 0xff) }
+    }
 
     private fun decodeNativeResult(result: ByteArray, allowInvalidPassphrase: Boolean): ByteArray {
         if (result.isEmpty()) throw BackupFormatException("Invalid native backup response")

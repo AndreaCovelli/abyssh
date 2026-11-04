@@ -27,6 +27,7 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTheme
 import io.github.andreacovelli.abyssh.ui.theme.GhosttyThemeRegistry
 import io.github.andreacovelli.abyssh.ui.theme.resolveActiveThemeName
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 class MainActivity : FragmentActivity() {
@@ -43,8 +44,10 @@ class MainActivity : FragmentActivity() {
         updateSoftInputState(resources.configuration)
         val settings = SettingsRepository.getInstance(this)
         lifecycleScope.launch {
-            settings.hideScreenContents.collect { hideScreenContents ->
-                if (hideScreenContents) {
+            // With app lock on, the recents thumbnail would show what the lock screen hides.
+            combine(settings.hideScreenContents, settings.appLockEnabled) { hide, locked -> hide || locked }
+                .collect { secure ->
+                if (secure) {
                     window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
                 } else {
                     window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)

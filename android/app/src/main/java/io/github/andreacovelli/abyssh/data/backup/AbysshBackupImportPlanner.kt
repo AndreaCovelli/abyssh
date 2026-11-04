@@ -41,13 +41,20 @@ object AbysshBackupImportPlanner {
         }
 
         val usedHostNames = existingHosts.map { it.name }.toMutableSet()
-        val hostActions = importableHosts.map { backupHost ->
+        var skippedHosts = 0
+        val hostActions = importableHosts.mapNotNull { backupHost ->
             val localKeyId = backupHost.keyId?.let { exportedKeyId ->
                 when (val ref = keyRefs[exportedKeyId]) {
                     is KeyReference.Existing -> ref.localId
                     is KeyReference.Insert -> null
                     null -> throw BackupFormatException("Host references a missing SSH key")
                 }
+            }
+            val newKey = backupHost.keyId?.let { keyRefs[it] is KeyReference.Insert } == true
+            if (!newKey && existingHosts.any { it.sameAs(backupHost, localKeyId) }) {
+                // Importing the same backup twice shouldn't list every host twice.
+                skippedHosts += 1
+                return@mapNotNull null
             }
             val importName = uniqueName(backupHost.name, usedHostNames)
             val importHost = backupHost.toEntity(
@@ -65,6 +72,7 @@ object AbysshBackupImportPlanner {
         return BackupImportPlan(
             keyActions = keyActions,
             hostActions = hostActions,
+            skippedHostCount = skippedHosts,
         )
     }
 
@@ -114,6 +122,10 @@ object AbysshBackupImportPlanner {
             publicKeyOpenSsh == backupKey.publicKeyOpenSsh &&
             createdAtEpochMs == backupKey.createdAtEpochMs
 
+    /** Whether this host has every setting of [backupHost], with its key at [localKeyId]. */
+    private fun HostProfile.sameAs(backupHost: BackupHostProfile, localKeyId: Long?): Boolean =
+        this == backupHost.toEntity(idOverride = id, keyIdOverride = localKeyId)
+
     private fun AuthMethod.requiresKey(): Boolean =
         this == AuthMethod.Key || this == AuthMethod.KeyWithPassphrase
 }
@@ -121,6 +133,8 @@ object AbysshBackupImportPlanner {
 data class BackupImportPlan(
     val keyActions: List<KeyImportAction>,
     val hostActions: List<HostImportAction>,
+    /** Hosts left out because an identical host is already saved. */
+    val skippedHostCount: Int = 0,
 ) {
     val keyInsertCount: Int get() = keyActions.count { it is KeyImportAction.Insert }
     val keyReuseCount: Int get() = keyActions.count { it is KeyImportAction.Reuse }
