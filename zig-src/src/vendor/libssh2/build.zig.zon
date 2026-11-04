@@ -8,8 +8,8 @@
             .hash = "N-V-__8AAATRLQBu_rNy4X2UK6RtcdYK_yAzkV6OcCqgo5aK",
         },
         .openssl = .{
-            .url = "git+https://github.com/AndreaCovelli/openssl-zig?ref=zig-0.17#37801271920e196fc97b4b7616c7d45c68aa4b01",
-            .hash = "openssl-3.6.0-wZcA7-hD8gELWtyQIUtNnf0-leA-aYhA4k0XhyKBympA",
+            .url = "git+https://github.com/AndreaCovelli/openssl-zig?ref=zig-0.17#5735c23c601fa24bd7463e2a3ec6dd2b9272cbff",
+            .hash = "openssl-3.6.0-wZcA7zhG8gHDmn91q2-hJ0JFYl0dNb94m9SC89Mxrgth",
         },
     },
     .paths = .{

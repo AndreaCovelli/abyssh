@@ -66,11 +66,16 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .link_libc = true,
-            .strip = true,
             .unwind_tables = .none,
             .omit_frame_pointer = true,
+            // Debug info stays in: the app strips the final library and keeps the
+            // symbols for crash reports.
+            .stack_protector = true,
         }),
     });
+    // Bounds-checks libc calls whose buffer sizes the compiler knows. FORTIFY needs an
+    // optimized build, so Debug skips it.
+    if (optimize != .debug) lib.root_module.addCMacro("_FORTIFY_SOURCE", "2");
     lib.link_function_sections = true;
     lib.link_data_sections = true;
 

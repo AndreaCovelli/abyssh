@@ -53,4 +53,7 @@ Changed behavior:
 Removed: `src/test_live.zig`, a standalone program for testing against a live
 server. Nothing built it, and it did not compile on Zig 0.17.
 
-`build.zig` has no test step, so the `test` blocks don't run.
+`build.zig` takes a `bundled_zlib` option that builds zlib 1.3.1 from source and links
+it, so the `test` blocks run on hosts without zlib headers. `zig build test` in
+`zig-src` runs them, and CI runs that in `mise run check:native`. The retransmit test
+in `src/core.zig` waits for the doubled resend interval that the backoff introduced.
