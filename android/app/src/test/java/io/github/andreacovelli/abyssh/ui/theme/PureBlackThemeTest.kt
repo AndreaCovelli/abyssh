@@ -49,22 +49,22 @@ class PureBlackThemeTest {
     @Test
     fun `light theme is unchanged`() {
         assertSame(light, light.withPureBlack())
-        assertEquals(light.toChuColorPalette(), light.toChuColorPalette(pureBlack = true))
+        assertEquals(light.toAbyssColorPalette(), light.toAbyssColorPalette(pureBlack = true))
     }
 
     @Test
     fun `pure black palette keeps panels near black and borders visible`() {
-        val palette = dark.toChuColorPalette(pureBlack = true)
+        val palette = dark.toAbyssColorPalette(pureBlack = true)
 
         assertEquals(Color.Black, palette.background)
         assertEquals(Color.Black, palette.surfaceVariant)
         assertNotEquals(Color.Black, palette.surface)
-        assertTrue(palette.surface.red < dark.toChuColorPalette().surface.red)
+        assertTrue(palette.surface.red < dark.toAbyssColorPalette().surface.red)
         assertTrue(palette.border.red > palette.surface.red)
     }
 
     @Test
     fun `default palette is unchanged`() {
-        assertEquals(dark.background, dark.toChuColorPalette().background)
+        assertEquals(dark.background, dark.toAbyssColorPalette().background)
     }
 }

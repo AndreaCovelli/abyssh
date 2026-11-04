@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.dropUnlessResumed
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
@@ -83,7 +84,7 @@ private fun ServersRoute(navController: NavHostController, application: Applicat
     ServerListScreen(
         vm = vm,
         localShellEnabled = localShellEnabled,
-        onAddServer = { navController.navigate("servers/add") },
+        onAddServer = { navController.navigate("servers/add") { launchSingleTop = true } },
         onOpenLocalShell = localShell@{
             if (!localShellEnabled) return@localShell
             val open = { navController.navigate("terminal/local") }
@@ -98,8 +99,8 @@ private fun ServersRoute(navController: NavHostController, application: Applicat
                 )
             }
         },
-        onEditServer = { id -> navController.navigate("servers/edit/$id") },
-        onCopyServer = { id -> navController.navigate("servers/copy/$id") },
+        onEditServer = { id -> navController.navigate("servers/edit/$id") { launchSingleTop = true } },
+        onCopyServer = { id -> navController.navigate("servers/copy/$id") { launchSingleTop = true } },
         onConnectServer = { host ->
             val connect = {
                 vm.prepareConnect(host.id)
@@ -152,23 +153,26 @@ private fun SettingsRoute(
     )
 }
 
-/** Add, edit, and copy routes, which all open the server editor. */
+/**
+ * Add, edit, and copy routes, which all open the server editor. Leaving is ignored once
+ * the editor is on its way out, so a second tap on Save or Back can't pop the screen under it.
+ */
 private fun NavGraphBuilder.serverEditorRoutes(navController: NavHostController, application: Application) {
     val idArgument = listOf(navArgument("id") { type = NavType.LongType })
     composable("servers/add") {
         val vm: AddServerViewModel = viewModel(factory = AddServerViewModel.factory(application, null))
-        AddServerScreen(vm = vm, onBack = { navController.popBackStack() })
+        AddServerScreen(vm = vm, onBack = dropUnlessResumed { navController.popBackStack() })
     }
     composable(route = "servers/edit/{id}", arguments = idArgument) { backStackEntry ->
         val id = backStackEntry.arguments?.getLong("id")
         val vm: AddServerViewModel = viewModel(factory = AddServerViewModel.factory(application, id))
-        AddServerScreen(vm = vm, onBack = { navController.popBackStack() })
+        AddServerScreen(vm = vm, onBack = dropUnlessResumed { navController.popBackStack() })
     }
     composable(route = "servers/copy/{id}", arguments = idArgument) { backStackEntry ->
         val id = backStackEntry.arguments?.getLong("id")
         val vm: AddServerViewModel =
             viewModel(factory = AddServerViewModel.factory(application, id, copy = true))
-        AddServerScreen(vm = vm, onBack = { navController.popBackStack() })
+        AddServerScreen(vm = vm, onBack = dropUnlessResumed { navController.popBackStack() })
     }
 }
 

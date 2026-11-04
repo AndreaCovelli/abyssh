@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -145,9 +146,10 @@ internal fun TerminalRecoveryActions(
 }
 
 @Composable
-internal fun UploadProgressDialog(progress: UploadProgress) {
+internal fun UploadProgressDialog(progress: UploadProgress, onCancel: () -> Unit) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
+    val context = LocalContext.current
     val barWidthDp = 240.dp
     val barHeightDp = 12.dp
     val filledWidth =
@@ -207,15 +209,18 @@ internal fun UploadProgressDialog(progress: UploadProgress) {
             AbyssText(
                 text =
                     if (progress.totalBytes > 0) {
-                        val written = formatFileSize(progress.bytesWritten)
-                        val total = formatFileSize(progress.totalBytes)
+                        val written = formatFileSize(context, progress.bytesWritten)
+                        val total = formatFileSize(context, progress.totalBytes)
                         "$written / $total  ${progress.percent}%"
                     } else {
-                        formatFileSize(progress.bytesWritten)
+                        formatFileSize(context, progress.bytesWritten)
                     },
                 style = typography.labelSmall,
                 color = colors.textMuted,
             )
+            AbyssButton(onClick = onCancel, variant = AbyssButtonVariant.Outlined) {
+                AbyssText(stringResource(R.string.action_cancel), style = typography.label)
+            }
         }
     }
 }

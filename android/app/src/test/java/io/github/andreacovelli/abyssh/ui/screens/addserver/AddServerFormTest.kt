@@ -73,4 +73,16 @@ class AddServerFormTest {
         assertTrue(AddServerForm().withTransport(Transport.TailscaleSSH).usesKeepalive)
         assertFalse(AddServerForm().withTransport(Transport.Mosh).usesKeepalive)
     }
+
+    @Test
+    fun `a blank port means 22 and an out of range one is invalid`() {
+        assertEquals(22, AddServerForm(port = "").portNumber)
+        assertEquals(2222, AddServerForm(port = "2222").portNumber)
+        assertEquals(65535, AddServerForm(port = "65535").portNumber)
+        assertNull(AddServerForm(port = "0").portNumber)
+        assertNull(AddServerForm(port = "65536").portNumber)
+
+        val filled = AddServerForm(name = "box", host = "example.org", username = "me", password = "pw")
+        assertFalse(filled.copy(port = "70000").canSave())
+    }
 }

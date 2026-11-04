@@ -33,6 +33,34 @@ fun terminalImeInputType(disableAutocorrect: Boolean): Int {
         InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
 }
 
+private val ENTER_CONFIRMED_SCRIPTS = setOf(
+    Character.UnicodeScript.HAN,
+    Character.UnicodeScript.HIRAGANA,
+    Character.UnicodeScript.KATAKANA,
+    Character.UnicodeScript.BOPOMOFO,
+)
+
+/**
+ * Whether an IME composition of [composing] waits for an Enter to confirm it: Chinese and
+ * Japanese input does, while Latin and Korean keyboards commit the text and pass the Enter on.
+ */
+internal fun needsEnterToConfirm(composing: String): Boolean =
+    composing.codePoints().anyMatch { Character.UnicodeScript.of(it) in ENTER_CONFIRMED_SCRIPTS }
+
+/**
+ * The length, in chars, of the prefix [a] and [b] share, ending on a code point boundary
+ * so a surrogate pair is never split.
+ */
+internal fun commonCodePointPrefix(a: String, b: String): Int {
+    var index = 0
+    while (index < a.length && index < b.length) {
+        val codepoint = a.codePointAt(index)
+        if (codepoint != b.codePointAt(index)) break
+        index += Character.charCount(codepoint)
+    }
+    return index
+}
+
 /** Whether a physical keyboard is connected and in use, such as a Bluetooth or cover keyboard. */
 internal fun Configuration.hasPhysicalKeyboard(): Boolean =
     hasPhysicalKeyboard(keyboard, hardKeyboardHidden)
@@ -72,6 +100,8 @@ class TerminalInputView(context: Context) : EditText(context) {
     // of the terminal too.
     private var compositionEnterKeyCode = KeyEvent.KEYCODE_UNKNOWN
 
+    private val deadKeys = DeadKeyComposer()
+
     /**
      * When true, suppress IME text input. Used to prevent double-sends
      * when accessory-bar virtual keys like Tab are tapped: we send the
@@ -92,6 +122,9 @@ class TerminalInputView(context: Context) : EditText(context) {
 
     /** Cached InputMethodManager, for selection reports and autocorrect changes. */
     private var inputMethodManager: InputMethodManager? = null
+
+    /** Whether the volume keys send Up and Down instead of changing the volume. */
+    var volumeKeysAsArrows = false
 
     var disableAutocorrect = false
         set(value) {
@@ -167,8 +200,9 @@ class TerminalInputView(context: Context) : EditText(context) {
 
     /** Sends the terminal the edit that turns the mirror's [before] into [after]. */
     private fun emitDiff(source: String, before: String, after: String) {
-        val commonLen = before.zip(after).takeWhile { it.first == it.second }.size
-        val deletes = before.length - commonLen
+        val commonLen = commonCodePointPrefix(before, after)
+        // One Backspace per code point, so an emoji costs one, not one per surrogate.
+        val deletes = before.codePointCount(commonLen, before.length)
         val inserted = after.substring(commonLen)
         logInput(
             "emitDiff source=$source before=${describeText(before)} after=${describeText(after)} del=$deletes ins=${describeText(inserted)}",
@@ -184,7 +218,8 @@ class TerminalInputView(context: Context) : EditText(context) {
     /**
      * Whether [event] is an Enter that confirms the open IME composition, as it does on
      * desktop. The composed text has already reached the terminal, so the Enter sends
-     * nothing; the next one runs the line.
+     * nothing; the next one runs the line. Only Chinese and Japanese compositions take an
+     * Enter to confirm: Latin keyboards compose every word, and their Enter runs the line.
      */
     private fun confirmsComposition(event: KeyEvent): Boolean {
         val keyCode = event.keyCode
@@ -194,7 +229,10 @@ class TerminalInputView(context: Context) : EditText(context) {
             return true
         }
         if (event.action != KeyEvent.ACTION_DOWN) return false
-        if (BaseInputConnection.getComposingSpanStart(editableText) == -1) return false
+        val start = BaseInputConnection.getComposingSpanStart(editableText)
+        val end = BaseInputConnection.getComposingSpanEnd(editableText)
+        if (start == -1 || end == -1) return false
+        if (!needsEnterToConfirm(editableText.substring(minOf(start, end), maxOf(start, end)))) return false
         logInput("confirmsComposition keyCode=$keyCode")
         activeInputConnection?.invalidateImeMirror()
         compositionEnterKeyCode = keyCode
@@ -283,6 +321,30 @@ class TerminalInputView(context: Context) : EditText(context) {
         onCapsLockChanged?.invoke(on)
     }
 
+    /**
+     * Holds a dead key's accent for the next key, and types what they compose. Returns true
+     * when the press is used up; a key the accent doesn't combine with goes on as usual.
+     */
+    private fun composeDeadKey(keyCode: Int, event: KeyEvent): Boolean {
+        val result = deadKeys.onKeyDown(
+            keyCode = keyCode,
+            unicodeChar = event.unicodeChar,
+            repeatCount = event.repeatCount,
+            modifierKey = KeyEvent.isModifierKey(keyCode),
+            chord = event.isCtrlPressed || event.isMetaPressed,
+        )
+        val text = when (result) {
+            DeadKeyResult.Pass -> return false
+            is DeadKeyResult.Consume -> result.text
+            is DeadKeyResult.Flush -> result.text
+        }
+        if (text != null) {
+            clearSuppression("onKeyDown.deadKey keyCode=$keyCode")
+            emitTerminalText("onKeyDown.deadKey", text)
+        }
+        return result is DeadKeyResult.Consume
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         logInput(
             "onKeyDown keyCode=$keyCode unicode=${event.unicodeChar} meta=${event.metaState} flags=${event.flags}",
@@ -290,6 +352,7 @@ class TerminalInputView(context: Context) : EditText(context) {
         trackCapsLock(event)
         handleShortcutChordDown(keyCode, event)?.let { return it }
         if (confirmsComposition(event)) return true
+        if (composeDeadKey(keyCode, event)) return true
         val altGr = altGrText(event)
         if (altGr != null) {
             clearSuppression("onKeyDown.altGr keyCode=$keyCode")
@@ -298,6 +361,7 @@ class TerminalInputView(context: Context) : EditText(context) {
         }
         val ghosttyAction = GhosttyKeyAction.fromAndroid(event.action, event.repeatCount)
         val mapped = KeyMapper.map(keyCode, event.unicodeChar, event.metaState, event.getUnicodeChar(0))
+            ?: KeyMapper.volumeArrow(keyCode, event.metaState)?.takeIf { volumeKeysAsArrows }
         if (mapped != null && ghosttyAction != null) {
             clearSuppression("onKeyDown keyCode=$keyCode")
             if (ghosttyAction == GhosttyKeyAction.Press && shouldInvalidateImeMirrorForKey(keyCode)) {
@@ -307,9 +371,9 @@ class TerminalInputView(context: Context) : EditText(context) {
             return true
         }
         val unicodeChar = event.unicodeChar
-        if (unicodeChar != 0) {
+        if (unicodeChar > 0 && Character.isValidCodePoint(unicodeChar)) {
             clearSuppression("onKeyDown.unicode keyCode=$keyCode")
-            emitTerminalText("onKeyDown.unicode", unicodeChar.toChar().toString())
+            emitTerminalText("onKeyDown.unicode", String(Character.toChars(unicodeChar)))
             return true
         }
         return super.onKeyDown(keyCode, event)
@@ -320,9 +384,11 @@ class TerminalInputView(context: Context) : EditText(context) {
         trackCapsLock(event)
         handleShortcutChordUp(keyCode)?.let { return it }
         if (confirmsComposition(event)) return true
+        if (deadKeys.onKeyUp(keyCode)) return true
         if (altGrText(event) != null) return true
         val ghosttyAction = GhosttyKeyAction.fromAndroid(event.action, event.repeatCount)
         val mapped = KeyMapper.map(keyCode, event.unicodeChar, event.metaState, event.getUnicodeChar(0))
+            ?: KeyMapper.volumeArrow(keyCode, event.metaState)?.takeIf { volumeKeysAsArrows }
         if (mapped != null && ghosttyAction != null) {
             onTerminalKey?.invoke(mapped.key, mapped.codepoint, mapped.mods, ghosttyAction, mapped.charCode)
             return true

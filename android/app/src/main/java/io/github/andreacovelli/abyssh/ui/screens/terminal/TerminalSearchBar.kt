@@ -83,7 +83,11 @@ fun TerminalSearchBar(
             keyboardActions = KeyboardActions(onSearch = { onOlder() }),
         )
         AbyssText(
-            text = state.counter,
+            text = when {
+                state.query.isEmpty() -> ""
+                state.matches.isEmpty() -> stringResource(R.string.search_no_matches)
+                else -> stringResource(R.string.search_counter, state.matchNumber, state.matches.size)
+            },
             style = typography.labelSmall,
             color = if (state.query.isNotEmpty() && state.matches.isEmpty()) colors.error else colors.textMuted,
             modifier = Modifier.testTag("terminal_search_counter"),

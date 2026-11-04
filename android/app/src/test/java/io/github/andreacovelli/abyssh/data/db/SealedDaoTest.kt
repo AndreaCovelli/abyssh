@@ -46,7 +46,7 @@ class SealedDaoTest {
             HostProfile(name = "box", host = "10.0.0.1", username = "me", password = "hunter2", keyPassphrase = "pp"),
         )
         assertTrue(column("SELECT password FROM host_profiles").startsWith("v2:"))
-        assertFalse(column("SELECT keyPassphrase FROM host_profiles").contains("pp"))
+        assertTrue(column("SELECT keyPassphrase FROM host_profiles").startsWith("v2:"))
 
         val read = dao.getById(id)!!
         assertEquals("hunter2", read.password)

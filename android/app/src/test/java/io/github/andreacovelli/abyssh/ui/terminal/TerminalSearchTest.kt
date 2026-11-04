@@ -67,9 +67,9 @@ class TerminalSearchTest {
     fun `arrows walk the matches and wrap`() {
         val state = TerminalSearchState("x").withMatches(found)
         assertEquals(newest, state.currentMatch)
-        assertEquals("3 of 3", state.counter)
+        assertEquals(3, state.matchNumber)
         assertEquals(middle, state.older().currentMatch)
-        assertEquals("2 of 3", state.older().counter)
+        assertEquals(2, state.older().matchNumber)
         assertEquals(oldest, state.newer().currentMatch)
         assertEquals(newest, state.older().older().older().currentMatch)
     }
@@ -80,15 +80,15 @@ class TerminalSearchTest {
         val newOutput = SearchMatch(120, 0, 120, 2)
         val refreshed = onMiddle.withMatches(listOf(newOutput) + found)
         assertEquals(middle, refreshed.currentMatch)
-        assertEquals("2 of 4", refreshed.counter)
+        assertEquals(2, refreshed.matchNumber)
     }
 
     @Test
     fun `no matches`() {
         val state = TerminalSearchState("x").withMatches(emptyList())
         assertNull(state.currentMatch)
-        assertEquals("no matches", state.counter)
+        assertEquals(0, state.matchNumber)
         assertEquals(state, state.older())
-        assertEquals("", TerminalSearchState().counter)
+        assertEquals(0, TerminalSearchState().matchNumber)
     }
 }

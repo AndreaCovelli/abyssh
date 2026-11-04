@@ -128,7 +128,12 @@ internal fun SshBackupSheet(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        AbyssBottomSheet(visible = visible, onDismiss = ::dismiss, heightFraction = 0.82f) {
+        AbyssBottomSheet(
+            visible = visible,
+            onDismiss = ::dismiss,
+            obscured = showDetails,
+            heightFraction = 0.82f,
+        ) {
             AbyssSheetHeader(
                 title = stringResource(R.string.backup_title),
                 subtitle = stringResource(step.subtitleRes),

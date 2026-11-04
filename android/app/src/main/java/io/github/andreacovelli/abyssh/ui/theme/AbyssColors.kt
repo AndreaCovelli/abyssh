@@ -34,7 +34,7 @@ val AbyssDarkColors: AbyssColorPalette = AbyssColorPalette(
     border = Color(0xFF45475A),
     textPrimary = Color(0xFFCDD6F4),
     textSecondary = Color(0xFFA6ADC8),
-    textMuted = Color(0xFF6C7086),
+    textMuted = Color(0xFF9399B2),
     accent = Color(0xFFB4BEFE),
     accentSecondary = Color(0xFF89B4FA),
     error = Color(0xFFF38BA8),
@@ -45,11 +45,11 @@ val AbyssDarkColors: AbyssColorPalette = AbyssColorPalette(
     disabledText = Color(0xFF6C7086),
 )
 
-val LocalChuColors = staticCompositionLocalOf { AbyssDarkColors }
+val LocalAbyssColors = staticCompositionLocalOf { AbyssDarkColors }
 
 object AbyssColors {
     val current: AbyssColorPalette
         @Composable
         @ReadOnlyComposable
-        get() = LocalChuColors.current
+        get() = LocalAbyssColors.current
 }

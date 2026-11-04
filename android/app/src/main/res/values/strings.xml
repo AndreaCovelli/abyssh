@@ -19,6 +19,8 @@
     <string name="server_name_placeholder">My server</string>
     <string name="server_host_label">Host</string>
     <string name="server_port_label">Port</string>
+    <string name="server_port_invalid">Enter a port from 1 to 65535.</string>
+    <string name="add_server_copy_name">%1$s (copy)</string>
     <string name="server_username_label">Username</string>
     <string name="server_section_transport">Transport</string>
     <string name="server_tailscale_hint">Connects through the Tailscale network. Use the host\'s Tailscale IP (100.x.x.x) or MagicDNS name.</string>
@@ -172,6 +174,8 @@
     <string name="settings_scrollback_megabytes">%1$d MB</string>
     <string name="settings_ctrl_v_pastes">Ctrl+V pastes</string>
     <string name="settings_ctrl_v_pastes_hint">Ctrl+Shift+V always pastes. Turn this off to send Ctrl+V to the shell (e.g. vim block select).</string>
+    <string name="settings_volume_keys_as_arrows">Volume keys as arrows</string>
+    <string name="settings_volume_keys_as_arrows_hint">Volume Up and Down send the Up and Down arrows while the terminal has focus.</string>
     <string name="settings_keep_screen_awake">Keep screen awake</string>
     <string name="settings_keep_screen_awake_hint">Prevent the display from sleeping while a session is connected</string>
     <string name="settings_match_display_refresh_rate">Match screen refresh rate</string>
@@ -220,6 +224,11 @@
     <string name="action_rename">Rename</string>
     <string name="action_copy">Copy</string>
     <string name="action_delete">Delete</string>
+    <string name="action_move_up">Move up</string>
+    <string name="action_move_down">Move down</string>
+    <string name="action_move_left">Move left</string>
+    <string name="action_move_right">Move right</string>
+    <string name="action_reorder">Reorder</string>
     <string name="action_generate">Generate</string>
     <string name="keys_file_read_failed">Couldn\'t read that file</string>
     <string name="keys_private_key">Private key</string>
@@ -236,6 +245,7 @@
     <string name="terminal_verify_title">Verify to connect</string>
     <string name="terminal_verify_subtitle">Authenticate to open this server session</string>
     <string name="terminal_current_host">Current host</string>
+    <string name="terminal_input_label">Terminal input</string>
     <string name="terminal_key_passphrase_title">Key passphrase</string>
     <string name="action_connect">Connect</string>
     <string name="terminal_files_unsupported_local">Files are not supported for local shell</string>
@@ -274,6 +284,7 @@
     </plurals>
     <string name="files_replace">Replace</string>
     <string name="files_replace_note">The server already has files with these names. Uploading replaces them.</string>
+    <string name="files_link_broken">%1$s points to nothing</string>
     <string name="files_upload_target_is_directory">%1$s is a folder on the server</string>
     <string name="terminal_link_no_app">No app can open this link</string>
     <string name="terminal_copied_link">Copied link</string>
@@ -295,6 +306,8 @@
     <string name="server_list_filter_placeholder">Filter hosts</string>
     <string name="server_list_section_hosts">Hosts</string>
     <string name="server_list_no_match">No hosts match</string>
+    <string name="server_list_delete_title">Delete %1$s?</string>
+    <string name="server_list_delete_body">This removes the saved host. Its keys stay in the key list.</string>
     <string name="server_list_disconnect_before_delete">Disconnect before deleting this host</string>
     <string name="server_list_add">Add server</string>
     <string name="server_list_disconnect_title">Disconnect %1$s?</string>
@@ -339,6 +352,7 @@
     <string name="settings_section_theme">Theme</string>
     <string name="theme_dark">Dark</string>
     <string name="theme_light">Light</string>
+    <string name="theme_system">System</string>
     <string name="theme_show_preview">Show preview</string>
     <string name="settings_pure_black">Pure black</string>
     <string name="settings_pure_black_hint">Use a black background with dark themes, to save power on OLED screens</string>
@@ -431,6 +445,8 @@
     <string name="search_previous">Previous match</string>
     <string name="search_next">Next match</string>
     <string name="search_close">Close search</string>
+    <string name="search_no_matches">No matches</string>
+    <string name="search_counter">%1$d of %2$d</string>
     <string name="settings_section_font">Terminal font</string>
     <string name="tab_local_endpoint">This device · app sandbox</string>
     <string name="notification_channel_sessions">SSH sessions</string>
@@ -446,6 +462,9 @@
     <string name="terminal_end_session_body_tmux_detach">This detaches from tmux. The tmux session keeps running.</string>
     <string name="files_go_up">Parent folder</string>
     <string name="files_sort">Sort</string>
+    <string name="files_sort_name">Name</string>
+    <string name="files_sort_size">Size</string>
+    <string name="files_sort_modified">Modified</string>
     <string name="files_upload">Upload file</string>
     <string name="settings_font_size_decrease">Decrease font size</string>
     <string name="settings_font_size_increase">Increase font size</string>
@@ -487,8 +506,6 @@
     <string name="terminal_preparation_cancelled">Connection preparation was cancelled</string>
     <string name="terminal_preparation_superseded">Connection preparation was superseded</string>
     <string name="files_list_failed">Failed to list directory</string>
-    <string name="add_server_host_key_unknown">Host key not verified. Connect once to verify this host.</string>
-    <string name="add_server_host_key_changed">Host key changed (%1$s → %2$s). Connect once to verify this host.</string>
     <string name="keys_generate_failed">Key generation failed</string>
     <string name="keys_import_blank">Paste a private key first</string>
     <string name="keys_import_not_private">That doesn\'t look like a private key</string>

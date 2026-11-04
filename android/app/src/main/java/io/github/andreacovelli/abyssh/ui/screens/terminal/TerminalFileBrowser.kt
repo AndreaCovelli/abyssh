@@ -54,6 +54,7 @@ class TerminalFileBrowser internal constructor(
     // the previous, so stale responses can never overwrite newer state.
     private val refreshJobs = ConcurrentHashMap<String, Job>()
     private val resolverJobs = ConcurrentHashMap<String, Job>()
+    private val uploadJobs = ConcurrentHashMap<String, Job>()
 
     /** Whether the active tab shows its terminal or its files. */
     val selectedPane: StateFlow<ConnectionTab> =
@@ -84,6 +85,7 @@ class TerminalFileBrowser internal constructor(
         homeByTab.remove(tabId)
         resolverJobs.remove(tabId)?.cancel()
         refreshJobs.remove(tabId)?.cancel()
+        uploadJobs.remove(tabId)?.cancel()
     }
 
     fun refresh() {
@@ -146,13 +148,28 @@ class TerminalFileBrowser internal constructor(
             }
             throw e
         }
-        withContext(Dispatchers.Main) { refresh() }
+        withContext(Dispatchers.Main) { refresh(target.tabId) }
     }
 
-    fun setUploadProgress(progress: UploadProgress?) {
-        val tabId = activeTabId.value ?: return
+    /** Shows [progress] on the tab the upload goes to, which may no longer be the active one. */
+    fun setUploadProgress(tabId: String, progress: UploadProgress?) {
         updateState(tabId) { it.copy(uploadProgress = progress) }
     }
+
+    /** Keeps [job] as [tabId]'s upload until it ends, so [cancelUpload] can stop it. */
+    fun trackUpload(tabId: String, job: Job) {
+        uploadJobs[tabId] = job
+        job.invokeOnCompletion { uploadJobs.remove(tabId, job) }
+    }
+
+    /** Stops the active tab's upload; the partial file is deleted. */
+    fun cancelUpload() {
+        val tabId = activeTabId.value ?: return
+        uploadJobs.remove(tabId)?.cancel()
+    }
+
+    /** The mode of what [path] points to, following symlinks, or null when nothing is there. */
+    suspend fun targetMode(tabId: String, path: String): Int? = sessionRepository.withSftp(tabId) { it.stat(path) }
 
     suspend fun delete(tabId: String, entry: FileBrowserEntry) {
         sessionRepository.withSftp(tabId) { it.delete(entry.path, entry.type == FileEntryType.Directory) }

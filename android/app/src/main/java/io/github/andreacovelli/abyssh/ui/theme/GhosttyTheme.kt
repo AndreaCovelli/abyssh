@@ -1,6 +1,9 @@
 package io.github.andreacovelli.abyssh.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 data class GhosttyTheme(
@@ -77,11 +80,35 @@ private fun Color.mix(other: Color, fraction: Float): Color {
     )
 }
 
-private fun Color.luminance(): Float =
-    0.299f * red + 0.587f * green + 0.114f * blue
+/** The contrast WCAG asks of body text. */
+internal const val MIN_TEXT_CONTRAST = 4.5f
+
+private const val DISABLED_TEXT_MIX = 0.6f
+private const val READABLE_MIX_STEP = 0.02f
+
+/** The WCAG contrast ratio of two colors, from 1 to 21. */
+internal fun contrastRatio(a: Color, b: Color): Float {
+    val la = a.luminance()
+    val lb = b.luminance()
+    return (max(la, lb) + 0.05f) / (min(la, lb) + 0.05f)
+}
+
+/**
+ * This color mixed toward [other] by [fraction], or by less when that would bring its
+ * contrast with any of [backdrops] under [MIN_TEXT_CONTRAST].
+ */
+private fun Color.readableMix(other: Color, fraction: Float, backdrops: List<Color>): Color {
+    var amount = fraction
+    while (amount > 0f) {
+        val mixed = mix(other, amount)
+        if (backdrops.all { contrastRatio(mixed, it) >= MIN_TEXT_CONTRAST }) return mixed
+        amount -= READABLE_MIX_STEP
+    }
+    return this
+}
 
 /** Whether the theme has a dark background, the only kind [withPureBlack] changes. */
-val GhosttyTheme.isDark: Boolean get() = background.luminance() < 0.5f
+val GhosttyTheme.isDark: Boolean get() = background.perceivedLuminance() < 0.5f
 
 /**
  * The theme on a pure black background, for OLED screens. Light themes come back
@@ -103,7 +130,7 @@ fun GhosttyTheme.withPureBlack(): GhosttyTheme {
  * The UI palette for this theme. With [pureBlack], a dark theme gets a black
  * background and panels close to black, which borders keep apart.
  */
-fun GhosttyTheme.toChuColorPalette(pureBlack: Boolean = false): AbyssColorPalette {
+fun GhosttyTheme.toAbyssColorPalette(pureBlack: Boolean = false): AbyssColorPalette {
     if (pureBlack && isDark) return withPureBlack().toUiPalette(oled = true)
     return toUiPalette(oled = false)
 }
@@ -128,9 +155,12 @@ private fun GhosttyTheme.toUiPalette(oled: Boolean): AbyssColorPalette {
     // of low-contrast outlines on bright backgrounds.
     val border = background.mix(contrast, if (isDark) 0.22f else 0.28f)
 
+    // Secondary and muted text fade toward the background only as far as they stay
+    // readable on every panel color.
+    val panels = listOf(background, surface, surfaceVariant)
     val textPrimary = foreground
-    val textSecondary = foreground.mix(background, 0.28f)
-    val textMuted = foreground.mix(background, 0.5f)
+    val textSecondary = foreground.readableMix(background, 0.28f, panels)
+    val textMuted = foreground.readableMix(background, 0.5f, panels)
 
     // Brand accent is derived from the theme's own foreground rather than
     // ANSI palette[4]. Borrowing ANSI blue makes every UI button clash with
@@ -141,7 +171,9 @@ private fun GhosttyTheme.toUiPalette(oled: Boolean): AbyssColorPalette {
     val onAccent = background
 
     val disabledSurface = surface.mix(background, 0.5f)
-    val disabledText = textMuted
+    // Disabled controls are exempt from the contrast minimum, and dimmer than muted
+    // text so they read as unavailable.
+    val disabledText = foreground.mix(background, DISABLED_TEXT_MIX)
 
     return AbyssColorPalette(
         name = this.name,

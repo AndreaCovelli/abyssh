@@ -47,13 +47,8 @@ data class TerminalSearchState(
 ) {
     val currentMatch: SearchMatch? get() = matches.getOrNull(current)
 
-    /** "n of m", numbered top to bottom like the output itself. */
-    val counter: String
-        get() = when {
-            query.isEmpty() -> ""
-            matches.isEmpty() -> "no matches"
-            else -> "${matches.size - current} of ${matches.size}"
-        }
+    /** The current match's number, counted top to bottom like the output itself; 0 for none. */
+    val matchNumber: Int get() = if (current in matches.indices) matches.size - current else 0
 
     /** The next match up, toward older output. Wraps to the newest. */
     fun older(): TerminalSearchState =

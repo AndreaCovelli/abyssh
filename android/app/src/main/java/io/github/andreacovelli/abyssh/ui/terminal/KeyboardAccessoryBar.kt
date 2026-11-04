@@ -15,12 +15,10 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
@@ -45,6 +43,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.andreacovelli.abyssh.R
@@ -64,7 +64,6 @@ private const val REPEAT_INTERVAL_MS = 50L
 // hit by mistake.
 private val END_SESSION_GAP = 8.dp
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun KeyboardAccessoryBar(
     entries: List<ResolvedAccessoryEntry>,
@@ -82,6 +81,7 @@ fun KeyboardAccessoryBar(
     horizontalPadding: Dp = 8.dp,
     verticalPadding: Dp = 6.dp,
 ) {
+    // A minimum, so keys grow with the system font size.
     val buttonHeight = 30.dp
     val buttonPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 3.dp, bottom = 3.dp)
     // A shared minimum width keeps one-glyph keys (arrows, icons) as wide as Esc or Tab.
@@ -110,15 +110,8 @@ fun KeyboardAccessoryBar(
             }
         }
 
-        if (useSingleRow) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = horizontalPadding, vertical = verticalPadding)
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+        val keys: List<@Composable () -> Unit> = buildList {
+            add {
                 ShortcutsButton(
                     onAbysshKey = onAbysshKey,
                     active = abysshKeyActive,
@@ -126,7 +119,9 @@ fun KeyboardAccessoryBar(
                     buttonPadding = buttonPadding,
                     modifier = keyModifier,
                 )
-                entries.forEach { entry ->
+            }
+            entries.forEach { entry ->
+                add {
                     AccessoryEntry(
                         entry = entry,
                         expanded = expandedGroupId == entry.id,
@@ -140,12 +135,16 @@ fun KeyboardAccessoryBar(
                         modifier = keyModifier,
                     )
                 }
+            }
+            add {
                 FilesButton(
                     onOpenFiles = onOpenFiles,
                     buttonHeight = buttonHeight,
                     buttonPadding = buttonPadding,
                     modifier = keyModifier,
                 )
+            }
+            add {
                 ZoomButton(
                     onZoom = onZoom,
                     active = zoomActive,
@@ -153,6 +152,8 @@ fun KeyboardAccessoryBar(
                     buttonPadding = buttonPadding,
                     modifier = keyModifier,
                 )
+            }
+            add {
                 EndSessionButton(
                     onEndSession = onEndSession,
                     buttonHeight = buttonHeight,
@@ -160,59 +161,76 @@ fun KeyboardAccessoryBar(
                     modifier = Modifier.padding(start = END_SESSION_GAP).then(keyModifier),
                 )
             }
-            return
         }
-
-        FlowRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = horizontalPadding, vertical = verticalPadding),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            maxLines = 2,
-        ) {
-            ShortcutsButton(
-                onAbysshKey = onAbysshKey,
-                active = abysshKeyActive,
-                buttonHeight = buttonHeight,
-                buttonPadding = buttonPadding,
-                modifier = keyModifier,
-            )
-            entries.forEach { entry ->
-                AccessoryEntry(
-                    entry = entry,
-                    expanded = expandedGroupId == entry.id,
-                    modifierState = shownModifiers,
-                    onAction = onAction,
-                    onToggleGroup = { id ->
-                        expandedGroupId = if (expandedGroupId == id) null else id
-                    },
-                    buttonHeight = buttonHeight,
-                    buttonPadding = buttonPadding,
-                    modifier = keyModifier,
-                )
-            }
-            FilesButton(
-                onOpenFiles = onOpenFiles,
-                buttonHeight = buttonHeight,
-                buttonPadding = buttonPadding,
-                modifier = keyModifier,
-            )
-            ZoomButton(
-                onZoom = onZoom,
-                active = zoomActive,
-                buttonHeight = buttonHeight,
-                buttonPadding = buttonPadding,
-                modifier = keyModifier,
-            )
-            EndSessionButton(
-                onEndSession = onEndSession,
-                buttonHeight = buttonHeight,
-                buttonPadding = buttonPadding,
-                modifier = Modifier.padding(start = END_SESSION_GAP).then(keyModifier),
-            )
+        val rowModifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = horizontalPadding, vertical = verticalPadding)
+        if (useSingleRow) {
+            ScrollingKeyRow(keys, modifier = rowModifier)
+        } else {
+            TwoKeyRows(keys, modifier = rowModifier)
         }
     }
+}
+
+private val KEY_SPACING = 6.dp
+
+@Composable
+private fun ScrollingKeyRow(keys: List<@Composable () -> Unit>, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(KEY_SPACING),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        keys.forEach { it() }
+    }
+}
+
+/**
+ * The keys that fit on the first row, and the rest on a second row that scrolls sideways,
+ * so a long layout or a large font never hides a key.
+ */
+@Composable
+private fun TwoKeyRows(keys: List<@Composable () -> Unit>, modifier: Modifier = Modifier) {
+    SubcomposeLayout(modifier) { constraints ->
+        // Each key's width, or null for one that shows nothing, such as Files with no handler.
+        val widths = keys.mapIndexed { index, key ->
+            val placeables = subcompose("measure-$index", key).map { it.measure(Constraints()) }
+            if (placeables.isEmpty()) null else placeables.maxOf { it.width }
+        }
+        val split = firstRowKeyCount(widths, constraints.maxWidth, KEY_SPACING.roundToPx())
+        val hasSecondRow = widths.drop(split).any { it != null }
+        val placeables = subcompose("rows") {
+            Column(verticalArrangement = Arrangement.spacedBy(KEY_SPACING)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(KEY_SPACING),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    keys.take(split).forEach { it() }
+                }
+                if (hasSecondRow) ScrollingKeyRow(keys.drop(split))
+            }
+        }.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
+        val width = constraints.maxWidth
+        val height = (placeables.maxOfOrNull { it.height } ?: 0).coerceAtLeast(constraints.minHeight)
+        layout(width, height) {
+            placeables.forEach { it.placeRelative(0, 0) }
+        }
+    }
+}
+
+/** How many of the keys with [widths] fit on a row [maxWidth] wide; at least one. */
+internal fun firstRowKeyCount(widths: List<Int?>, maxWidth: Int, spacing: Int): Int {
+    var used = 0
+    var shown = 0
+    widths.forEachIndexed { index, width ->
+        if (width == null) return@forEachIndexed
+        val next = if (shown == 0) width else used + spacing + width
+        if (next > maxWidth && shown > 0) return index
+        used = next
+        shown++
+    }
+    return widths.size
 }
 
 @Composable
@@ -299,7 +317,7 @@ private fun GroupButton(
     AbyssKey(
         onClick = onToggle,
         active = expanded,
-        modifier = modifier.height(buttonHeight),
+        modifier = modifier.heightIn(min = buttonHeight),
         contentPadding = buttonPadding,
     ) {
         AbyssText(group.label, style = AbyssTypography.current.label)
@@ -329,7 +347,7 @@ private fun AccessoryButton(
         AbyssKey(
             onClick = { onAction(item.action) },
             active = toggleModifier != null && modifierState.isEnabled(toggleModifier),
-            modifier = modifier.height(buttonHeight),
+            modifier = modifier.heightIn(min = buttonHeight),
             contentPadding = buttonPadding,
         ) {
             AbyssText(item.label, style = AbyssTypography.current.label)
@@ -434,7 +452,7 @@ private fun AccessoryIconKey(
     AbyssKey(
         onClick = onClick,
         active = active,
-        modifier = modifier.height(buttonHeight),
+        modifier = modifier.heightIn(min = buttonHeight),
         contentPadding = buttonPadding,
     ) {
         Icon(
@@ -461,7 +479,7 @@ private fun RepeatableAccessoryButton(
 
     Box(
         modifier = modifier
-            .height(buttonHeight)
+            .heightIn(min = buttonHeight)
             .pointerInput(item.action) {
                 awaitEachGesture {
                     awaitFirstDown().consume()
@@ -469,18 +487,22 @@ private fun RepeatableAccessoryButton(
                     currentOnAction(item.action)
 
                     try {
-                        val releasedDuringDelay = withTimeoutOrNull(INITIAL_REPEAT_DELAY_MS) {
+                        // waitForUpOrCancellation returns null when the press is cancelled,
+                        // as withTimeoutOrNull does on a timeout, so mark an ended press apart.
+                        val endedDuringDelay = withTimeoutOrNull(INITIAL_REPEAT_DELAY_MS) {
                             waitForUpOrCancellation()
-                        }
+                            true
+                        } == true
 
-                        if (releasedDuringDelay == null) {
+                        if (!endedDuringDelay) {
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             while (true) {
                                 currentOnAction(item.action)
-                                val released = withTimeoutOrNull(REPEAT_INTERVAL_MS) {
+                                val ended = withTimeoutOrNull(REPEAT_INTERVAL_MS) {
                                     waitForUpOrCancellation()
-                                }
-                                if (released != null) break
+                                    true
+                                } == true
+                                if (ended) break
                             }
                         }
                     } finally {
@@ -499,7 +521,7 @@ private fun RepeatableAccessoryButton(
         propagateMinConstraints = true,
     ) {
         AbyssKey(
-            modifier = Modifier.height(buttonHeight),
+            modifier = Modifier.heightIn(min = buttonHeight),
             pressed = pressed,
             contentPadding = buttonPadding,
         ) {

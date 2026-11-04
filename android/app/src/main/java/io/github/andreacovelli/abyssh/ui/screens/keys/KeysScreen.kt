@@ -4,6 +4,8 @@ import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import android.content.Context
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,6 +22,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +40,9 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun KeysContent(vm: KeysViewModel, modifier: Modifier = Modifier) {
@@ -47,8 +54,8 @@ fun KeysContent(vm: KeysViewModel, modifier: Modifier = Modifier) {
 
     var renameTarget by remember { mutableStateOf<KeyListItem?>(null) }
     var deleteTarget by remember { mutableStateOf<KeyListItem?>(null) }
-    var showGenerateDialog by remember { mutableStateOf(false) }
-    var showImportDialog by remember { mutableStateOf(false) }
+    var showGenerateDialog by rememberSaveable { mutableStateOf(false) }
+    var showImportDialog by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(vm) {
         vm.events.collect { event ->
@@ -218,7 +225,7 @@ private fun KeyCard(item: KeyListItem, onRename: () -> Unit, onDelete: () -> Uni
 
 @Composable
 private fun GenerateKeyDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf("android-ed25519") }
+    var name by rememberSaveable { mutableStateOf("android-ed25519") }
     AbyssDialog(
         title = stringResource(R.string.key_generate),
         confirmLabel = stringResource(R.string.action_generate),
@@ -241,23 +248,22 @@ private fun ImportKeyDialog(onConfirm: (String, String) -> Unit, onDismiss: () -
     val colors = AbyssColors.current
     val context = LocalContext.current
     val resources = LocalResources.current
-    var name by remember { mutableStateOf("imported-key") }
+    var name by rememberSaveable { mutableStateOf("imported-key") }
+
+    // Not saveable: saved state is written to disk, and this holds a private key.
     var privateKey by remember { mutableStateOf("") }
 
+    val scope = rememberCoroutineScope()
     val fileLauncher =
         rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) { uri ->
             if (uri == null) return@rememberLauncherForActivityResult
-            val content =
-                runCatching {
-                        context.contentResolver.openInputStream(uri)?.bufferedReader()?.use {
-                            it.readText()
-                        }
-                    }
-                    .getOrNull()
-            if (content.isNullOrBlank()) {
-                Toast.makeText(context, resources.getString(R.string.keys_file_read_failed), Toast.LENGTH_SHORT).show()
-            } else {
-                privateKey = content
+            scope.launch {
+                val content = withContext(Dispatchers.IO) { readKeyFile(context, uri) }
+                if (content.isNullOrBlank()) {
+                    Toast.makeText(context, resources.getString(R.string.keys_file_read_failed), Toast.LENGTH_SHORT).show()
+                } else {
+                    privateKey = content
+                }
             }
         }
 
@@ -362,3 +368,20 @@ private fun DeleteKeyDialog(item: KeyListItem, onConfirm: () -> Unit, onDismiss:
         }
     }
 }
+
+// Far more than any private key, so a wrong pick can't fill memory.
+private const val MAX_KEY_FILE_BYTES = 64 * 1024
+
+/** The text of the key file at [uri], or null when it can't be read or is too large to be a key. */
+private fun readKeyFile(context: Context, uri: Uri): String? = runCatching {
+    context.contentResolver.openInputStream(uri)?.use { input ->
+        val buffer = ByteArray(MAX_KEY_FILE_BYTES + 1)
+        var size = 0
+        while (size < buffer.size) {
+            val read = input.read(buffer, size, buffer.size - size)
+            if (read < 0) break
+            size += read
+        }
+        if (size > MAX_KEY_FILE_BYTES) null else buffer.decodeToString(0, size)
+    }
+}.getOrNull()

@@ -23,13 +23,14 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
 /**
- * The tapped link in full, with open and copy. It floats like a snackbar: as wide as
- * the link, up to [MaxWidth], so it doesn't span a tablet's screen.
+ * The tapped link in full, with open and copy, or only copy when [onOpen] is null. It
+ * floats like a snackbar: as wide as the link, up to [MaxWidth], so it doesn't span a
+ * tablet's screen.
  */
 @Composable
 fun TerminalLinkBar(
     url: String,
-    onOpen: () -> Unit,
+    onOpen: (() -> Unit)?,
     onCopy: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -60,7 +61,7 @@ fun TerminalLinkBar(
                 // Takes the space the buttons leave, but no more, so a short link keeps the bar narrow.
                 modifier = Modifier.weight(1f, fill = false),
             )
-            LinkBarButton(stringResource(R.string.action_open), onOpen, "link_open")
+            if (onOpen != null) LinkBarButton(stringResource(R.string.action_open), onOpen, "link_open")
             LinkBarButton(stringResource(R.string.action_copy), onCopy, "link_copy")
             AbyssCloseButton(
                 onClick = onDismiss,

@@ -7,6 +7,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +25,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -34,8 +37,10 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 /**
  * Panel that slides up from the bottom of its parent over a dimming scrim. Tapping the
  * scrim calls [onDismiss]. Place it last in a full-size `Box` so it draws above the
- * screen content.
+ * screen content, and hide that content from screen readers while the sheet is open with
+ * [Modifier.hiddenBehindSheet].
  *
+ * @param obscured whether another sheet covers this one, which hides it from screen readers.
  * @param heightFraction fraction of the parent height the panel fills, or `null` to wrap
  *   its content.
  */
@@ -44,6 +49,7 @@ fun AbyssBottomSheet(
     visible: Boolean,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    obscured: Boolean = false,
     heightFraction: Float? = null,
     scrimAlpha: Float = 0.72f,
     verticalSpacing: Dp = 14.dp,
@@ -60,7 +66,9 @@ fun AbyssBottomSheet(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = onDismiss,
-                    ),
+                    )
+                    // Screen readers close the sheet with its close button or Back.
+                    .clearAndSetSemantics {},
             )
         }
 
@@ -75,12 +83,11 @@ fun AbyssBottomSheet(
                     .fillMaxWidth()
                     .then(if (heightFraction != null) Modifier.fillMaxHeight(heightFraction) else Modifier)
                     .background(colors.surfaceVariant)
-                    // Swallow taps so they don't reach the scrim behind the panel.
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {},
-                    )
+                    // Swallow taps so they don't reach the scrim behind the panel. A tap
+                    // detector rather than clickable, which would merge the whole panel
+                    // into one node for screen readers.
+                    .pointerInput(Unit) { detectTapGestures {} }
+                    .then(if (obscured) Modifier.clearAndSetSemantics {} else Modifier)
                     .windowInsetsPadding(WindowInsets.safeDrawing)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(verticalSpacing),
@@ -89,6 +96,9 @@ fun AbyssBottomSheet(
         }
     }
 }
+
+/** Hides this content from screen readers while a sheet over it is [open]. */
+fun Modifier.hiddenBehindSheet(open: Boolean): Modifier = if (open) clearAndSetSemantics {} else this
 
 /** Title row for an [AbyssBottomSheet], with an optional subtitle and a close button. */
 @Composable

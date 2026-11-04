@@ -123,7 +123,7 @@ internal fun TerminalSessionContent(
         }
     }
 
-    fileState.uploadProgress?.let { UploadProgressDialog(progress = it) }
+    fileState.uploadProgress?.let { UploadProgressDialog(progress = it, onCancel = vm.files::cancelUpload) }
     if (overlay.showTabSheet) TerminalPaletteSheet(vm, host, input, files)
 }
 
@@ -230,6 +230,7 @@ private fun TerminalPane(
     val theme = host.settings.ghosttyTheme
     val searchState by vm.search.state.collectAsStateWithLifecycle()
     val multiplexer by vm.multiplexer.state.collectAsStateWithLifecycle()
+    val activeTab by vm.activeTab.collectAsStateWithLifecycle()
     TerminalKeyboardEffect(vm, input)
     TerminalOnScreenEffect(vm)
     Column(modifier = modifier) {
@@ -262,6 +263,7 @@ private fun TerminalPane(
                     selectionText = vm.search::selectionText,
                     modifier = Modifier.fillMaxSize(),
                     onResize = vm.input::onCanvasSizeChanged,
+                    resizeTarget = activeTab?.engine,
                     onTap = input::requestFocus,
                     onPrimaryClick = vm.input::onPrimaryMouseClick,
                     onLinkTap = vm.search::onLinkTap,
@@ -293,10 +295,15 @@ private fun TerminalPane(
             )
             // Its handles and menu sit at unzoomed positions, which zoom mode moves away from.
             if (!host.overlay.zoom.active) TerminalSelectionOverlay(input)
+            val inputLabel = stringResource(R.string.terminal_input_label)
             AndroidView(
                 modifier = Modifier.align(Alignment.BottomStart).size(1.dp).alpha(0f),
                 factory = input::createInputView,
-                update = { view -> view.disableAutocorrect = host.settings.disableAutocorrect },
+                update = { view ->
+                    view.contentDescription = inputLabel
+                    view.disableAutocorrect = host.settings.disableAutocorrect
+                    view.volumeKeysAsArrows = host.settings.volumeKeysAsArrows
+                },
                 onRelease = input::releaseInputView,
             )
             val settings = host.settings
@@ -336,9 +343,13 @@ private fun TerminalLinkPrompt(vm: TerminalViewModel, modifier: Modifier = Modif
     ) {
         TerminalLinkBar(
             url = url,
-            onOpen = {
-                vm.search.dismissLink()
-                openLink(context, url)
+            onOpen = if (isOpenableLink(url)) {
+                {
+                    vm.search.dismissLink()
+                    openLink(context, url)
+                }
+            } else {
+                null
             },
             onCopy = {
                 vm.search.dismissLink()
@@ -349,7 +360,17 @@ private fun TerminalLinkPrompt(vm: TerminalViewModel, modifier: Modifier = Modif
     }
 }
 
+// The schemes a tapped link may open. Anything else, such as file:, intent:, or an app's
+// own scheme, comes from the remote side and can only be copied.
+private val OPENABLE_LINK_SCHEMES = setOf("http", "https", "mailto")
+
+internal fun isOpenableLink(url: String): Boolean {
+    val scheme = url.substringBefore(':', missingDelimiterValue = "")
+    return scheme.lowercase() in OPENABLE_LINK_SCHEMES
+}
+
 private fun openLink(context: Context, url: String) {
+    if (!isOpenableLink(url)) return
     try {
         context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (_: ActivityNotFoundException) {

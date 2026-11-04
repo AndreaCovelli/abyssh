@@ -55,6 +55,27 @@ internal fun DisconnectDialog(name: String, body: String, onConfirm: () -> Unit,
     }
 }
 
+/** Asks before deleting the saved host [name]. */
+@Composable
+internal fun DeleteHostDialog(name: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AbyssDialog(
+        title = stringResource(R.string.server_list_delete_title, name),
+        confirmLabel = stringResource(R.string.action_delete),
+        dismissLabel = stringResource(R.string.action_cancel),
+        onConfirm = {
+            onConfirm()
+            onDismiss()
+        },
+        onDismiss = onDismiss,
+    ) {
+        AbyssText(
+            stringResource(R.string.server_list_delete_body),
+            style = AbyssTypography.current.body,
+            color = AbyssColors.current.textSecondary,
+        )
+    }
+}
+
 /** Lists a host's [sessions], each with its own end button, and confirms to end them all. */
 @Composable
 internal fun HostSessionsDialog(

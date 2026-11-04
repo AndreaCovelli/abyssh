@@ -37,6 +37,7 @@ data class TerminalSettingsState(
     val localShellEnabled: Boolean = true,
     val remoteClipboardWriteEnabled: Boolean = true,
     val ctrlVPastes: Boolean = true,
+    val volumeKeysAsArrows: Boolean = false,
     val keepScreenAwake: Boolean = false,
     val matchDisplayRefreshRate: Boolean = false,
     val hideScreenContents: Boolean = false,
@@ -70,6 +71,7 @@ interface TerminalSettingsActions {
     fun setLocalShellEnabled(enabled: Boolean)
     fun setRemoteClipboardWriteEnabled(enabled: Boolean)
     fun setCtrlVPastes(enabled: Boolean)
+    fun setVolumeKeysAsArrows(enabled: Boolean)
     fun setKeepScreenAwake(enabled: Boolean)
     fun setMatchDisplayRefreshRate(enabled: Boolean)
     fun setHideScreenContents(enabled: Boolean)
@@ -95,7 +97,7 @@ class SettingsViewModel(
                 settings.terminalCustomKeyGroups, settings.showCustomActionsFab, settings.builtinShortcuts,
                 settings.localShellEnabled, settings.remoteClipboardWriteEnabled, settings.ctrlVPastes,
                 settings.keepScreenAwake, settings.matchDisplayRefreshRate, settings.hideScreenContents,
-                settings.disableAutocorrect,
+                settings.disableAutocorrect, settings.volumeKeysAsArrows,
             ),
         ) { currentState() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), currentState())
@@ -122,6 +124,7 @@ class SettingsViewModel(
             localShellEnabled = settings.localShellEnabled.value,
             remoteClipboardWriteEnabled = settings.remoteClipboardWriteEnabled.value,
             ctrlVPastes = settings.ctrlVPastes.value,
+            volumeKeysAsArrows = settings.volumeKeysAsArrows.value,
             keepScreenAwake = settings.keepScreenAwake.value,
             matchDisplayRefreshRate = settings.matchDisplayRefreshRate.value,
             hideScreenContents = settings.hideScreenContents.value,
@@ -148,6 +151,7 @@ class SettingsViewModel(
     override fun setLocalShellEnabled(enabled: Boolean) = settings.setLocalShellEnabled(enabled)
     override fun setRemoteClipboardWriteEnabled(enabled: Boolean) = settings.setRemoteClipboardWriteEnabled(enabled)
     override fun setCtrlVPastes(enabled: Boolean) = settings.setCtrlVPastes(enabled)
+    override fun setVolumeKeysAsArrows(enabled: Boolean) = settings.setVolumeKeysAsArrows(enabled)
     override fun setKeepScreenAwake(enabled: Boolean) = settings.setKeepScreenAwake(enabled)
     override fun setMatchDisplayRefreshRate(enabled: Boolean) = settings.setMatchDisplayRefreshRate(enabled)
     override fun setHideScreenContents(enabled: Boolean) = settings.setHideScreenContents(enabled)

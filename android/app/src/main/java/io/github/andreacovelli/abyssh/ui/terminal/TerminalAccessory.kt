@@ -48,7 +48,8 @@ data class ModifierState(
 
     private fun ctrlModifiedChar(char: Char): String {
         val code = when (char) {
-            '@' -> 0
+            '@', ' ' -> 0
+            '?' -> 127
             '[' -> 27
             '\\' -> 28
             ']' -> 29

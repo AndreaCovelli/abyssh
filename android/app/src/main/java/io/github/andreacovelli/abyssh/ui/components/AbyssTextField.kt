@@ -17,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -70,7 +72,9 @@ fun AbyssTextField(
         onValueChange = onValueChange,
         modifier = modifier
             .fillMaxWidth()
-            .focusRequester(focusRequester),
+            .focusRequester(focusRequester)
+            // A hidden label still names the field for screen readers.
+            .then(if (!showLabel && label.isNotEmpty()) Modifier.semantics { contentDescription = label } else Modifier),
         textStyle = (if (monospace) typography.code else typography.body).copy(textAlign = textAlign),
         label = if (showLabel && label.isNotEmpty()) {
             { Text(label) }

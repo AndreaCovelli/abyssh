@@ -23,6 +23,7 @@
         <profileable android:shell="true" />
         <activity
             android:name="io.github.andreacovelli.abyssh.MainActivity"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize"
             android:enabled="true"
             android:exported="true"
             android:windowSoftInputMode="adjustNothing"

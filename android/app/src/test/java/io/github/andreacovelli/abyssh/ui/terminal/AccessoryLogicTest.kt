@@ -85,6 +85,12 @@ class AccessoryLogicTest {
     }
 
     @Test
+    fun `applyToText ctrl space is NUL and ctrl question mark is DEL`() {
+        assertEquals("\u0000", ModifierState(ctrl = true).applyToText(" "))
+        assertEquals("\u007f", ModifierState(ctrl = true).applyToText("?"))
+    }
+
+    @Test
     fun `applyToText alt wraps in escape prefix`() {
         val result = ModifierState(alt = true).applyToText("xy")
         assertEquals("\u001bxy", result)
@@ -331,5 +337,16 @@ class AccessoryLogicTest {
     fun `catalog paste item is Paste action`() {
         val item = TerminalAccessoryLayoutStore.catalog().first { it.id == "paste" }
         assertTrue(item.action is AccessoryAction.Paste)
+    }
+
+    @Test
+    fun `keys that don't fit the first row move to the second`() {
+        // 40 + 6 + 40 + 6 + 40 = 132.
+        assertEquals(3, firstRowKeyCount(listOf(40, 40, 40, 40), maxWidth = 132, spacing = 6))
+        assertEquals(4, firstRowKeyCount(listOf(40, 40, 40, 40), maxWidth = 500, spacing = 6))
+        // A key that shows nothing takes no room.
+        assertEquals(3, firstRowKeyCount(listOf(40, null, 40, 60), maxWidth = 100, spacing = 6))
+        // One key wider than the row still goes on it.
+        assertEquals(1, firstRowKeyCount(listOf(200, 40), maxWidth = 100, spacing = 6))
     }
 }

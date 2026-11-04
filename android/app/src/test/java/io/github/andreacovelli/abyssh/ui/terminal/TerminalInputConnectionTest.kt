@@ -5,6 +5,8 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -110,6 +112,42 @@ class TerminalInputConnectionTest {
         connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
         assertEquals(listOf(GhosttyKey.enter), keys)
         assertEquals("にほん", line())
+    }
+
+    @Test
+    fun `enter during a latin composition runs the line`() {
+        connection.setComposingText("ls", 1)
+
+        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+        assertEquals(listOf(GhosttyKey.enter), keys)
+        assertEquals("ls", line())
+    }
+
+    @Test
+    fun `an emoji is sent whole and deleted with one backspace`() {
+        connection.setComposingText("a\uD83D\uDE00", 1)
+        assertEquals("a\uD83D\uDE00", sent.toString())
+
+        connection.setComposingText("a", 1)
+        assertEquals("a\uD83D\uDE00$BACKSPACE", sent.toString())
+    }
+
+    @Test
+    fun `replacing an emoji with another deletes it whole`() {
+        connection.setComposingText("\uD83D\uDE00", 1)
+        connection.setComposingText("\uD83D\uDE01", 1)
+
+        assertEquals("\uD83D\uDE00$BACKSPACE\uD83D\uDE01", sent.toString())
+    }
+
+    @Test
+    fun `volume keys reach the terminal only when set as arrows`() {
+        assertFalse(view.onKeyDown(KeyEvent.KEYCODE_VOLUME_UP, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP)))
+        assertEquals(emptyList<Int>(), keys)
+
+        view.volumeKeysAsArrows = true
+        assertTrue(view.onKeyDown(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN)))
+        assertEquals(listOf(TerminalSpecialKey.Down.engineKey), keys)
     }
 
     @Test

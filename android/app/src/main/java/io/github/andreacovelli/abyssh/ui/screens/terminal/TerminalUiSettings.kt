@@ -39,6 +39,7 @@ internal data class TerminalUiSettings(
     val builtinShortcuts: Map<String, String>,
     val keepScreenAwake: Boolean,
     val disableAutocorrect: Boolean,
+    val volumeKeysAsArrows: Boolean,
     val ctrlVPastes: Boolean,
     val showCustomActionsFab: Boolean,
 )
@@ -62,6 +63,7 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
     val builtinShortcuts by repo.builtinShortcuts.collectAsStateWithLifecycle()
     val keepScreenAwake by repo.keepScreenAwake.collectAsStateWithLifecycle()
     val disableAutocorrect by repo.disableAutocorrect.collectAsStateWithLifecycle()
+    val volumeKeysAsArrows by repo.volumeKeysAsArrows.collectAsStateWithLifecycle()
     val ctrlVPastes by repo.ctrlVPastes.collectAsStateWithLifecycle()
     val showCustomActionsFab by repo.showCustomActionsFab.collectAsStateWithLifecycle()
     return TerminalUiSettings(
@@ -73,6 +75,7 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
         builtinShortcuts = builtinShortcuts,
         keepScreenAwake = keepScreenAwake,
         disableAutocorrect = disableAutocorrect,
+        volumeKeysAsArrows = volumeKeysAsArrows,
         ctrlVPastes = ctrlVPastes,
         showCustomActionsFab = showCustomActionsFab,
     )
