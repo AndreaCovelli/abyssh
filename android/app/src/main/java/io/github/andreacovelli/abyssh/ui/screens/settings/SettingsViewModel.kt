@@ -49,6 +49,7 @@ data class TerminalSettingsState(
 /** How the terminal treats its text, from [TerminalTextActions]. */
 data class TerminalTextState(
     val wordSeparators: String = DEFAULT_WORD_SEPARATORS,
+    val ligatures: Boolean = false,
 )
 
 data class SettingsUiState(
@@ -88,6 +89,7 @@ interface TerminalSettingsActions {
 
 interface TerminalTextActions {
     fun setWordSeparators(value: String)
+    fun setLigatures(enabled: Boolean)
 }
 
 class SettingsViewModel(
@@ -110,7 +112,7 @@ class SettingsViewModel(
                 settings.localShellEnabled, settings.remoteClipboardWriteEnabled, settings.ctrlVPastes,
                 settings.keepScreenAwake, settings.matchDisplayRefreshRate, settings.hideScreenContents,
                 settings.disableAutocorrect, settings.volumeKeysAsArrows,
-                settings.text.wordSeparators,
+                settings.text.wordSeparators, settings.text.ligatures,
             ),
         ) { currentState() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), currentState())
@@ -144,6 +146,7 @@ class SettingsViewModel(
             disableAutocorrect = settings.disableAutocorrect.value,
             text = TerminalTextState(
                 wordSeparators = settings.text.wordSeparators.value,
+                ligatures = settings.text.ligatures.value,
             ),
         ),
     )
@@ -175,6 +178,7 @@ class SettingsViewModel(
 
     override val text = object : TerminalTextActions {
         override fun setWordSeparators(value: String) = settings.text.setWordSeparators(value)
+        override fun setLigatures(enabled: Boolean) = settings.text.setLigatures(enabled)
     }
 
     companion object {

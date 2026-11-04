@@ -183,8 +183,9 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         val cellWidth = cell.width
         val baseline = cell.baseline
         if (cellOffsets.size <= end) cellOffsets = IntArray(cells.cols + 1)
-        // The primary font's ASCII glyphs are one cell wide, so only other runs are measured.
-        var ascii = choice == PAINT_PRIMARY
+        // The primary font's ASCII glyphs are one cell wide, so only other runs are measured,
+        // and runs its ligatures may join.
+        var ascii = choice == PAINT_PRIMARY && !paints.ligatures
         text.setLength(0)
         for (col in start until end) {
             cellOffsets[col] = text.length

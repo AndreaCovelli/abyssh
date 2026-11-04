@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** How the terminal treats its text: which characters end a word when selecting. */
+/** How the terminal treats and draws its text. */
 class TerminalTextSettings internal constructor(private val prefs: SharedPreferences) {
 
     private val _wordSeparators = MutableStateFlow(
@@ -22,7 +22,18 @@ class TerminalTextSettings internal constructor(private val prefs: SharedPrefere
         _wordSeparators.value = value
     }
 
+    private val _ligatures = MutableStateFlow(prefs.getBoolean(KEY_LIGATURES, false))
+
+    /** Whether the terminal font may join characters into its ligatures, such as `->`. */
+    val ligatures: StateFlow<Boolean> = _ligatures.asStateFlow()
+
+    fun setLigatures(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_LIGATURES, enabled) }
+        _ligatures.value = enabled
+    }
+
     private companion object {
         const val KEY_WORD_SEPARATORS = "terminal_word_separators"
+        const val KEY_LIGATURES = "terminal_ligatures"
     }
 }

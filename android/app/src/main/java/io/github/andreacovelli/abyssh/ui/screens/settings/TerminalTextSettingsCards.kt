@@ -24,6 +24,12 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 /** The settings for how the terminal treats its text. */
 @Composable
 internal fun TerminalTextSettingsCards(state: TerminalTextState, actions: TerminalTextActions) {
+    SettingSwitchCard(
+        title = stringResource(R.string.settings_ligatures),
+        hint = stringResource(R.string.settings_ligatures_hint),
+        checked = state.ligatures,
+        onCheckedChange = actions::setLigatures,
+    )
     WordSeparatorsCard(value = state.wordSeparators, onValueChange = actions::setWordSeparators)
 }
 

@@ -152,8 +152,8 @@ private fun Context.loadOptionalFont(fontResId: Int?): Typeface? =
  * font draws bold and italic with its own faces; a missing face, and every other
  * typeface, is thickened or slanted instead.
  */
-internal class TerminalTextPaints(fonts: TerminalFonts, sizePx: Float) {
-    private val primary = textPaint(fonts.primary, sizePx).withoutLigatures()
+internal class TerminalTextPaints(fonts: TerminalFonts, sizePx: Float, val ligatures: Boolean = false) {
+    private val primary = textPaint(fonts.primary, sizePx).primaryFeatures()
     private val paints: Array<Paint> = Array(CHOICE_COUNT * STYLE_COUNT) { i ->
         val choice = i / STYLE_COUNT
         val bold = (i % STYLE_COUNT) and STYLE_BOLD != 0
@@ -192,7 +192,7 @@ internal class TerminalTextPaints(fonts: TerminalFonts, sizePx: Float) {
             italic -> faces.italic?.let { Triple(it, false, false) } ?: Triple(fonts.primary, false, true)
             else -> return primary
         }
-        return textPaint(face, sizePx).withoutLigatures().fakeStyle(fakeBold, fakeItalic)
+        return textPaint(face, sizePx).primaryFeatures().fakeStyle(fakeBold, fakeItalic)
     }
 
     /** The cell size, measured from the primary font. */
@@ -220,6 +220,10 @@ internal class TerminalTextPaints(fonts: TerminalFonts, sizePx: Float) {
      * terminal places in separate cells.
      */
     private fun Paint.withoutLigatures() = apply { fontFeatureSettings = NO_LIGATURES }
+
+    // With [ligatures] on, the primary font keeps them; the renderer then measures each
+    // run and draws one whose ligatures change its width cell by cell, without them.
+    private fun Paint.primaryFeatures() = if (ligatures) this else withoutLigatures()
 
     private fun Paint.fakeStyle(bold: Boolean, italic: Boolean) = apply {
         isFakeBoldText = bold

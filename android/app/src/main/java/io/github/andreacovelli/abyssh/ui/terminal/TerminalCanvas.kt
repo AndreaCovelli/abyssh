@@ -86,6 +86,8 @@ fun TerminalCanvas(
     onRectangleSelectionStart: () -> Unit = {},
     // Characters that end a word for a double-tap, besides blank cells.
     wordSeparators: String = DEFAULT_WORD_SEPARATORS,
+    // Lets the primary font join characters into its ligatures where they fit the cells.
+    ligatures: Boolean = false,
     // Rows to scroll at a point. Momentum steps come from a fling after the finger lifts.
     onScroll: (delta: Int, x: Float, y: Float, momentum: Boolean) -> Unit = { _, _, _, _ -> },
     minFontSizeSp: Float = 1f,
@@ -100,7 +102,7 @@ fun TerminalCanvas(
 ) {
     val fonts = rememberTerminalFonts()
     val fontSizePx = with(LocalDensity.current) { fontSizeSp.sp.toPx() }
-    val paints = remember(fonts, fontSizePx) { TerminalTextPaints(fonts, fontSizePx) }
+    val paints = remember(fonts, fontSizePx, ligatures) { TerminalTextPaints(fonts, fontSizePx, ligatures) }
     val cell = remember(paints) { paints.cellMetrics() }
     val renderer = remember(fonts) { TerminalRenderer(fonts) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
