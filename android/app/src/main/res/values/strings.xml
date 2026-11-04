@@ -19,6 +19,8 @@
     <string name="server_name_placeholder">My server</string>
     <string name="server_host_label">Host</string>
     <string name="server_port_label">Port</string>
+    <string name="server_port_invalid">Enter a port from 1 to 65535.</string>
+    <string name="add_server_copy_name">%1$s (copy)</string>
     <string name="server_username_label">Username</string>
     <string name="server_section_transport">Transport</string>
     <string name="server_tailscale_hint">Connects through the Tailscale network. Use the host\'s Tailscale IP (100.x.x.x) or MagicDNS name.</string>
@@ -297,6 +299,8 @@
     <string name="server_list_filter_placeholder">Filter hosts</string>
     <string name="server_list_section_hosts">Hosts</string>
     <string name="server_list_no_match">No hosts match</string>
+    <string name="server_list_delete_title">Delete %1$s?</string>
+    <string name="server_list_delete_body">This removes the saved host. Its keys stay in the key list.</string>
     <string name="server_list_disconnect_before_delete">Disconnect before deleting this host</string>
     <string name="server_list_add">Add server</string>
     <string name="server_list_disconnect_title">Disconnect %1$s?</string>
@@ -489,8 +493,6 @@
     <string name="terminal_preparation_cancelled">Connection preparation was cancelled</string>
     <string name="terminal_preparation_superseded">Connection preparation was superseded</string>
     <string name="files_list_failed">Failed to list directory</string>
-    <string name="add_server_host_key_unknown">Host key not verified. Connect once to verify this host.</string>
-    <string name="add_server_host_key_changed">Host key changed (%1$s → %2$s). Connect once to verify this host.</string>
     <string name="keys_generate_failed">Key generation failed</string>
     <string name="keys_import_blank">Paste a private key first</string>
     <string name="keys_import_not_private">That doesn\'t look like a private key</string>

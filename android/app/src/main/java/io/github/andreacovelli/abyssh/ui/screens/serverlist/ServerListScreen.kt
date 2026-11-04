@@ -48,6 +48,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -96,9 +97,10 @@ fun ServerListScreen(
     val context = LocalContext.current
     val resources = LocalResources.current
 
-    var selectedHostId by remember { mutableStateOf<Long?>(null) }
+    var selectedHostId by rememberSaveable { mutableStateOf<Long?>(null) }
     var pendingDisconnectHostId by remember { mutableStateOf<Long?>(null) }
     var pendingDisconnectLocalShell by remember { mutableStateOf(false) }
+    var pendingDeleteHostId by rememberSaveable { mutableStateOf<Long?>(null) }
     LaunchedEffect(hosts, selectedHostId) {
         if (hosts.none { it.id == selectedHostId }) selectedHostId = null
     }
@@ -145,8 +147,7 @@ fun ServerListScreen(
                                 val message = resources.getString(R.string.server_list_disconnect_before_delete)
                                 Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                             } else {
-                                vm.deleteServer(host.id)
-                                selectedHostId = null
+                                pendingDeleteHostId = host.id
                             }
                         },
                         onEdit = { onEditServer(host.id) },
@@ -189,6 +190,16 @@ fun ServerListScreen(
                 ),
                 onConfirm = vm::disconnectLocalShell,
                 onDismiss = { pendingDisconnectLocalShell = false },
+            )
+        }
+        hosts.firstOrNull { it.id == pendingDeleteHostId }?.let { host ->
+            DeleteHostDialog(
+                name = host.name,
+                onConfirm = {
+                    vm.deleteServer(host.id)
+                    selectedHostId = null
+                },
+                onDismiss = { pendingDeleteHostId = null },
             )
         }
         hosts.firstOrNull { it.id == pendingDisconnectHostId }?.let { host ->
@@ -243,7 +254,8 @@ private fun ServerListHeader(
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
-    var isSearchVisible by remember { mutableStateOf(false) }
+    // Saved, and open whenever a filter is set, so a filter never applies with its field hidden.
+    var isSearchVisible by rememberSaveable { mutableStateOf(searchQuery.isNotEmpty()) }
     // Back, or Esc on a keyboard, clears the filter and closes it.
     BackHandler(enabled = isSearchVisible) {
         onSearchChange("")
@@ -600,7 +612,7 @@ private fun HostCardContent(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AbyssText(
-                    "${host.username}@${host.host}:${host.port}",
+                    host.address(),
                     style = typography.code,
                     color = colors.textSecondary,
                     modifier = Modifier.weight(1f),
@@ -681,4 +693,10 @@ private fun HostCardButtons(
             )
         }
     }
+}
+
+/** `user@host:port`, with an IPv6 host in brackets so its colons don't run into the port's. */
+internal fun HostProfile.address(): String {
+    val shownHost = if (':' in host && !host.startsWith('[')) "[$host]" else host
+    return "$username@$shownHost:$port"
 }

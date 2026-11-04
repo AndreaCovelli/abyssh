@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.R
+import io.github.andreacovelli.abyssh.ui.screens.terminal.HostKeyDialog
 import io.github.andreacovelli.abyssh.model.DEFAULT_KEEPALIVE_INTERVAL_SECONDS
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -38,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,17 +71,20 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
     val testState by vm.testState.collectAsStateWithLifecycle()
     val keys by vm.keys.collectAsStateWithLifecycle()
     val pendingReconnect by vm.pendingReconnect.collectAsStateWithLifecycle()
+    val hostKeyPrompt by vm.hostKeyPrompt.collectAsStateWithLifecycle()
+    val saving by vm.saving.collectAsStateWithLifecycle()
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
     val context = LocalContext.current
     val resources = LocalResources.current
-    var showAdditionalSettings by remember { mutableStateOf(false) }
+    var showAdditionalSettings by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(vm) {
         vm.errorMessage.collect { message ->
             Toast.makeText(context, message.resolve(resources), Toast.LENGTH_SHORT).show()
         }
     }
+    hostKeyPrompt?.let { prompt -> HostKeyDialog(prompt = prompt, onDecision = vm::onHostKeyDecision) }
     pendingReconnect?.let { pending ->
         ReconnectDialog(
             count = pending.tabs.size,
@@ -126,6 +131,7 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
         TestAndSaveButtons(
             form = form,
             testState = testState,
+            saving = saving,
             onTest = { withLocalNetworkPermission(form.host.filterNot { it.isWhitespace() }) { vm.testConnection() } },
             onSave = { vm.save(onBack) },
         )
@@ -209,6 +215,13 @@ private fun ConnectionSection(form: AddServerForm, vm: AddServerViewModel) {
             keyboardOptions = plainKeyboard(KeyboardType.Ascii),
             autoFocus = false,
             modifier = Modifier.weight(0.7f),
+        )
+    }
+    if (form.portNumber == null) {
+        AbyssText(
+            stringResource(R.string.server_port_invalid),
+            style = AbyssTypography.current.bodySmall,
+            color = AbyssColors.current.error,
         )
     }
 }
@@ -404,13 +417,14 @@ private fun KeepaliveSection(seconds: String, onSecondsChange: (String) -> Unit)
 private fun TestAndSaveButtons(
     form: AddServerForm,
     testState: ConnectionTestState,
+    saving: Boolean,
     onTest: () -> Unit,
     onSave: () -> Unit,
 ) {
     val typography = AbyssTypography.current
     AbyssButton(
         onClick = onTest,
-        enabled = form.host.isNotBlank() && form.username.isNotBlank(),
+        enabled = form.host.isNotBlank() && form.username.isNotBlank() && form.portNumber != null,
         variant = AbyssButtonVariant.Outlined,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -427,7 +441,7 @@ private fun TestAndSaveButtons(
     if (testState.status == ConnectionTestStatus.Error && errorMessage != null) {
         AbyssText(errorMessage.asString(), style = typography.bodySmall, color = AbyssColors.current.error)
     }
-    AbyssButton(onClick = onSave, enabled = form.canSave(), modifier = Modifier.fillMaxWidth()) {
+    AbyssButton(onClick = onSave, enabled = form.canSave() && !saving, modifier = Modifier.fillMaxWidth()) {
         AbyssText(stringResource(R.string.action_save), style = typography.label)
     }
 }

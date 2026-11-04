@@ -2,9 +2,7 @@ package io.github.andreacovelli.abyssh.ui.screens.addserver
 
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
 
-import io.github.andreacovelli.abyssh.model.toUiText
 
-import io.github.andreacovelli.abyssh.model.UiTextException
 
 import io.github.andreacovelli.abyssh.model.UiText
 
@@ -26,24 +24,23 @@ import io.github.andreacovelli.abyssh.model.HostProfile
 import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.SshKey
 import io.github.andreacovelli.abyssh.model.Transport
-import io.github.andreacovelli.abyssh.service.ssh.HostKeyCheck
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
-import io.github.andreacovelli.abyssh.service.ssh.NativeSshService
-import io.github.andreacovelli.abyssh.service.ssh.policy
+import io.github.andreacovelli.abyssh.service.terminal.HostKeyPrompt
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
 import io.github.andreacovelli.abyssh.service.terminal.TabSpec
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionRepository
 import io.github.andreacovelli.abyssh.service.terminal.runsRemoteCommands
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Form for adding or editing a server. With [copy], [hostId] is only the starting
@@ -85,8 +82,18 @@ class AddServerViewModel(
     private val _form = MutableStateFlow(AddServerForm())
     val form: StateFlow<AddServerForm> = _form.asStateFlow()
 
-    private val _testState = MutableStateFlow(ConnectionTestState())
-    val testState: StateFlow<ConnectionTestState> = _testState.asStateFlow()
+    private val tester = ConnectionTester(viewModelScope, hostKeyStore, localNetwork)
+    val testState: StateFlow<ConnectionTestState> = tester.state
+    val hostKeyPrompt: StateFlow<HostKeyPrompt?> = tester.hostKeyPrompt
+
+    private val _saving = MutableStateFlow(false)
+
+    /** True from the first Save until the editor closes, so a second tap saves nothing. */
+    val saving: StateFlow<Boolean> = _saving.asStateFlow()
+
+    // The key "Generate" made in this form, deleted when the form closes unless a saved
+    // host uses it.
+    private var generatedKeyId: Long? = null
 
     private val _keys = MutableStateFlow<List<SshKey>>(emptyList())
     val keys: StateFlow<List<SshKey>> = _keys.asStateFlow()
@@ -96,6 +103,8 @@ class AddServerViewModel(
 
     init {
         viewModelScope.launch { sshKeyRepository.observeAll().collect { _keys.value = it } }
+        // A test result describes the form it ran on, so any edit clears it.
+        viewModelScope.launch { _form.drop(1).collect { tester.reset() } }
         if (hostId != null) {
             viewModelScope.launch {
                 val profile = hostRepository.getById(hostId) ?: return@launch
@@ -103,7 +112,7 @@ class AddServerViewModel(
                 _form.value =
                     AddServerForm(
                         id = if (copy) null else profile.id,
-                        name = if (copy) "${profile.name} (copy)" else profile.name,
+                        name = if (copy) application.getString(R.string.add_server_copy_name, profile.name) else profile.name,
                         host = profile.host,
                         port = profile.port.toString(),
                         username = profile.username,
@@ -138,7 +147,7 @@ class AddServerViewModel(
     }
 
     fun updatePort(port: String) {
-        _form.value = _form.value.copy(port = port)
+        _form.value = _form.value.copy(port = port.filter(Char::isDigit).take(PORT_FIELD_DIGITS))
     }
 
     fun updateUsername(username: String) {
@@ -174,13 +183,16 @@ class AddServerViewModel(
             val current = _form.value
             val baseName = if (nameHint.isNotBlank()) nameHint else current.name
             when (val result = sshKeyRepository.generate(baseName, current.keyPassphrase)) {
-                is KeyGenerationResult.Success ->
+                is KeyGenerationResult.Success -> {
+                    discardGeneratedKey()
+                    generatedKeyId = result.key.id
                     _form.value =
                         _form.value.copy(
                             keyId = result.key.id,
                             privateKeyPem = result.key.privateKeyPem,
                             publicKeyOpenSsh = result.key.publicKeyOpenSsh,
                         )
+                }
                 KeyGenerationResult.Failed -> _errorMessage.emit(UiText.Resource(R.string.keys_generate_failed))
             }
         }
@@ -233,83 +245,19 @@ class AddServerViewModel(
         _form.value = _form.value.copy(chooseSessionOnConnect = enabled)
     }
 
-    fun testConnection() {
-        val current = _form.value
-        val host = current.host.filterNot { it.isWhitespace() }
-        if (host.isBlank()) return
-        val username = current.username.trim()
-        if (username.isBlank()) return
-        _testState.value = ConnectionTestState(status = ConnectionTestStatus.Running)
-        viewModelScope.launch {
-            var hostKeyError: UiText? = null
-            val result =
-                withContext(Dispatchers.IO) {
-                    runCatching {
-                        val port = current.port.toIntOrNull() ?: 22
-                        if (localNetwork.blocks(host)) {
-                            throw UiTextException(UiText.Resource(R.string.error_local_network_denied), "Local network access denied")
-                        }
-                        val policy = hostKeyStore.policy { host, port, algorithm, keyBytes ->
-                            when (
-                                val result = hostKeyStore.check(host, port, algorithm, keyBytes)
-                            ) {
-                                is HostKeyCheck.Match -> true
-                                is HostKeyCheck.Unknown -> {
-                                    hostKeyError = UiText.Resource(R.string.add_server_host_key_unknown)
-                                    false
-                                }
-                                is HostKeyCheck.Changed -> {
-                                    hostKeyError = UiText.Resource(R.string.add_server_host_key_changed,
-                                        result.previousFingerprint,
-                                        result.fingerprint,
-                                    )
-                                    false
-                                }
-                            }
-                        }
-                        NativeSshService(hostKeyPolicy = policy).use { nativeSsh ->
-                            if (!nativeSsh.isAvailable()) {
-                                throw UiTextException(UiText.Resource(R.string.error_native_ssh_unavailable), "Native SSH unavailable")
-                            }
-                            nativeSsh.connect(
-                                host = host,
-                                port = port,
-                                username = username,
-                                authMethod = current.authMethod,
-                                password =
-                                    if (current.authMethod == AuthMethod.Password) {
-                                        current.password
-                                    } else {
-                                        ""
-                                    },
-                                publicKeyOpenSsh = current.publicKeyOpenSsh,
-                                privateKeyPem = current.privateKeyPem,
-                                keyPassphrase = current.keyPassphrase,
-                            )
-                        }
-                    }
-                }
-            _testState.value =
-                if (result.isSuccess) {
-                    ConnectionTestState(status = ConnectionTestStatus.Success)
-                } else {
-                    ConnectionTestState(
-                        status = ConnectionTestStatus.Error,
-                        message = hostKeyError
-                            ?: result.exceptionOrNull()?.toUiText(UiText.Resource(R.string.terminal_connection_failed))
-                            ?: UiText.Resource(R.string.terminal_connection_failed),
-                    )
-                }
-        }
-    }
+    fun testConnection() = tester.test(_form.value)
+
+    fun onHostKeyDecision(accept: Boolean) = tester.onHostKeyDecision(accept)
 
     fun save(onComplete: () -> Unit) {
         val current = _form.value
         val host = current.host.filterNot { it.isWhitespace() }
-        val port = current.port.toIntOrNull() ?: 22
+        val port = current.portNumber ?: return
         if (!current.canSave() || host.isBlank()) return
         val username = current.username.trim()
         if (username.isBlank()) return
+        if (_saving.value) return
+        _saving.value = true
 
         viewModelScope.launch {
             val profile =
@@ -331,7 +279,14 @@ class AddServerViewModel(
                     chooseSessionOnConnect = current.chooseSessionOnConnect,
                     keepaliveIntervalSeconds = current.keepaliveIntervalSeconds,
                 )
-            hostRepository.upsert(profile)
+            var saved = false
+            try {
+                hostRepository.upsert(profile)
+                saved = true
+            } finally {
+                if (!saved) _saving.value = false
+            }
+            if (profile.keyId == generatedKeyId) generatedKeyId = null
             val stale = if (current.id != null) applyToOpenTabs(profile) else emptyList()
             if (stale.isEmpty()) {
                 onComplete()
@@ -356,6 +311,20 @@ class AddServerViewModel(
             privateKeyPem = key?.privateKeyPem.orEmpty(),
         )
         return sessionRepository.applyHostUpdate(spec)
+    }
+
+    override fun onCleared() {
+        tester.close()
+        discardGeneratedKey()
+    }
+
+    // No saved host uses the key, so nothing refers to it. It runs outside viewModelScope,
+    // which onCleared has already cancelled.
+    @OptIn(DelicateCoroutinesApi::class)
+    private fun discardGeneratedKey() {
+        val id = generatedKeyId ?: return
+        generatedKeyId = null
+        GlobalScope.launch(Dispatchers.IO) { sshKeyRepository.deleteById(id) }
     }
 
     fun finishPendingReconnect(reconnect: Boolean) {
@@ -386,6 +355,16 @@ data class AddServerForm(
     val chooseSessionOnConnect: Boolean = false,
     val keepaliveInterval: String = DEFAULT_KEEPALIVE_INTERVAL_SECONDS.toString(),
 )
+
+private const val DEFAULT_SSH_PORT = 22
+private const val MAX_PORT = 65535
+
+// Enough digits for MAX_PORT.
+private const val PORT_FIELD_DIGITS = 5
+
+/** The port to connect to: the typed one when it is 1 to 65535, 22 when blank, otherwise null. */
+val AddServerForm.portNumber: Int?
+    get() = if (port.isBlank()) DEFAULT_SSH_PORT else port.toIntOrNull()?.takeIf { it in 1..MAX_PORT }
 
 // Enough digits for MAX_KEEPALIVE_INTERVAL_SECONDS.
 private const val KEEPALIVE_FIELD_DIGITS = 5
@@ -426,7 +405,7 @@ fun AddServerForm.withMultiplexer(multiplexer: MultiplexerType?): AddServerForm 
     if (transport.runsRemoteCommands) copy(multiplexer = multiplexer?.takeIf { it.runtimeSupported }) else this
 
 fun AddServerForm.canSave(): Boolean {
-    if (name.isBlank() || host.isBlank() || username.isBlank()) return false
+    if (name.isBlank() || host.isBlank() || username.isBlank() || portNumber == null) return false
     return when (authMethod) {
         AuthMethod.Key,
         AuthMethod.KeyWithPassphrase -> keyId != null && privateKeyPem.isNotBlank()
