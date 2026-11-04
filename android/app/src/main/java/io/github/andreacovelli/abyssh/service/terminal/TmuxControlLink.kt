@@ -60,11 +60,13 @@ internal class TmuxControlLink(hostKeyPolicy: HostKeyPolicy, private val outputW
 
     /**
      * Passes tmux's notifications to [onEvent] and its replies to their callbacks until the
-     * channel closes or the loop is cancelled.
+     * channel closes or the loop is cancelled. Before each read it waits for [awaitRoom],
+     * which holds off while the panes have too much output to write.
      */
-    suspend fun read(onEvent: (TmuxControlEvent) -> Unit) {
+    suspend fun read(awaitRoom: suspend () -> Unit = {}, onEvent: (TmuxControlEvent) -> Unit) {
         pacer.onActivity()
         while (currentCoroutineContext().isActive) {
+            awaitRoom()
             val chunk = ssh.read(READ_CHUNK_BYTES) ?: return
             when {
                 chunk.isNotEmpty() -> {

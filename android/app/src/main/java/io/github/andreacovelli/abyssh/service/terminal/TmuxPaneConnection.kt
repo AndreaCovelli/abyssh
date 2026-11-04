@@ -113,7 +113,10 @@ internal class TmuxPaneConnection(
     }
 
     override fun paneOutput(paneId: Int, data: ByteArray) {
-        onSessionThread { panes.paneOutput(paneId, data) }
+        val backlog = control.paneBacklog
+        backlog.add(data.size)
+        // Also runs when the tab's thread closed before the output was written.
+        onSessionThread { panes.paneOutput(paneId, data) }.invokeOnCompletion { backlog.remove(data.size) }
     }
 
     // A pane's terminal crosses JNI, which throws many exception types; the failure

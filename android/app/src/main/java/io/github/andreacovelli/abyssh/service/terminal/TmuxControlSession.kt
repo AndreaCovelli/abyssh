@@ -107,6 +107,9 @@ internal class TmuxControlSession(
     /** SFTP over the control session's SSH connection. */
     val sftp = SftpSession(link.ssh, dispatcher)
 
+    /** Pane output the tabs haven't written yet; the read loop waits while there is too much. */
+    val paneBacklog = TmuxPaneBacklog()
+
     private val _status = MutableStateFlow(TmuxControlStatus())
     val status: StateFlow<TmuxControlStatus> = _status.asStateFlow()
 
@@ -297,7 +300,7 @@ internal class TmuxControlSession(
 
     private suspend fun read() {
         val failure = try {
-            link.read(::onEvent)
+            link.read(paneBacklog::awaitRoom, ::onEvent)
             null
         } catch (e: CancellationException) {
             throw e
