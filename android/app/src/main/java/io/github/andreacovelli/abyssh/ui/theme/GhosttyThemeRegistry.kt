@@ -1,11 +1,13 @@
 package io.github.andreacovelli.abyssh.ui.theme
 
 import android.content.Context
+import java.util.concurrent.ConcurrentHashMap
 
+/** The bundled Ghostty themes. Safe to use from any thread. */
 object GhosttyThemeRegistry {
 
-    private var themeNames: List<String> = emptyList()
-    private val cache = mutableMapOf<String, GhosttyTheme>()
+    @Volatile private var themeNames: List<String> = emptyList()
+    private val cache = ConcurrentHashMap<String, GhosttyTheme>()
 
     fun init(context: Context) {
         if (themeNames.isNotEmpty()) return
@@ -16,6 +18,10 @@ object GhosttyThemeRegistry {
 
     val availableThemeNames: List<String> get() = themeNames
 
+    /** Theme [name] if it was already read, without touching the assets. */
+    fun cachedTheme(name: String): GhosttyTheme? = cache[name]
+
+    /** Theme [name], read from the assets the first time, which is too slow for the main thread. */
     fun getTheme(context: Context, name: String): GhosttyTheme? {
         if (name !in themeNames) return null
         cache[name]?.let { return it }

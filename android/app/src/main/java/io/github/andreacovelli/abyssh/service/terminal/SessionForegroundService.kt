@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -18,10 +19,18 @@ import io.github.andreacovelli.abyssh.MainActivity
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.ui.theme.GhosttyThemeRegistry
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SessionForegroundService : Service() {
+    private val scope = MainScope()
     private var currentLabel: String? = null
     private var endsSeveral = false
+    private var colorJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -52,22 +61,44 @@ class SessionForegroundService : Service() {
                     currentLabel = label
                 }
                 endsSeveral = intent?.getBooleanExtra(EXTRA_ENDS_SEVERAL, endsSeveral) ?: endsSeveral
-                val type =
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-                    } else {
-                        0
-                    }
-                ServiceCompat.startForeground(
-                    this,
-                    NOTIFICATION_ID,
-                    buildNotification(currentLabel ?: getString(R.string.session_notification_fallback)),
-                    type,
-                )
+                if (!showNotification()) {
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
                 // Sessions die with the process, so a restarted service would show a
                 // session that no longer exists and keep the process in the foreground.
                 return START_NOT_STICKY
             }
+        }
+    }
+
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
+    }
+
+    /** Puts the service in the foreground with the current notification; false when the system refuses. */
+    // The system can refuse with several exception types, such as
+    // ForegroundServiceStartNotAllowedException, depending on the Android version.
+    @Suppress("TooGenericExceptionCaught")
+    private fun showNotification(): Boolean {
+        val type =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            } else {
+                0
+            }
+        return try {
+            ServiceCompat.startForeground(
+                this,
+                NOTIFICATION_ID,
+                buildNotification(currentLabel ?: getString(R.string.session_notification_fallback)),
+                type,
+            )
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Foreground start refused", e)
+            false
         }
     }
 
@@ -133,14 +164,27 @@ class SessionForegroundService : Service() {
         return notification
     }
 
+    /**
+     * The theme's background, if the theme was already read. Otherwise it is read off the
+     * main thread, and the notification is shown again with the color once it is.
+     */
     private fun resolveNotificationColor(): Int? {
         val selectedTheme = SettingsRepository.getInstance(applicationContext).theme.darkThemeName.value
-        GhosttyThemeRegistry.init(applicationContext)
-        val theme = GhosttyThemeRegistry.getTheme(applicationContext, selectedTheme) ?: return null
-        return theme.background.toArgb()
+        GhosttyThemeRegistry.cachedTheme(selectedTheme)?.let { return it.background.toArgb() }
+        if (colorJob?.isActive != true) {
+            colorJob = scope.launch {
+                val theme = withContext(Dispatchers.IO) {
+                    GhosttyThemeRegistry.init(applicationContext)
+                    GhosttyThemeRegistry.getTheme(applicationContext, selectedTheme)
+                }
+                if (theme != null) showNotification()
+            }
+        }
+        return null
     }
 
     companion object {
+        private const val TAG = "SessionService"
         private const val CHANNEL_ID = "abyssh_terminal_session"
         private const val NOTIFICATION_ID = 2002
         private const val ACTION_START = "io.github.andreacovelli.abyssh.action.START_SESSION_SERVICE"
@@ -149,19 +193,22 @@ class SessionForegroundService : Service() {
         private const val EXTRA_LABEL = "extra_label"
         private const val EXTRA_ENDS_SEVERAL = "extra_ends_several"
 
-        /** Shows [label]; [endsSeveral] says the Disconnect action ends more than one session. */
-        fun start(context: Context, label: String, endsSeveral: Boolean = false) {
+        /**
+         * Shows [label]; [endsSeveral] says the Disconnect action ends more than one
+         * session. Returns false when the system refused to start the service.
+         */
+        fun start(context: Context, label: String, endsSeveral: Boolean = false): Boolean {
             val intent = Intent(context, SessionForegroundService::class.java)
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_LABEL, label)
                 .putExtra(EXTRA_ENDS_SEVERAL, endsSeveral)
-            runCatching {
+            return runCatching {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)
                 } else {
                     context.startService(intent)
                 }
-            }
+            }.onFailure { Log.e(TAG, "Session service start refused", it) }.isSuccess
         }
 
         fun stop(context: Context) {

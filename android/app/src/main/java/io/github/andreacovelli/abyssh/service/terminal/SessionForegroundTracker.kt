@@ -38,8 +38,8 @@ internal class SessionForegroundTracker(private val context: Context) {
         val endsSeveral = notification?.endsSeveral == true
         when {
             label != null && (!running || this.label != label || this.endsSeveral != endsSeveral) -> {
-                SessionForegroundService.start(context, label, endsSeveral)
-                running = true
+                // A start the system refused is tried again on the next update.
+                running = SessionForegroundService.start(context, label, endsSeveral)
                 this.label = label
                 this.endsSeveral = endsSeveral
             }
