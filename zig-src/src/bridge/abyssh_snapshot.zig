@@ -577,16 +577,23 @@ fn abysshRenderHold(handler: *ghostty.TerminalStream.Handler, held: bool) void {
 const max_scrollback_limit_bytes: i32 = 100_000_000;
 
 export fn abyssh_create_terminal(cols: c.jint, rows: c.jint, max_scrollback_bytes: c.jint) callconv(.c) c.jlong {
+    const terminal = createTerminal(cols, rows, max_scrollback_bytes) catch return 0;
+    return abysshHandleFromPtr(terminal);
+}
+
+// Returns an error union so the errdefers free what was built when a step fails;
+// they don't run in a function that returns a plain handle.
+fn createTerminal(cols: c.jint, rows: c.jint, max_scrollback_bytes: c.jint) !*AbysshTerminal {
     ghostty.sys.decode_png = abysshDecodePng;
 
-    const terminal = allocator.create(AbysshTerminal) catch return 0;
+    const terminal = try allocator.create(AbysshTerminal);
     errdefer allocator.destroy(terminal);
 
     const init_cols: u16 = gridDimension(cols, max_grid_cols, 80);
     const init_rows: u16 = gridDimension(rows, max_grid_rows, 24);
     // TinyIo is Ghostty's small blocking std.Io for embedders; the terminal
     // only needs it for secure random IDs and kitty image storage locking.
-    var inner = ghostty.Terminal.init(ghostty.TinyIo.init.io(), allocator, .{
+    var inner = try ghostty.Terminal.init(ghostty.TinyIo.init.io(), allocator, .{
         .cols = init_cols,
         .rows = init_rows,
         .max_scrollback_bytes = @intCast(std.math.clamp(max_scrollback_bytes, 0, max_scrollback_limit_bytes)),
@@ -598,7 +605,7 @@ export fn abyssh_create_terminal(cols: c.jint, rows: c.jint, max_scrollback_byte
             .temporary_file = .{ .enabled = .{ .directory = "/tmp" } },
             .shared_memory = true,
         },
-    }) catch return 0;
+    });
     errdefer inner.deinit(allocator);
 
     terminal.* = .{
@@ -629,7 +636,7 @@ export fn abyssh_create_terminal(cols: c.jint, rows: c.jint, max_scrollback_byte
     enableGraphemeClusterMode(terminal);
 
     update_render_state(terminal);
-    return abysshHandleFromPtr(terminal);
+    return terminal;
 }
 
 export fn abyssh_destroy_terminal(handle: c.jlong) callconv(.c) void {
