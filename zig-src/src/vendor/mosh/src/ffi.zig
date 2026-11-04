@@ -45,36 +45,40 @@ pub export fn mosh_client_create(config_json: ?[*:0]const u8, out_handle: ?*?*an
     var endpoint_key: []const u8 = "ABCDEFGHIJKLMNOPQRSTUV";
     var config: types.MoshClientConfig = .{};
 
-    if (config_json) |json_ptr| {
+    // Kept until the end: the host and key strings can point into the parse arena (an
+    // escaped "\/" in the key makes the parser allocate it), and Client.init copies them.
+    const parsed_config: ?std.json.Parsed(CreateConfigJson) = parsed: {
+        const json_ptr = config_json orelse break :parsed null;
         const json_slice = std.mem.span(json_ptr);
-        if (json_slice.len > 0) {
-            const parsed = std.json.parseFromSlice(
-                CreateConfigJson,
-                allocator,
-                json_slice,
-                .{ .ignore_unknown_fields = true },
-            ) catch return @backingInt(types.ErrorCode.invalid_argument);
-            defer parsed.deinit();
+        if (json_slice.len == 0) break :parsed null;
+        break :parsed std.json.parseFromSlice(
+            CreateConfigJson,
+            allocator,
+            json_slice,
+            .{ .ignore_unknown_fields = true },
+        ) catch return @backingInt(types.ErrorCode.invalid_argument);
+    };
+    defer if (parsed_config) |parsed| parsed.deinit();
 
-            if (parsed.value.host) |host| endpoint_host = host;
-            if (parsed.value.port) |port| endpoint_port = port;
-            if (parsed.value.keyBase64_22) |key_base64_22| endpoint_key = key_base64_22;
+    if (parsed_config) |parsed| {
+        if (parsed.value.host) |host| endpoint_host = host;
+        if (parsed.value.port) |port| endpoint_port = port;
+        if (parsed.value.keyBase64_22) |key_base64_22| endpoint_key = key_base64_22;
 
-            if (parsed.value.sendMinDelayMs) |value| config.send_min_delay_ms = value;
-            if (parsed.value.maxReceiveStates) |value| config.max_receive_states = value;
-            if (parsed.value.ackIntervalMs) |value| config.ack_interval_ms = value;
-            if (parsed.value.ackDelayMs) |value| config.ack_delay_ms = value;
-            if (parsed.value.networkTimeoutMs) |value| config.network_timeout_ms = value;
-            if (parsed.value.maxRetransmitCount) |value| config.max_retransmit_count = value;
-            if (parsed.value.initialRtoMs) |value| config.initial_rto_ms = value;
-            if (parsed.value.maxRtoMs) |value| config.max_rto_ms = value;
-            if (parsed.value.heartbeatIntervalMs) |value| config.heartbeat_interval_ms = value;
-            if (parsed.value.mtu) |value| config.mtu = value;
-            if (parsed.value.localPort) |value| config.local_port = value;
-            if (parsed.value.useNetworkCrypto) |value| config.use_network_crypto = value;
-            if (parsed.value.compressionAlgorithm) |value| {
-                config.compression_algorithm = parseCompressionAlgorithm(value);
-            }
+        if (parsed.value.sendMinDelayMs) |value| config.send_min_delay_ms = value;
+        if (parsed.value.maxReceiveStates) |value| config.max_receive_states = value;
+        if (parsed.value.ackIntervalMs) |value| config.ack_interval_ms = value;
+        if (parsed.value.ackDelayMs) |value| config.ack_delay_ms = value;
+        if (parsed.value.networkTimeoutMs) |value| config.network_timeout_ms = value;
+        if (parsed.value.maxRetransmitCount) |value| config.max_retransmit_count = value;
+        if (parsed.value.initialRtoMs) |value| config.initial_rto_ms = value;
+        if (parsed.value.maxRtoMs) |value| config.max_rto_ms = value;
+        if (parsed.value.heartbeatIntervalMs) |value| config.heartbeat_interval_ms = value;
+        if (parsed.value.mtu) |value| config.mtu = value;
+        if (parsed.value.localPort) |value| config.local_port = value;
+        if (parsed.value.useNetworkCrypto) |value| config.use_network_crypto = value;
+        if (parsed.value.compressionAlgorithm) |value| {
+            config.compression_algorithm = parseCompressionAlgorithm(value);
         }
     }
 
