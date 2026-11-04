@@ -85,8 +85,14 @@ class GhosttyBridge {
     external fun nativeAnimationTick(handle: Long): Long
     // Milliseconds until the app's synchronized output hold times out, or -1 when there is none.
     external fun nativeSyncHoldRemainingMs(handle: Long): Long
-    external fun nativeFormatSelectionRange(handle: Long, startCell: Int, endCell: Int): String?
-    external fun nativeFormatSelectionScreenRange(handle: Long, startScreenCell: Int, endScreenCell: Int): String?
+    // With rectangle, the two cells are opposite corners of a block selection.
+    external fun nativeFormatSelectionRange(handle: Long, startCell: Int, endCell: Int, rectangle: Boolean): String?
+    external fun nativeFormatSelectionScreenRange(
+        handle: Long,
+        startScreenCell: Int,
+        endScreenCell: Int,
+        rectangle: Boolean,
+    ): String?
     external fun nativeSelectWordAt(handle: Long, cellX: Int, cellY: Int): String?
     external fun nativeSelectLineAt(handle: Long, cellX: Int, cellY: Int): String?
     external fun nativeSelectAll(handle: Long): String?

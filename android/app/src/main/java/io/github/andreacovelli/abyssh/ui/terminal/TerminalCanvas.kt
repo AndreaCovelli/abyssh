@@ -82,6 +82,10 @@ fun TerminalCanvas(
     // when the remote app takes mouse input, like Shift+drag in desktop terminals.
     stickyModifiers: ModifierState = ModifierState(),
     onShiftSelectionStart: () -> Unit = {},
+    // A selection started as a rectangle, with Alt held, so a sticky Alt can be spent.
+    onRectangleSelectionStart: () -> Unit = {},
+    // Characters that end a word for a double-tap, besides blank cells.
+    wordSeparators: String = DEFAULT_WORD_SEPARATORS,
     // Rows to scroll at a point. Momentum steps come from a fling after the finger lifts.
     onScroll: (delta: Int, x: Float, y: Float, momentum: Boolean) -> Unit = { _, _, _, _ -> },
     minFontSizeSp: Float = 1f,
@@ -113,6 +117,7 @@ fun TerminalCanvas(
         onMouseButton = onMouseButton,
         onAppSelectionDrag = onAppSelectionDrag,
         onShiftSelectionStart = onShiftSelectionStart,
+        onRectangleSelectionStart = onRectangleSelectionStart,
         onFontSizeChange = onFontSizeChange,
     )
     val env = rememberUpdatedState(
@@ -125,6 +130,7 @@ fun TerminalCanvas(
             fontSizeSp = fontSizeSp,
             fontSizeRange = minFontSizeSp..maxFontSizeSp,
             stickyModifiers = stickyModifiers,
+            wordSeparators = wordSeparators,
             haptics = LocalHapticFeedback.current,
             callbacks = callbacks,
         ),
@@ -180,6 +186,7 @@ fun TerminalCanvas(
             cell = cell,
             colors = colors,
             selection = selection?.normalized(shown.cellCount),
+            selectionColumns = selection?.columns(shown.cols),
             searchSpans = searchSpans.get(searchMatches, currentSearchMatch, shown),
         )
         drawIntoCanvas { renderer.draw(it.nativeCanvas, frame, paints, placement) }

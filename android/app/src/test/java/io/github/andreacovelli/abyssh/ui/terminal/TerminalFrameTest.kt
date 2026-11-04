@@ -157,4 +157,31 @@ class TerminalFrameTest {
         assertTrue(frame.hasHighlights(1))
         assertFalse(frame.hasHighlights(2))
     }
+
+    @Test
+    fun `a rectangle selects the same columns in every row it spans`() {
+        val frame = TerminalFrame(
+            snapshot = TerminalSnapshot.fromCells(
+                cols = 4,
+                rows = 3,
+                cursorX = 0,
+                cursorY = 0,
+                cursorVisible = false,
+                defaultBgArgb = bg,
+                defaultFgArgb = fg,
+                codepoints = IntArray(12),
+                fgArgb = IntArray(12),
+                bgArgb = IntArray(12),
+                flags = ByteArray(12),
+            ),
+            cell = cell,
+            colors = colors,
+            selection = 2..5,
+            selectionColumns = 1..2,
+        )
+
+        assertEquals(1..2, frame.selectedCols(0))
+        assertEquals(1..2, frame.selectedCols(1))
+        assertEquals(null, frame.selectedCols(2))
+    }
 }

@@ -20,6 +20,10 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -59,6 +63,8 @@ internal fun TerminalSelectionOverlay(input: TerminalInputController) {
     SelectionMenu(
         showCopy = !state.text.isNullOrEmpty(),
         showPaste = input.hasClipboardText,
+        rectangle = input.selection?.rectangle == true,
+        onToggleRectangle = input::toggleRectangleSelection,
         onCopy = input::copySelection,
         onPaste = {
             input.pasteClipboard()
@@ -73,8 +79,7 @@ internal fun TerminalSelectionOverlay(input: TerminalInputController) {
 @Composable
 private fun SelectionHandles(input: TerminalInputController, state: TerminalSelectionState) {
     val colors = AbyssColors.current
-    val selection = input.selection
-    val anchorIsStart = selection != null && selection.anchorIndex <= selection.focusIndex
+    val cols = state.cols
     TerminalSelectionHandle(
         tipX = state.startOffset.x,
         tipY = state.startOffset.y + state.cellHeightPx / 2f,
@@ -83,8 +88,8 @@ private fun SelectionHandles(input: TerminalInputController, state: TerminalSele
         cellWidthPx = state.cellWidthPx,
         cellHeightPx = state.cellHeightPx,
         cols = state.cols,
-        startCellProvider = { input.selection?.let { minOf(it.anchorIndex, it.focusIndex) } ?: 0 },
-        onDragToCell = { cell -> input.selection = input.selection?.withStart(cell, updateAnchor = anchorIsStart) },
+        startCellProvider = { input.selection?.startCell(cols) ?: 0 },
+        onDragToCell = { cell -> input.selection = input.selection?.withStartHandle(cell, cols) },
     )
     TerminalSelectionHandle(
         tipX = state.endOffset.x,
@@ -94,8 +99,8 @@ private fun SelectionHandles(input: TerminalInputController, state: TerminalSele
         cellWidthPx = state.cellWidthPx,
         cellHeightPx = state.cellHeightPx,
         cols = state.cols,
-        startCellProvider = { input.selection?.let { maxOf(it.anchorIndex, it.focusIndex) } ?: 0 },
-        onDragToCell = { cell -> input.selection = input.selection?.withEnd(cell, updateAnchor = !anchorIsStart) },
+        startCellProvider = { input.selection?.endCell(cols) ?: 0 },
+        onDragToCell = { cell -> input.selection = input.selection?.withEndHandle(cell, cols) },
     )
 }
 
@@ -103,6 +108,8 @@ private fun SelectionHandles(input: TerminalInputController, state: TerminalSele
 private fun SelectionMenu(
     showCopy: Boolean,
     showPaste: Boolean,
+    rectangle: Boolean,
+    onToggleRectangle: () -> Unit,
     onCopy: () -> Unit,
     onPaste: () -> Unit,
     modifier: Modifier = Modifier,
@@ -121,18 +128,36 @@ private fun SelectionMenu(
     ) {
         if (showCopy) SelectionMenuButton(stringResource(R.string.action_copy), onCopy)
         if (showPaste) SelectionMenuButton(stringResource(R.string.action_paste), onPaste)
+        val blockLabel = stringResource(R.string.terminal_selection_block)
+        SelectionMenuButton(
+            label = blockLabel,
+            onClick = onToggleRectangle,
+            active = rectangle,
+            modifier = Modifier.semantics {
+                toggleableState = ToggleableState(rectangle)
+                stateDescription = blockLabel
+            },
+        )
     }
 }
 
+/** A menu button; [active] marks a toggle that is on, in the accent color. */
 @Composable
-private fun SelectionMenuButton(label: String, onClick: () -> Unit) {
+private fun SelectionMenuButton(
+    label: String,
+    onClick: () -> Unit,
+    active: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
     val colors = AbyssColors.current
+    val color = if (active) colors.accent else colors.textMuted
     AbyssButton(
         onClick = onClick,
+        modifier = modifier,
         variant = AbyssButtonVariant.Ghost,
-        borderColor = colors.textMuted,
+        borderColor = color,
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
     ) {
-        AbyssText(label, style = AbyssTypography.current.label, color = colors.textMuted)
+        AbyssText(label, style = AbyssTypography.current.label, color = color)
     }
 }

@@ -17,6 +17,8 @@ internal class TerminalFrame(
     val cell: TerminalCellMetrics,
     val colors: TerminalCanvasColors,
     val selection: IntRange? = null,
+    // The columns of a rectangle selection, which covers them in each row of selection.
+    val selectionColumns: IntRange? = null,
     // Flagged true for the current match.
     val searchSpans: Map<Int, List<Pair<SearchSpan, Boolean>>> = emptyMap(),
 ) {
@@ -24,6 +26,11 @@ internal class TerminalFrame(
     fun selectedCols(row: Int): IntRange? {
         val selection = selection ?: return null
         val rowStart = row * snapshot.cols
+        val columns = selectionColumns
+        if (columns != null) {
+            val inRows = rowStart + snapshot.cols - 1 >= selection.first && rowStart <= selection.last
+            return if (inRows) columns.first..minOf(columns.last, snapshot.cols - 1) else null
+        }
         val first = maxOf(selection.first, rowStart)
         val last = minOf(selection.last, rowStart + snapshot.cols - 1)
         return if (first <= last) (first - rowStart)..(last - rowStart) else null

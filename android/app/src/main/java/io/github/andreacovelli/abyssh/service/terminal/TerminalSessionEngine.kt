@@ -263,12 +263,18 @@ class TerminalSessionEngine internal constructor(
      * scrollback row, or of visible cells [visibleStart]..[visibleEnd] when that fails.
      * Null when the tab shows several terminals, whose text then comes from the snapshot.
      */
-    suspend fun selectionText(screenStart: Int, screenEnd: Int, visibleStart: Int, visibleEnd: Int): String? =
+    suspend fun selectionText(
+        screenStart: Int,
+        screenEnd: Int,
+        visibleStart: Int,
+        visibleEnd: Int,
+        rectangle: Boolean,
+    ): String? =
         withContext(dispatcher) {
             val target = terminals.focused()?.takeIf { it.fillsTab } ?: return@withContext null
             val handle = target.emulator.handle
-            bridge.nativeFormatSelectionScreenRange(handle, screenStart, screenEnd)
-                ?: bridge.nativeFormatSelectionRange(handle, visibleStart, visibleEnd)
+            bridge.nativeFormatSelectionScreenRange(handle, screenStart, screenEnd, rectangle)
+                ?: bridge.nativeFormatSelectionRange(handle, visibleStart, visibleEnd, rectangle)
         }
 
     fun respondToHostKey(accepted: Boolean) = hostKeys.respond(accepted)

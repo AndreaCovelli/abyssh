@@ -105,6 +105,12 @@ internal class TerminalInputController(
         selectionState = null
     }
 
+    /** Switches the selection between lines of text and a rectangle of columns. */
+    fun toggleRectangleSelection() {
+        selection = selection?.let { it.copy(rectangle = !it.rectangle) }
+        requestFocus()
+    }
+
     // Tapping the menu can move focus off the input view, which leaves keys like
     // Backspace with nowhere to go, so copying takes it back.
     fun copySelection() {
@@ -153,6 +159,10 @@ internal class TerminalInputController(
     /** The sticky Shift was spent on a selection, not on the next key. */
     fun spendStickyShift() {
         if (modifierState.shift) modifierState = modifierState.copy(shift = false)
+    }
+
+    fun spendStickyAlt() {
+        if (modifierState.alt) modifierState = modifierState.copy(alt = false)
     }
 
     /**

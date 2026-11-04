@@ -1799,13 +1799,16 @@ fn screenCellToPin(terminal: *AbysshTerminal, screen_cell: i64) ?ghostty.Pin {
     } });
 }
 
+/// The text between two pins, or with `rectangle` of the block they are opposite
+/// corners of.
 fn selectionTextFromPins(
     terminal: *AbysshTerminal,
     start_pin: ghostty.Pin,
     end_pin: ghostty.Pin,
+    rectangle: bool,
     alloc: std.mem.Allocator,
 ) ![:0]const u8 {
-    const sel = ghostty.Selection.init(start_pin, end_pin, false);
+    const sel = ghostty.Selection.init(start_pin, end_pin, rectangle);
     defer sel.deinit(terminal.terminal.screens.active);
     return terminal.terminal.screens.active.selectionString(alloc, .{
         .sel = sel,
@@ -1819,6 +1822,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     handle: c.jlong,
     start_cell: c.jint,
     end_cell: c.jint,
+    rectangle: c.jboolean,
 ) callconv(.c) c.jstring {
     _ = thiz;
     const terminal = abysshFromHandle(handle) orelse return null;
@@ -1833,7 +1837,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     const start_pin = viewportCellToPin(terminal, start_x, start_y) orelse return null;
     const end_pin = viewportCellToPin(terminal, end_x, end_y) orelse return null;
 
-    const text = selectionTextFromPins(terminal, start_pin, end_pin, allocator) catch return null;
+    const text = selectionTextFromPins(terminal, start_pin, end_pin, rectangle != 0, allocator) catch return null;
     defer allocator.free(text);
     return jniNewString(env, text);
 }
@@ -1849,6 +1853,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     handle: c.jlong,
     start_screen_cell: c.jint,
     end_screen_cell: c.jint,
+    rectangle: c.jboolean,
 ) callconv(.c) c.jstring {
     _ = thiz;
     const terminal = abysshFromHandle(handle) orelse return null;
@@ -1857,7 +1862,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     const start_pin = screenCellToPin(terminal, start_screen_cell) orelse return null;
     const end_pin = screenCellToPin(terminal, end_screen_cell) orelse return null;
 
-    const text = selectionTextFromPins(terminal, start_pin, end_pin, allocator) catch return null;
+    const text = selectionTextFromPins(terminal, start_pin, end_pin, rectangle != 0, allocator) catch return null;
     defer allocator.free(text);
     return jniNewString(env, text);
 }

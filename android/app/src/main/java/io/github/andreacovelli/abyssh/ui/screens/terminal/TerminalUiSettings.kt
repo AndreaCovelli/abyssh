@@ -42,6 +42,7 @@ internal data class TerminalUiSettings(
     val volumeKeysAsArrows: Boolean,
     val ctrlVPastes: Boolean,
     val showCustomActionsFab: Boolean,
+    val wordSeparators: String,
 )
 
 @Composable
@@ -66,6 +67,7 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
     val volumeKeysAsArrows by repo.volumeKeysAsArrows.collectAsStateWithLifecycle()
     val ctrlVPastes by repo.ctrlVPastes.collectAsStateWithLifecycle()
     val showCustomActionsFab by repo.showCustomActionsFab.collectAsStateWithLifecycle()
+    val wordSeparators by repo.text.wordSeparators.collectAsStateWithLifecycle()
     return TerminalUiSettings(
         ghosttyTheme = ghosttyTheme,
         tabMode = tabMode,
@@ -78,6 +80,7 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
         volumeKeysAsArrows = volumeKeysAsArrows,
         ctrlVPastes = ctrlVPastes,
         showCustomActionsFab = showCustomActionsFab,
+        wordSeparators = wordSeparators,
     )
 }
 
