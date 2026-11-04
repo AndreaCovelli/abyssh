@@ -17,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -97,6 +98,7 @@ internal class SessionConnection(
         scope.launch(dispatcher) {
             reconnectJob?.cancel()
             reconnectJob = null
+            stopReadLoop()
             state.update {
                 it.copy(status = SessionStatus.Connecting, error = null, reconnectAttempt = 0, sessionKey = sessionKey)
             }
@@ -116,8 +118,7 @@ internal class SessionConnection(
         reconnectJob = null
         spec = null
         scope.launch(dispatcher) {
-            readJob?.cancel()
-            readJob = null
+            stopReadLoop()
             remoteResizeJob?.cancel()
             remoteResizeJob = null
             remoteGeometry = null
@@ -263,7 +264,19 @@ internal class SessionConnection(
     }
 
     private fun startReadLoop(transport: Transport) {
-        readJob = scope.launch(dispatcher) { onReadLoopEnded(transport, read(transport)) }
+        stopReadLoop()
+        readJob = scope.launch(dispatcher) {
+            val outcome = read(transport)
+            // A cancelled SSH or local shell loop returns instead of throwing; whoever
+            // cancelled it decides what happens next.
+            currentCoroutineContext().ensureActive()
+            onReadLoopEnded(transport, outcome)
+        }
+    }
+
+    private fun stopReadLoop() {
+        readJob?.cancel()
+        readJob = null
     }
 
     private suspend fun read(transport: Transport): ReadOutcome = try {
@@ -347,9 +360,8 @@ internal class SessionConnection(
     }
 
     private suspend fun reconnect(spec: TabSpec, reason: UiText) {
-        readJob?.cancel()
-        readJob = null
         var attempt = 0
+        stopReadLoop()
         var done = false
         while (!done && currentCoroutineContext().isActive && !disconnectRequested) {
             attempt += 1
