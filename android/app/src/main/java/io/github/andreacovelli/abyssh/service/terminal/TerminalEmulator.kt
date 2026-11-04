@@ -94,6 +94,7 @@ internal class TerminalEmulator(
     fun open() {
         destroy()
         handle = bridge.nativeCreate(geometry.cols, geometry.rows, scrollbackLimitBytes())
+        check(handle != 0L) { "Native terminal creation failed" }
         applyOptions()
     }
 
