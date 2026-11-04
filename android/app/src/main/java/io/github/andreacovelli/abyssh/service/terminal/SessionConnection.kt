@@ -208,10 +208,11 @@ internal class SessionConnection(
         runCatching { transports.write(data) }
     }
 
-    // Only Mosh has traffic to stop: an SSH connection is silent while its shell is.
-    // A quiet tab also stops retrying a failed reconnect until it is shown.
+    // Mosh stops its heartbeats and SSH stretches its keepalive interval. A quiet tab
+    // also stops retrying a failed reconnect until it is shown.
     override fun setQuiet(quiet: Boolean) {
         transports.mosh.setQuiet(quiet)
+        transports.ssh.setQuiet(quiet)
         reconnectWait.setHidden(quiet)
     }
 

@@ -185,10 +185,12 @@ internal class TmuxControlSession(
 
     /**
      * Pauses the panes of [view]'s window while [quiet], and resumes them once it isn't.
-     * While every tab is quiet, a failed reconnect waits for one to be shown.
+     * While every tab is quiet, the connection sends keepalives less often and a failed
+     * reconnect waits for one to be shown.
      */
     fun setWindowQuiet(view: TmuxPaneView, quiet: Boolean) = onThread {
         windows.setQuiet(view, quiet)
+        link.ssh.setQuiet(windows.allQuiet)
         reconnectWait.setHidden(windows.allQuiet)
     }
 

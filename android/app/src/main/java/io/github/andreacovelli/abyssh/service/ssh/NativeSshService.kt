@@ -9,14 +9,6 @@ import java.io.Closeable
 /** The most input that may wait for a channel that takes nothing. */
 internal const val MAX_PENDING_WRITE_BYTES = 16L * 1024 * 1024
 
-/** How many keepalive intervals may pass with nothing received, as ServerAliveCountMax. */
-const val KEEPALIVE_MAX_MISSED = 3
-
-// A probe sends keepalives this often and gives up after this many go unanswered, so a
-// connection that is gone fails within about four seconds.
-private const val PROBE_INTERVAL_SECONDS = 2
-private const val PROBE_MAX_MISSED = 2
-
 class NativeSshService(
     private val bridge: NativeSshBridge = NativeSshBridge(),
     private val hostKeyPolicy: HostKeyPolicy,
@@ -32,9 +24,9 @@ class NativeSshService(
 
     private var handle: Long = 0L
 
-    // The keepalive the connection runs with, which a probe returns to.
-    private var keepaliveSeconds = 0
-    private var keepaliveMaxMissed = KEEPALIVE_MAX_MISSED
+    private val keepalive = SshKeepalive { intervalSeconds, maxMissed ->
+        if (handle != 0L) bridge.nativeSetKeepalive(handle, intervalSeconds, maxMissed)
+    }
     private val cancellation = ConnectionCancel()
 
     /** SFTP over this connection. */
@@ -215,9 +207,16 @@ class NativeSshService(
      * makes reads fail once [maxMissed] intervals pass with nothing received.
      */
     fun setKeepalive(intervalSeconds: Int, maxMissed: Int = KEEPALIVE_MAX_MISSED) {
-        keepaliveSeconds = intervalSeconds
-        keepaliveMaxMissed = maxMissed
-        if (handle != 0L) bridge.nativeSetKeepalive(handle, intervalSeconds, maxMissed)
+        keepalive.set(intervalSeconds, maxMissed)
+    }
+
+    /**
+     * Sends keepalives at most every [QUIET_KEEPALIVE_SECONDS] while [quiet], when nothing
+     * shows the session, so an idle connection wakes the radio less often. Applies to
+     * later connections too.
+     */
+    fun setQuiet(quiet: Boolean) {
+        keepalive.setQuiet(quiet)
     }
 
     /**
@@ -228,13 +227,13 @@ class NativeSshService(
      */
     fun startProbe(): Boolean {
         if (handle == 0L) return false
-        bridge.nativeSetKeepalive(handle, PROBE_INTERVAL_SECONDS, PROBE_MAX_MISSED)
+        keepalive.startProbe()
         return true
     }
 
-    /** Returns to the keepalive [setKeepalive] chose, after [startProbe]. */
+    /** Returns to the keepalive [setKeepalive] and [setQuiet] chose, after [startProbe]. */
     fun endProbe() {
-        if (handle != 0L) bridge.nativeSetKeepalive(handle, keepaliveSeconds, keepaliveMaxMissed)
+        keepalive.endProbe()
     }
 
     /**
