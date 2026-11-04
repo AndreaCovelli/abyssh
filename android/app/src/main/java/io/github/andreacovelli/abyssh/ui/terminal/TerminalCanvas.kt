@@ -55,6 +55,9 @@ fun TerminalCanvas(
     selectionText: SelectionTextReader? = null,
     onResize: (cols: Int, rows: Int, cellWidth: Int, cellHeight: Int, widthPx: Int, heightPx: Int) -> Unit =
         { _, _, _, _, _, _ -> },
+    // What onResize sizes, such as the active tab's engine: a new one is sized even when
+    // the grid is the same as the last one's.
+    resizeTarget: Any? = null,
     onTap: () -> Unit = {},
     onPrimaryClick: (mods: Int, x: Float, y: Float) -> Unit = { _, _, _ -> },
     // A tap where a link may be: when the app doesn't take mouse input, or with Shift.
@@ -135,7 +138,7 @@ fun TerminalCanvas(
         onSelectionChange,
         onSelectionChanged,
     )
-    TerminalResizeEffect(canvasSize, cell, onResize)
+    TerminalResizeEffect(canvasSize, cell, resizeTarget, onResize)
 
     val searchSpans = remember { SearchSpanCache() }
     val colors = TerminalCanvasColors(
@@ -249,15 +252,16 @@ private fun TerminalSelectionEffects(
     }
 }
 
-/** Tells the terminal its grid size whenever the canvas or cell size changes it. */
+/** Tells the terminal its grid size whenever the canvas, the cell size, or [target] changes it. */
 @Composable
 private fun TerminalResizeEffect(
     canvasSize: IntSize,
     cell: TerminalCellMetrics,
+    target: Any?,
     onResize: (cols: Int, rows: Int, cellWidth: Int, cellHeight: Int, widthPx: Int, heightPx: Int) -> Unit,
 ) {
-    var lastResizedGrid by remember { mutableStateOf(0 to 0) }
-    LaunchedEffect(canvasSize, cell) {
+    var lastResizedGrid by remember(target) { mutableStateOf(0 to 0) }
+    LaunchedEffect(canvasSize, cell, target) {
         if (canvasSize.width <= 0 || canvasSize.height <= 0) return@LaunchedEffect
         val cols = max(1, floor(canvasSize.width / cell.width).toInt())
         val rows = max(1, floor(canvasSize.height / cell.height).toInt())

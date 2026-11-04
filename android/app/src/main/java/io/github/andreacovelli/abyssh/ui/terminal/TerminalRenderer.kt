@@ -266,15 +266,18 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         }
         val left = snapshot.cursorX * frame.cell.width
         val top = snapshot.cursorY * frame.cell.height
-        drawCursorShape(canvas, frame, left, top)
+        val row = snapshot.rowData[snapshot.cursorY]
+        val next = snapshot.cursorX + 1
+        // On a wide character the cursor covers both of its cells.
+        val span = if (next < snapshot.cols && row.isSpacerContinuation(next)) 2 else 1
+        drawCursorShape(canvas, frame, left, top, frame.cell.width * span)
         val cursorText = frame.colors.cursorText ?: return
         if (snapshot.cursorStyle == TerminalSnapshot.CURSOR_STYLE_BLOCK) {
             drawCursorGlyph(canvas, frame, paints, cursorText, left, top)
         }
     }
 
-    private fun drawCursorShape(canvas: Canvas, frame: TerminalFrame, left: Float, top: Float) {
-        val width = frame.cell.width
+    private fun drawCursorShape(canvas: Canvas, frame: TerminalFrame, left: Float, top: Float, width: Float) {
         val height = frame.cell.height
         cursorPaint.color = frame.colors.cursor
         when (frame.snapshot.cursorStyle) {
