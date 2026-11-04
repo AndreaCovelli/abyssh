@@ -224,6 +224,11 @@
     <string name="action_rename">Rename</string>
     <string name="action_copy">Copy</string>
     <string name="action_delete">Delete</string>
+    <string name="action_move_up">Move up</string>
+    <string name="action_move_down">Move down</string>
+    <string name="action_move_left">Move left</string>
+    <string name="action_move_right">Move right</string>
+    <string name="action_reorder">Reorder</string>
     <string name="action_generate">Generate</string>
     <string name="keys_file_read_failed">Couldn\'t read that file</string>
     <string name="keys_private_key">Private key</string>

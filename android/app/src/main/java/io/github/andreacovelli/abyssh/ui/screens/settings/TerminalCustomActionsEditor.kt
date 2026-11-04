@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -41,6 +40,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -77,7 +79,7 @@ private class CustomActionForm {
     var visible by mutableStateOf(false)
     var showModifiers by mutableStateOf(false)
     var modifiers by mutableStateOf(setOf<CustomActionModifier>())
-    var editingIndex by mutableStateOf<Int?>(null)
+    var editingId by mutableStateOf<Long?>(null)
     var key by mutableStateOf("")
     var value by mutableStateOf("")
     var shortcut by mutableStateOf("")
@@ -85,11 +87,11 @@ private class CustomActionForm {
     val baseValue: String get() = value.trim().trimEnd('\n', '\r')
 
     fun beginAdd() {
-        editingIndex = null
+        editingId = null
         visible = true
     }
 
-    fun beginEdit(index: Int, item: CustomKeyValueDraft) {
+    fun beginEdit(item: CustomKeyValueDraft) {
         val decoded = decodeCustomActionValue(item.value)
         key = item.key
         modifiers = decoded.modifiers
@@ -97,7 +99,7 @@ private class CustomActionForm {
         shortcut = item.shortcut ?: ""
         showModifiers = true
         visible = true
-        editingIndex = index
+        editingId = item.id
     }
 
     fun clear() {
@@ -107,7 +109,7 @@ private class CustomActionForm {
         shortcut = ""
         modifiers = emptySet()
         showModifiers = false
-        editingIndex = null
+        editingId = null
     }
 
     fun toggleModifier(modifier: CustomActionModifier) {
@@ -121,15 +123,6 @@ private class CustomActionForm {
         if (trimmedKey.isEmpty() || encoded.isEmpty()) return null
         return CustomKeyValueDraft(id = id, key = trimmedKey, value = encoded, shortcut = shortcut.trim().ifEmpty { null })
     }
-
-    /** Keeps the edited row's index in step when a drag swaps it with its neighbour. */
-    fun onItemMoved(from: Int, to: Int) {
-        if (editingIndex == from) {
-            editingIndex = to
-        } else if (editingIndex == to) {
-            editingIndex = from
-        }
-    }
 }
 
 @Composable
@@ -139,24 +132,44 @@ internal fun TerminalCustomActionsEditorSheet(
     onSave: (List<TerminalCustomKeyGroup>) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    AbyssBottomSheet(visible = visible, onDismiss = onDismiss, heightFraction = 0.88f, verticalSpacing = 12.dp) {
+        AbyssSheetHeader(title = stringResource(R.string.settings_custom_actions), onClose = onDismiss)
+        // The sheet's content leaves composition when it closes, so each opening starts
+        // from the saved actions.
+        CustomActionsEditor(initialGroups = initialGroups, onSave = onSave, modifier = Modifier.weight(1f))
+    }
+}
+
+/**
+ * The action list and its form. Every change is saved at once, and the list is seeded
+ * only once: seeding again from the saved groups would renumber the ids the form tracks.
+ */
+@Composable
+private fun CustomActionsEditor(
+    initialGroups: List<TerminalCustomKeyGroup>,
+    onSave: (List<TerminalCustomKeyGroup>) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val typography = AbyssTypography.current
-    var draftItems by remember(initialGroups) {
+    var draftItems by remember {
         mutableStateOf(groupsToDraftItems(TerminalCustomActionStore.normalize(initialGroups)))
     }
     val form = remember { CustomActionForm() }
 
     fun persist(items: List<CustomKeyValueDraft>) {
-        draftItems = items
-        onSave(TerminalCustomActionStore.normalize(draftItemsToGroups(items)))
+        // Actions with the same key are saved as one group, so the list keeps them together too.
+        val grouped = items.groupedByKey(CustomKeyValueDraft::groupKey)
+        draftItems = grouped
+        onSave(TerminalCustomActionStore.normalize(draftItemsToGroups(grouped)))
     }
 
     fun submitForm() {
         val nextId = (draftItems.maxOfOrNull { it.id } ?: 0L) + 1L
         val item = form.toDraft(nextId) ?: return
-        val index = form.editingIndex
+        val editingId = form.editingId
         persist(
-            if (index != null && index in draftItems.indices) {
-                draftItems.toMutableList().also { it[index] = item.copy(id = it[index].id) }
+            if (editingId != null && draftItems.any { it.id == editingId }) {
+                draftItems.map { if (it.id == editingId) item.copy(id = editingId) else it }
             } else {
                 draftItems + item
             },
@@ -164,48 +177,44 @@ internal fun TerminalCustomActionsEditorSheet(
         form.clear()
     }
 
-    AbyssBottomSheet(visible = visible, onDismiss = onDismiss, heightFraction = 0.88f, verticalSpacing = 12.dp) {
-        AbyssSheetHeader(title = stringResource(R.string.settings_custom_actions), onClose = onDismiss)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        CustomActionList(
+            items = draftItems,
+            onItemsReordered = ::persist,
+            onReorder = { items -> draftItems = items },
+            onMove = { id, direction ->
+                val index = draftItems.indexOfFirst { it.id == id }
+                draftItems.movedInGroups(index, direction, CustomKeyValueDraft::groupKey)?.let(::persist)
+            },
+            onEdit = { item ->
+                if (form.editingId == item.id) form.clear() else form.beginEdit(item)
+            },
+            onDelete = { id ->
+                persist(draftItems.filterNot { it.id == id })
+                if (form.editingId == id) form.clear()
+            },
+        )
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            CustomActionList(
-                items = draftItems,
-                onItemsReordered = ::persist,
-                onReorder = { items, from, to ->
-                    draftItems = items
-                    form.onItemMoved(from, to)
-                },
-                onEdit = { index, item ->
-                    if (form.editingIndex == index) form.clear() else form.beginEdit(index, item)
-                },
-                onDelete = { index ->
-                    persist(draftItems.filterIndexed { rowIndex, _ -> rowIndex != index })
-                    if (form.editingIndex == index) form.clear()
-                },
-            )
-
-            if (form.visible) {
-                CustomActionFormCard(form = form, onSubmit = ::submitForm, onCancel = form::clear)
-            } else {
-                AbyssButton(
-                    onClick = form::beginAdd,
-                    variant = AbyssButtonVariant.Outlined,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        painterResource(R.drawable.ic_add),
-                        contentDescription = null,
-                        modifier = Modifier.size(ButtonDefaults.IconSize),
-                    )
-                    Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-                    AbyssText(stringResource(R.string.custom_actions_add), style = typography.label)
-                }
+        if (form.visible) {
+            CustomActionFormCard(form = form, onSubmit = ::submitForm, onCancel = form::clear)
+        } else {
+            AbyssButton(
+                onClick = form::beginAdd,
+                variant = AbyssButtonVariant.Outlined,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    painterResource(R.drawable.ic_add),
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.IconSize),
+                )
+                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                AbyssText(stringResource(R.string.custom_actions_add), style = typography.label)
             }
         }
     }
@@ -213,31 +222,42 @@ internal fun TerminalCustomActionsEditorSheet(
 
 /**
  * The saved actions. A long press on a row's handle drags it to a new position; the new
- * order is saved through [onItemsReordered] when the drag ends.
+ * order is saved through [onItemsReordered] when the drag ends. Screen readers move rows
+ * with [onMove] instead.
  */
 @Composable
 private fun CustomActionList(
     items: List<CustomKeyValueDraft>,
     onItemsReordered: (List<CustomKeyValueDraft>) -> Unit,
-    onReorder: (items: List<CustomKeyValueDraft>, from: Int, to: Int) -> Unit,
-    onEdit: (Int, CustomKeyValueDraft) -> Unit,
-    onDelete: (Int) -> Unit,
+    onReorder: (List<CustomKeyValueDraft>) -> Unit,
+    onMove: (id: Long, direction: Int) -> Unit,
+    onEdit: (CustomKeyValueDraft) -> Unit,
+    onDelete: (Long) -> Unit,
 ) {
     val reorderStepPx = with(LocalDensity.current) { 64.dp.toPx() }
     val dragState = remember(reorderStepPx) { DragReorderState<Long>(reorderStepPx) }
     val currentItems by rememberUpdatedState(items)
     var reorderDirty by remember { mutableStateOf(false) }
+    val moveUpLabel = stringResource(R.string.action_move_up)
+    val moveDownLabel = stringResource(R.string.action_move_down)
+    val deleteLabel = stringResource(R.string.action_delete)
 
     items.forEachIndexed { index, item ->
         key(item.id) {
+            val accessibilityActions = buildList {
+                if (index > 0) add(accessibilityAction(moveUpLabel) { onMove(item.id, -1) })
+                if (index < items.lastIndex) add(accessibilityAction(moveDownLabel) { onMove(item.id, 1) })
+                add(accessibilityAction(deleteLabel) { onDelete(item.id) })
+            }
             CustomActionSwipeRow(
                 keyText = item.key,
                 valueText = item.value,
                 shortcut = item.shortcut,
                 dragging = dragState.draggingKey == item.id,
                 dragOffsetPx = dragState.offsetFor(item.id),
-                onEdit = { onEdit(index, item) },
-                onDelete = { onDelete(index) },
+                accessibilityActions = accessibilityActions,
+                onEdit = { onEdit(item) },
+                onDelete = { onDelete(item.id) },
                 onReorderStart = {
                     dragState.start(item.id)
                     reorderDirty = false
@@ -246,7 +266,7 @@ private fun CustomActionList(
                     dragState.drag(deltaY) { direction ->
                         val from = currentItems.indexOfFirst { it.id == item.id }
                         val updated = currentItems.moved(from, from + direction) ?: return@drag false
-                        onReorder(updated, from, from + direction)
+                        onReorder(updated)
                         reorderDirty = true
                         true
                     }
@@ -324,7 +344,7 @@ private fun CustomActionFormCard(
                     variant = AbyssButtonVariant.Outlined,
                     modifier = Modifier.weight(1f),
                 ) {
-                    val label = if (form.editingIndex != null) R.string.action_save else R.string.action_add
+                    val label = if (form.editingId != null) R.string.action_save else R.string.action_add
                     AbyssText(stringResource(label), style = typography.label)
                 }
                 AbyssButton(
@@ -392,6 +412,7 @@ private fun CustomActionSwipeRow(
     shortcut: String?,
     dragging: Boolean,
     dragOffsetPx: Float,
+    accessibilityActions: List<CustomAccessibilityAction>,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onReorderStart: () -> Unit,
@@ -406,14 +427,10 @@ private fun CustomActionSwipeRow(
     val deleteThresholdPx = with(density) { 72.dp.toPx() }
     val offsetX = remember(keyText, valueText) { Animatable(0f) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp),
-    ) {
+    Box(modifier = Modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .matchParentSize()
                 .background(colors.error.copy(alpha = 0.78f))
                 .padding(end = 12.dp),
             contentAlignment = Alignment.CenterEnd,
@@ -424,7 +441,9 @@ private fun CustomActionSwipeRow(
         Row(
             modifier = Modifier
                 .offset { IntOffset(offsetX.value.roundToInt(), dragOffsetPx.roundToInt()) }
-                .fillMaxSize()
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .semantics { customActions = accessibilityActions }
                 .background(if (dragging) colors.accent.copy(alpha = 0.12f) else colors.surface)
                 .padding(horizontal = 12.dp)
                 .clickable(onClick = onEdit)
@@ -470,7 +489,7 @@ private fun CustomActionSwipeRow(
             ) {
                 Icon(
                     painterResource(R.drawable.ic_drag_indicator),
-                    contentDescription = null,
+                    contentDescription = stringResource(R.string.action_reorder),
                     tint = colors.textMuted,
                     modifier = Modifier.size(18.dp),
                 )
@@ -520,6 +539,32 @@ private fun readablePreview(value: String): String = buildString {
             }
         }
     }
+
+/** A screen reader action that runs [action] and reports it handled. */
+internal fun accessibilityAction(label: String, action: () -> Unit) = CustomAccessibilityAction(label) {
+    action()
+    true
+}
+
+private val CustomKeyValueDraft.groupKey: String get() = key.trim()
+
+/** The list with each key's entries together, where that key first appears. */
+internal fun <T> List<T>.groupedByKey(key: (T) -> String): List<T> = groupBy(key).values.flatten()
+
+/**
+ * Moves the entry at [index] one place in [direction] in a list grouped by [key]: past a
+ * neighbour with the same key, or else with its whole group past the next group, since a
+ * lone entry moved out of its group would be put back on save. Null at either end.
+ */
+internal fun <T> List<T>.movedInGroups(index: Int, direction: Int, key: (T) -> String): List<T>? {
+    val neighbour = index + direction
+    if (index !in indices || neighbour !in indices) return null
+    val own = key(this[index])
+    if (key(this[neighbour]) == own) return moved(index, neighbour)
+    val groups = groupBy(key)
+    val at = groups.keys.indexOf(own)
+    return groups.values.toList().moved(at, at + direction)?.flatten()
+}
 
 private fun groupsToDraftItems(groups: List<TerminalCustomKeyGroup>): List<CustomKeyValueDraft> {
     var nextId = 1L

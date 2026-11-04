@@ -33,6 +33,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import io.github.andreacovelli.abyssh.R
@@ -58,11 +60,13 @@ internal fun AccessoryLayoutEditorSheet(
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
     val allEntries = remember { TerminalAccessoryLayoutStore.allCatalogEntries() }
-    var draftSelectedIds by remember(selectedIds) {
-        mutableStateOf(TerminalAccessoryLayoutStore.normalizeIds(selectedIds))
-    }
 
     AbyssBottomSheet(visible = visible, onDismiss = onDismiss, heightFraction = 0.82f) {
+        // The sheet's content leaves composition when it closes, so a draft that wasn't
+        // saved is dropped and the next opening starts from the saved layout.
+        var draftSelectedIds by remember(selectedIds) {
+            mutableStateOf(TerminalAccessoryLayoutStore.normalizeIds(selectedIds))
+        }
         AbyssSheetHeader(
             title = stringResource(R.string.settings_accessory_keys),
             subtitle = stringResource(R.string.settings_accessory_sheet_hint),
@@ -135,6 +139,9 @@ private fun AccessoryPreviewCard(
         TerminalAccessoryLayoutStore.resolveSelectedLayout(selectedIds)
     }
 
+    val moveLeftLabel = stringResource(R.string.action_move_left)
+    val moveRightLabel = stringResource(R.string.action_move_right)
+
     AbyssCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -169,13 +176,21 @@ private fun AccessoryPreviewCard(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                selectedEntries.forEach { item ->
+                selectedEntries.forEachIndexed { index, item ->
                     key(item.id) {
+                        val accessibilityActions = buildList {
+                            if (index > 0) add(accessibilityAction(moveLeftLabel) { currentOnMove(item.id, -1) })
+                            if (index < selectedEntries.lastIndex) {
+                                add(accessibilityAction(moveRightLabel) { currentOnMove(item.id, 1) })
+                            }
+                        }
                         PreviewKeyChip(
                             entry = item,
                             dragging = dragState.draggingKey == item.id,
                             dragOffsetPx = dragState.offsetFor(item.id),
-                            modifier = Modifier.pointerInput(item.id) {
+                            modifier = Modifier
+                                .semantics { customActions = accessibilityActions }
+                                .pointerInput(item.id) {
                                 detectDragGesturesAfterLongPress(
                                     onDragStart = { dragState.start(item.id) },
                                     onDragEnd = dragState::stop,
