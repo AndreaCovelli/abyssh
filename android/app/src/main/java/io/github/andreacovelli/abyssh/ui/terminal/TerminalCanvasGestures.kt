@@ -251,8 +251,8 @@ internal class TerminalCanvasGestures(
 
     /**
      * Keeps scrolling after the finger lifts at [velocityY] snapshot pixels a second,
-     * slowing as Android lists do. The steps go to the terminal under [position], and
-     * they only move the scrollback: full-screen programs ignore them.
+     * slowing as Android lists do. The steps go to the terminal under [position]. A
+     * full-screen program gets only a few rows a frame, for about a second.
      */
     private fun startFling(scope: CoroutineScope, velocityY: Float, position: Offset) {
         fling = scope.launch {
