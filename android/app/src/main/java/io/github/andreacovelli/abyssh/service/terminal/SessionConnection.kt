@@ -78,6 +78,9 @@ internal class SessionConnection(
     @Volatile private var spec: TabSpec? = null
 
     @Volatile private var disconnectRequested = false
+
+    // The attempt that connect() started, until it opens or fails.
+    @Volatile private var connectJob: Job? = null
     private var readJob: Job? = null
 
     @Volatile private var reconnectJob: Job? = null
@@ -95,7 +98,11 @@ internal class SessionConnection(
         transports.cancelConnect()
         disconnectRequested = false
         this.spec = spec
-        scope.launch(dispatcher) {
+        val previous = connectJob
+        previous?.cancel()
+        connectJob = scope.launch(dispatcher) {
+            // Two attempts at once would share the transports, so the last one wins.
+            previous?.join()
             reconnectJob?.cancel()
             reconnectJob = null
             stopReadLoop()
@@ -103,6 +110,8 @@ internal class SessionConnection(
                 it.copy(status = SessionStatus.Connecting, error = null, reconnectAttempt = 0, sessionKey = sessionKey)
             }
             val failure = preconditionFailure(spec) ?: openOrFailure(spec)
+            // A Retry or disconnect while this attempt was failing owns the state now.
+            currentCoroutineContext().ensureActive()
             if (failure == null) {
                 onOpened(spec)
             } else {
@@ -114,6 +123,7 @@ internal class SessionConnection(
     override fun disconnect(onClosed: () -> Unit) {
         disconnectRequested = true
         transports.cancelConnect()
+        connectJob?.cancel()
         reconnectJob?.cancel()
         reconnectJob = null
         spec = null
