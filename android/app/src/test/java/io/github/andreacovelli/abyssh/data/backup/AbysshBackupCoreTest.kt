@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.data.backup
 
 import io.github.andreacovelli.abyssh.model.AuthMethod
+import io.github.andreacovelli.abyssh.model.DEFAULT_KEEPALIVE_INTERVAL_SECONDS
 import io.github.andreacovelli.abyssh.model.HostProfile
 import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.SshKey
@@ -15,6 +16,9 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 private const val ENCODED_BOOLEAN_SIZE = 1
+
+// What payload v5 added after v4's fields: the keepalive interval.
+private const val V5_FIELDS_SIZE = Int.SIZE_BYTES
 
 class AbysshBackupCoreTest {
     @Test
@@ -230,10 +234,40 @@ class AbysshBackupCoreTest {
     }
 
     @Test
+    fun payloadV5PreservesKeepaliveInterval() {
+        val payload = samplePayload(keepaliveIntervalSeconds = 0)
+
+        val decoded = AbysshBackupCodec.decodePayload(AbysshBackupCodec.encodePayload(payload))
+
+        assertEquals(payload, decoded)
+        assertEquals(0, decoded.hosts.single().keepaliveIntervalSeconds)
+    }
+
+    @Test
+    fun payloadV4DefaultsKeepaliveInterval() {
+        val v5 = AbysshBackupCodec.encodePayload(samplePayload(chooseSessionOnConnect = true, keepaliveIntervalSeconds = 0))
+        writeIntAt(v5, offset = Int.SIZE_BYTES, value = 4)
+        val v4 = v5.copyOf(v5.size - V5_FIELDS_SIZE)
+
+        val decoded = AbysshBackupCodec.decodePayload(v4)
+
+        assertTrue(decoded.hosts.single().chooseSessionOnConnect)
+        assertEquals(DEFAULT_KEEPALIVE_INTERVAL_SECONDS, decoded.hosts.single().keepaliveIntervalSeconds)
+    }
+
+    @Test(expected = BackupFormatException::class)
+    fun payloadDecodeRejectsNegativeKeepaliveInterval() {
+        val bytes = AbysshBackupCodec.encodePayload(samplePayload())
+        writeIntAt(bytes, offset = bytes.size - Int.SIZE_BYTES, value = -1)
+
+        AbysshBackupCodec.decodePayload(bytes)
+    }
+
+    @Test
     fun payloadV3DefaultsChooseSessionOnConnectToOff() {
-        val v4 = AbysshBackupCodec.encodePayload(samplePayload(tmuxControlMode = true, chooseSessionOnConnect = true))
-        writeIntAt(v4, offset = Int.SIZE_BYTES, value = 3)
-        val v3 = v4.copyOf(v4.size - ENCODED_BOOLEAN_SIZE)
+        val v5 = AbysshBackupCodec.encodePayload(samplePayload(tmuxControlMode = true, chooseSessionOnConnect = true))
+        writeIntAt(v5, offset = Int.SIZE_BYTES, value = 3)
+        val v3 = v5.copyOf(v5.size - V5_FIELDS_SIZE - ENCODED_BOOLEAN_SIZE)
 
         val decoded = AbysshBackupCodec.decodePayload(v3)
 
@@ -243,9 +277,9 @@ class AbysshBackupCoreTest {
 
     @Test
     fun payloadV2DefaultsTmuxControlModeToOff() {
-        val v4 = AbysshBackupCodec.encodePayload(samplePayload(tmuxControlMode = true))
-        writeIntAt(v4, offset = Int.SIZE_BYTES, value = 2)
-        val v2 = v4.copyOf(v4.size - 2 * ENCODED_BOOLEAN_SIZE)
+        val v5 = AbysshBackupCodec.encodePayload(samplePayload(tmuxControlMode = true))
+        writeIntAt(v5, offset = Int.SIZE_BYTES, value = 2)
+        val v2 = v5.copyOf(v5.size - V5_FIELDS_SIZE - 2 * ENCODED_BOOLEAN_SIZE)
 
         val decoded = AbysshBackupCodec.decodePayload(v2)
 
@@ -255,9 +289,9 @@ class AbysshBackupCoreTest {
 
     @Test
     fun payloadV1DefaultsMultiplexerToNull() {
-        val v4 = AbysshBackupCodec.encodePayload(samplePayload())
-        writeIntAt(v4, offset = Int.SIZE_BYTES, value = 1)
-        val v1 = v4.copyOf(v4.size - 2 * ENCODED_BOOLEAN_SIZE - encodedNullableStringSize(MultiplexerType.Tmux.id))
+        val v5 = AbysshBackupCodec.encodePayload(samplePayload())
+        writeIntAt(v5, offset = Int.SIZE_BYTES, value = 1)
+        val v1 = v5.copyOf(v5.size - V5_FIELDS_SIZE - 2 * ENCODED_BOOLEAN_SIZE - encodedNullableStringSize(MultiplexerType.Tmux.id))
 
         val decoded = AbysshBackupCodec.decodePayload(v1)
 
@@ -277,11 +311,16 @@ class AbysshBackupCoreTest {
     private fun samplePayload(
         tmuxControlMode: Boolean = false,
         chooseSessionOnConnect: Boolean = false,
+        keepaliveIntervalSeconds: Int = DEFAULT_KEEPALIVE_INTERVAL_SECONDS,
     ): BackupPayload = BackupPayload(
         keys = listOf(BackupSshKey.fromEntity(sampleKey())),
         hosts = listOf(
             BackupHostProfile.fromEntity(
-                sampleHost().copy(tmuxControlMode = tmuxControlMode, chooseSessionOnConnect = chooseSessionOnConnect),
+                sampleHost().copy(
+                    tmuxControlMode = tmuxControlMode,
+                    chooseSessionOnConnect = chooseSessionOnConnect,
+                    keepaliveIntervalSeconds = keepaliveIntervalSeconds,
+                ),
             ),
         ),
     )

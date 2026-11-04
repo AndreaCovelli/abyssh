@@ -6,12 +6,14 @@ import io.github.andreacovelli.abyssh.data.backup.BackupPayload
 import io.github.andreacovelli.abyssh.data.backup.BackupSshKey
 import io.github.andreacovelli.abyssh.data.backup.InvalidBackupPassphraseException
 import io.github.andreacovelli.abyssh.model.AuthMethod
+import io.github.andreacovelli.abyssh.model.DEFAULT_KEEPALIVE_INTERVAL_SECONDS
+import io.github.andreacovelli.abyssh.model.MAX_KEEPALIVE_INTERVAL_SECONDS
 import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.Transport
 
 object AbysshBackupCodec {
     const val FORMAT_VERSION: Int = 1
-    const val PAYLOAD_VERSION: Int = 4
+    const val PAYLOAD_VERSION: Int = 5
     const val KDF_ID_PBKDF2_HMAC_SHA1: Int = 1
     const val CIPHER_ID_AES_256_GCM: Int = 1
     const val KDF_ITERATIONS: Int = 210_000
@@ -103,6 +105,7 @@ object AbysshBackupCodec {
             writeNullableStringField(host.multiplexer?.id, "multiplexer")
             writer.writeBoolean(host.tmuxControlMode)
             writer.writeBoolean(host.chooseSessionOnConnect)
+            writer.writeInt(host.keepaliveIntervalSeconds)
         }
 
         val encoded = writer.toByteArray()
@@ -176,6 +179,13 @@ object AbysshBackupCodec {
                 }
                 val tmuxControlMode = version >= 3 && reader.readBoolean()
                 val chooseSessionOnConnect = version >= 4 && reader.readBoolean()
+                val keepaliveIntervalSeconds = if (version >= 5) {
+                    reader.readInt().also {
+                        if (it !in 0..MAX_KEEPALIVE_INTERVAL_SECONDS) throw BackupFormatException("Invalid keepalive interval")
+                    }
+                } else {
+                    DEFAULT_KEEPALIVE_INTERVAL_SECONDS
+                }
                 if (transport != Transport.LocalShell) {
                     add(
                         BackupHostProfile(
@@ -194,6 +204,7 @@ object AbysshBackupCodec {
                             multiplexer = multiplexer,
                             tmuxControlMode = tmuxControlMode,
                             chooseSessionOnConnect = chooseSessionOnConnect,
+                            keepaliveIntervalSeconds = keepaliveIntervalSeconds,
                         ),
                     )
                 }

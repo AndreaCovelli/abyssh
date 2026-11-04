@@ -39,6 +39,7 @@ internal class TmuxControlLink(hostKeyPolicy: HostKeyPolicy, private val outputW
             geometry.ptyHeightPx,
             RemoteTerm.SSH,
         )
+        ssh.setKeepalive(spec.keepaliveIntervalSeconds)
     }
 
     /** Sends [command]; [onReply] gets tmux's reply. */

@@ -54,6 +54,8 @@
     <string name="multiplexer_off">Off</string>
     <string name="server_auto_run">Auto-run on connect</string>
     <string name="server_auto_run_placeholder">e.g. tmux attach -t main</string>
+    <string name="server_keepalive">Keepalive interval</string>
+    <string name="server_keepalive_hint">Seconds between keepalives. A connection that misses three in a row is reconnected. 0 turns them off.</string>
     <string name="action_clear">Clear</string>
     <string name="backup_title">SSH hosts &amp; keys backup</string>
     <string name="backup_overview_subtitle">Backup your SSH keys and server profiles.</string>

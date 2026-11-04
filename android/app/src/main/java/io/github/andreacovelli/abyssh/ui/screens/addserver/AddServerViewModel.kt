@@ -20,6 +20,8 @@ import io.github.andreacovelli.abyssh.data.repository.HostRepository
 import io.github.andreacovelli.abyssh.data.repository.KeyGenerationResult
 import io.github.andreacovelli.abyssh.data.repository.SshKeyRepository
 import io.github.andreacovelli.abyssh.model.AuthMethod
+import io.github.andreacovelli.abyssh.model.DEFAULT_KEEPALIVE_INTERVAL_SECONDS
+import io.github.andreacovelli.abyssh.model.MAX_KEEPALIVE_INTERVAL_SECONDS
 import io.github.andreacovelli.abyssh.model.HostProfile
 import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.SshKey
@@ -121,6 +123,7 @@ class AddServerViewModel(
                         multiplexer = profile.multiplexer,
                         tmuxControlMode = profile.tmuxControlMode,
                         chooseSessionOnConnect = profile.chooseSessionOnConnect,
+                        keepaliveInterval = profile.keepaliveIntervalSeconds.toString(),
                     )
             }
         }
@@ -220,6 +223,10 @@ class AddServerViewModel(
 
     fun updateTmuxControlMode(enabled: Boolean) {
         _form.value = _form.value.copy(tmuxControlMode = enabled)
+    }
+
+    fun updateKeepaliveInterval(seconds: String) {
+        _form.value = _form.value.copy(keepaliveInterval = seconds.filter(Char::isDigit).take(KEEPALIVE_FIELD_DIGITS))
     }
 
     fun updateChooseSessionOnConnect(enabled: Boolean) {
@@ -322,6 +329,7 @@ class AddServerViewModel(
                     multiplexer = current.effectiveMultiplexer,
                     tmuxControlMode = current.tmuxControlMode,
                     chooseSessionOnConnect = current.chooseSessionOnConnect,
+                    keepaliveIntervalSeconds = current.keepaliveIntervalSeconds,
                 )
             hostRepository.upsert(profile)
             val stale = if (current.id != null) applyToOpenTabs(profile) else emptyList()
@@ -376,7 +384,20 @@ data class AddServerForm(
     val multiplexer: MultiplexerType? = null,
     val tmuxControlMode: Boolean = false,
     val chooseSessionOnConnect: Boolean = false,
+    val keepaliveInterval: String = DEFAULT_KEEPALIVE_INTERVAL_SECONDS.toString(),
 )
+
+// Enough digits for MAX_KEEPALIVE_INTERVAL_SECONDS.
+private const val KEEPALIVE_FIELD_DIGITS = 5
+
+/** The keepalive interval to save: the typed seconds, at most a day, or the default when blank. */
+val AddServerForm.keepaliveIntervalSeconds: Int
+    get() = keepaliveInterval.toIntOrNull()?.coerceIn(0, MAX_KEEPALIVE_INTERVAL_SECONDS)
+        ?: DEFAULT_KEEPALIVE_INTERVAL_SECONDS
+
+/** Whether the transport keeps an SSH connection open for the session, which keepalives watch. */
+val AddServerForm.usesKeepalive: Boolean
+    get() = transport == Transport.SSH || transport == Transport.TailscaleSSH
 
 /**
  * The multiplexer the host uses: the chosen one, or none while the transport can't run it.

@@ -179,5 +179,6 @@ internal class SessionTransports(
         } else {
             ssh.openShell(geometry.cols, geometry.rows, width, height, RemoteTerm.SSH)
         }
+        ssh.setKeepalive(spec.keepaliveIntervalSeconds)
     }
 }

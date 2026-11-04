@@ -32,4 +32,13 @@ data class HostProfile(
     // reusing or creating one automatically.
     @ColumnInfo(defaultValue = "0")
     val chooseSessionOnConnect: Boolean = false,
+    // Seconds between SSH keepalives, 0 for none. A connection that answers none of
+    // three in a row is dropped and reconnected.
+    @ColumnInfo(defaultValue = "30")
+    val keepaliveIntervalSeconds: Int = DEFAULT_KEEPALIVE_INTERVAL_SECONDS,
 )
+
+const val DEFAULT_KEEPALIVE_INTERVAL_SECONDS = 30
+
+/** The longest keepalive interval a host can set: one day. */
+const val MAX_KEEPALIVE_INTERVAL_SECONDS = 24 * 60 * 60

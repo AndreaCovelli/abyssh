@@ -6,6 +6,12 @@ import io.github.andreacovelli.abyssh.model.UiText
 import io.github.andreacovelli.abyssh.model.UiTextException
 import java.io.Closeable
 
+/** The most input that may wait for a channel that takes nothing. */
+internal const val MAX_PENDING_WRITE_BYTES = 16L * 1024 * 1024
+
+/** How many keepalive intervals may pass with nothing received, as ServerAliveCountMax. */
+const val KEEPALIVE_MAX_MISSED = 3
+
 class NativeSshService(
     private val bridge: NativeSshBridge = NativeSshBridge(),
     private val hostKeyPolicy: HostKeyPolicy,
@@ -176,6 +182,7 @@ class NativeSshService(
     // pendingOffset, because libssh2 must be retried from where it stopped.
     private val pendingWrites = ArrayDeque<ByteArray>()
     private var pendingOffset = 0
+    private var pendingBytes = 0L
 
     /** Whether written input is still waiting for the channel to take it. */
     val hasPendingWrites: Boolean get() = pendingWrites.isNotEmpty()
@@ -183,12 +190,23 @@ class NativeSshService(
     /**
      * Sends [data] as far as the channel takes it now, and queues the rest, which each
      * [read] and later write sends on. Never waits, so a full channel can't stall the
-     * read loop that frees it.
+     * read loop that frees it. Throws once more than [MAX_PENDING_WRITE_BYTES] would wait,
+     * since a connection that takes nothing for that long has stopped.
      */
     fun write(data: ByteArray) {
         if (handle == 0L || data.isEmpty()) return
+        check(pendingBytes + data.size <= MAX_PENDING_WRITE_BYTES) { "Native SSH write queue full" }
         pendingWrites.addLast(data)
+        pendingBytes += data.size
         flushPendingWrites()
+    }
+
+    /**
+     * Sends a keepalive every [intervalSeconds] while the shell is open, 0 for none, and
+     * makes reads fail once [maxMissed] intervals pass with nothing received.
+     */
+    fun setKeepalive(intervalSeconds: Int, maxMissed: Int = KEEPALIVE_MAX_MISSED) {
+        if (handle != 0L) bridge.nativeSetKeepalive(handle, intervalSeconds, maxMissed)
     }
 
     /**
@@ -208,6 +226,7 @@ class NativeSshService(
             if (written == 0) return sent
             sent = true
             pendingOffset += written
+            pendingBytes -= written
             if (pendingOffset == head.size) {
                 pendingWrites.removeFirst()
                 pendingOffset = 0
@@ -234,6 +253,7 @@ class NativeSshService(
     override fun close() {
         pendingWrites.clear()
         pendingOffset = 0
+        pendingBytes = 0
         if (handle != 0L) {
             bridge.nativeClose(handle)
             bridge.nativeDestroySession(handle)
