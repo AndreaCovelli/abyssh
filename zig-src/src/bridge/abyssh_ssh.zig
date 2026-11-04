@@ -23,6 +23,8 @@ fn logError(comptime fmt: []const u8, args: anytype) void {
     androidLog(6, fmt, args); // ANDROID_LOG_ERROR = 6
 }
 const setup_wait_timeout_ms = 10_000;
+// How long a resize waits for room in the send buffer before it is left for later.
+const resize_wait_timeout_ms = 1_000;
 // How long one address may take to accept the TCP connection before the next is tried.
 const tcp_connect_timeout_ms = 15_000;
 const cancelled_message = "Connection cancelled";
@@ -53,6 +55,9 @@ const NativeSshSession = struct {
     cancelled: bool = false,
     // Kept between reads, which the read loop makes for every chunk of output.
     read_buffer: []u8 = &.{},
+    // A window-change libssh2 holds half-sent. The next resize must finish it first,
+    // because libssh2 resends the held packet and ignores the new size until it has.
+    resize_in_flight: bool = false,
 };
 
 fn sessionFromHandle(handle: c.jlong) ?*NativeSshSession {
@@ -78,20 +83,29 @@ fn setError(session: *NativeSshSession, comptime fmt: []const u8, args: anytype)
 }
 
 /// Polls `fd` for `events` and the session's cancel eventfd together. Returns the poll
-/// result for `fd`, or null once the cancel eventfd has been signalled.
+/// result for `fd`, or null once the cancel eventfd has been signalled. A signal that
+/// interrupts the wait restarts it for the time that is left.
 fn pollCancellable(session: *NativeSshSession, fd: c_int, events: c_short, timeout_ms: c_int) ?struct { rc: c_int, revents: c_short } {
-    if (session.cancelled) return null;
-    var poll_fds: [2]c.struct_pollfd = .{
-        .{ .fd = fd, .events = events, .revents = 0 },
-        .{ .fd = session.cancel_fd, .events = c.POLLIN, .revents = 0 },
-    };
-    const count: c.nfds_t = if (session.cancel_fd >= 0) 2 else 1;
-    const rc = c.poll(&poll_fds, count, timeout_ms);
-    if (count == 2 and poll_fds[1].revents != 0) {
-        session.cancelled = true;
-        return null;
+    const deadline_ms: ?i64 = if (timeout_ms < 0) null else nowMs() + timeout_ms;
+    var wait_ms = timeout_ms;
+    while (true) {
+        if (session.cancelled) return null;
+        var poll_fds: [2]c.struct_pollfd = .{
+            .{ .fd = fd, .events = events, .revents = 0 },
+            .{ .fd = session.cancel_fd, .events = c.POLLIN, .revents = 0 },
+        };
+        const count: c.nfds_t = if (session.cancel_fd >= 0) 2 else 1;
+        const rc = c.poll(&poll_fds, count, wait_ms);
+        if (rc < 0 and c.__errno().* == c.EINTR) {
+            if (deadline_ms) |deadline| wait_ms = @intCast(@max(0, deadline - nowMs()));
+            continue;
+        }
+        if (count == 2 and poll_fds[1].revents != 0) {
+            session.cancelled = true;
+            return null;
+        }
+        return .{ .rc = rc, .revents = poll_fds[0].revents };
     }
-    return .{ .rc = rc, .revents = poll_fds[0].revents };
 }
 
 fn setLibssh2Error(session: *NativeSshSession, prefix: []const u8, rc: c_int) void {
@@ -1144,6 +1158,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         _ = c.libssh2_channel_free(old_ch);
     }
     session.channel = channel;
+    session.resize_in_flight = false;
     c.libssh2_channel_set_blocking(channel.?, 0);
     var term_buf = allocator.allocSentinel(u8, term_slice.len, 0) catch {
         setError(session, "TERM alloc failed", .{});
@@ -1242,6 +1257,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         _ = c.libssh2_channel_free(old_ch);
     }
     session.channel = channel;
+    session.resize_in_flight = false;
     setSocketNonBlocking(session.socket_fd);
     c.libssh2_session_set_blocking(ssh_session, 0);
     c.libssh2_channel_set_blocking(channel.?, 0);
@@ -1285,6 +1301,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         _ = c.libssh2_channel_free(old_ch);
     }
     session.channel = channel;
+    session.resize_in_flight = false;
     c.libssh2_channel_set_blocking(channel.?, 0);
 
     var term_buf = allocator.allocSentinel(u8, term_slice.len, 0) catch {
@@ -1340,23 +1357,40 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     return if (c.libssh2_channel_eof(channel) == 1) c.JNI_TRUE else c.JNI_FALSE;
 }
 
-export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeResize(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, cols: c.jint, rows: c.jint, width_px: c.jint, height_px: c.jint) callconv(.c) c.jboolean {
+/// Sends the PTY size: 1 once it is sent, 0 when the send buffer stays full and the
+/// caller should try again later, -1 with the last error set when it fails.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeResize(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, cols: c.jint, rows: c.jint, width_px: c.jint, height_px: c.jint) callconv(.c) c.jint {
     _ = env;
     _ = thiz;
-    const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
-    const channel = session.channel orelse return c.JNI_FALSE;
-    while (true) {
-        const rc = c.libssh2_channel_request_pty_size_ex(channel, cols, rows, width_px, height_px);
-        if (rc == 0) return c.JNI_TRUE;
-        if (rc != c.LIBSSH2_ERROR_EAGAIN) {
-            setLibssh2Error(session, "PTY resize failed", rc);
-            return c.JNI_FALSE;
-        }
-        if (!waitSocket(session, setup_wait_timeout_ms)) {
-            setError(session, "PTY resize timed out", .{});
-            return c.JNI_FALSE;
+    const session = sessionFromHandle(handle) orelse return -1;
+    const channel = session.channel orelse return -1;
+    // The first pass finishes a held window-change, whatever size it carries.
+    const passes: usize = if (session.resize_in_flight) 2 else 1;
+    for (0..passes) |_| {
+        while (true) {
+            const rc = c.libssh2_channel_request_pty_size_ex(channel, cols, rows, width_px, height_px);
+            if (rc == 0) {
+                session.resize_in_flight = false;
+                break;
+            }
+            if (rc != c.LIBSSH2_ERROR_EAGAIN) {
+                session.resize_in_flight = false;
+                setLibssh2Error(session, "PTY resize failed", rc);
+                return -1;
+            }
+            session.resize_in_flight = true;
+            switch (pollSocket(session, resize_wait_timeout_ms)) {
+                .ready => {},
+                // A busy connection is no reason to end the session.
+                .timeout => return 0,
+                .failed => {
+                    setError(session, "PTY resize failed: connection lost", .{});
+                    return -1;
+                },
+            }
         }
     }
+    return 1;
 }
 
 /// Reads what stdout and stderr hold now, without waiting: an empty array when there is

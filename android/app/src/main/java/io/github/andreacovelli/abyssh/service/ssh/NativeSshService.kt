@@ -162,12 +162,13 @@ class NativeSshService(
         return bridge.nativeChannelEof(handle)
     }
 
-    fun resize(cols: Int, rows: Int, widthPx: Int, heightPx: Int) {
-        if (handle == 0L) return
-        if (!bridge.nativeResize(handle, cols, rows, widthPx, heightPx)) {
-            error(
-                bridge.nativeGetLastError(handle) ?: "Native SSH resize failed"
-            )
+    /** Sends the PTY size; false when the connection is too busy to take it now. */
+    fun resize(cols: Int, rows: Int, widthPx: Int, heightPx: Int): Boolean {
+        if (handle == 0L) return true
+        return when (bridge.nativeResize(handle, cols, rows, widthPx, heightPx)) {
+            1 -> true
+            0 -> false
+            else -> error(bridge.nativeGetLastError(handle) ?: "Native SSH resize failed")
         }
     }
 

@@ -76,13 +76,14 @@ class NativeSshBridge {
 
     external fun nativeChannelEof(handle: Long): Boolean
 
+    /** Sends the PTY size: 1 once sent, 0 when the send buffer stays full, -1 on failure. */
     external fun nativeResize(
         handle: Long,
         cols: Int,
         rows: Int,
         widthPx: Int,
         heightPx: Int,
-    ): Boolean
+    ): Int
 
     /** What stdout and stderr hold now, empty when nothing has arrived, or null when the read fails. */
     external fun nativeRead(handle: Long, maxBytes: Int): ByteArray?
