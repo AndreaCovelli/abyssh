@@ -2,6 +2,7 @@
 const std = @import("std");
 
 const c = @import("c");
+const jni_string = @import("jni_string.zig");
 const wake = @import("abyssh_wake.zig");
 
 const allocator = std.heap.c_allocator;
@@ -65,12 +66,16 @@ fn setErrnoError(session: *NativeLocalShellSession, prefix: []const u8) void {
     setError(session, "{s}: errno={}", .{ prefix, errnoValue() });
 }
 
+/// The UTF-8 form of `s`, owned by the caller. Null when `s` is null, on failure, or
+/// when it holds a NUL, which would cut the string short once it reaches C.
 fn jniDupString(env: *c.JNIEnv, s: c.jstring) ?[]u8 {
-    if (s == null) return null;
-    const chars = env.*.*.GetStringUTFChars.?(env, s, null);
-    if (chars == null) return null;
-    defer env.*.*.ReleaseStringUTFChars.?(env, s, chars);
-    return allocator.dupe(u8, std.mem.span(chars)) catch null;
+    const bytes = jni_string.dupUtf8(env, allocator, s) orelse return null;
+    if (std.mem.indexOfScalar(u8, bytes, 0) != null) {
+        std.crypto.secureZero(u8, bytes);
+        allocator.free(bytes);
+        return null;
+    }
+    return bytes;
 }
 
 fn dupSentinel(bytes: []const u8) ?[:0]u8 {
@@ -94,10 +99,7 @@ fn jniEmptyByteArray(env: *c.JNIEnv) c.jbyteArray {
 
 fn jniNewStringOrNull(env: *c.JNIEnv, bytes: []const u8) c.jstring {
     if (bytes.len == 0) return null;
-    var buf = allocator.allocSentinel(u8, bytes.len, 0) catch return null;
-    defer allocator.free(buf);
-    @memcpy(buf[0..bytes.len], bytes);
-    return env.*.*.NewStringUTF.?(env, buf.ptr);
+    return jni_string.newString(env, allocator, bytes);
 }
 
 fn closeFd(fd: *c_int) void {

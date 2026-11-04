@@ -4,6 +4,7 @@ const ghostty = @import("ghostty-vt");
 const zignal_png = @import("zignal_png.zig");
 
 const c = @import("c");
+const jni_string = @import("jni_string.zig");
 
 const allocator = std.heap.c_allocator;
 const LOG_TAG = "AbyssKittyNative";
@@ -658,13 +659,13 @@ fn jniNewDirectByteBuffer(env: *c.JNIEnv, ptr: ?*anyopaque, len: c.jlong) c.jobj
     return env.*.*.NewDirectByteBuffer.?(env, ptr, len);
 }
 
-fn jniNewStringUTF(env: *c.JNIEnv, s: [*:0]const u8) c.jstring {
-    return env.*.*.NewStringUTF.?(env, s);
+fn jniNewString(env: *c.JNIEnv, bytes: []const u8) c.jstring {
+    return jni_string.newString(env, allocator, bytes);
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeVersion(env: *c.JNIEnv, clazz: c.jclass) callconv(.c) c.jstring {
     _ = clazz;
-    return jniNewStringUTF(env, "1");
+    return jniNewString(env, "1");
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeCreate(env: *c.JNIEnv, thiz: c.jobject, cols: c.jint, rows: c.jint, max_scrollback_bytes: c.jint) callconv(.c) c.jlong {
@@ -766,13 +767,13 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativePollTitle(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jstring {
     _ = thiz;
     const value = abyssh_poll_title_ptr(handle) orelse return null;
-    return jniNewStringUTF(env, value);
+    return jniNewString(env, std.mem.span(value));
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativePollPwd(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jstring {
     _ = thiz;
     const value = abyssh_poll_pwd_ptr(handle) orelse return null;
-    return jniNewStringUTF(env, value);
+    return jniNewString(env, std.mem.span(value));
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativePollClipboard(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jbyteArray {
@@ -815,16 +816,9 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     // For printable characters this allows the legacy encoding path to emit
     // raw text when the remote terminal doesn't support Kitty keyboard protocol.
     // Must outlive the encodeKey call because Ghostty references it.
-    var utf8_buf: [256]u8 = undefined;
-    const utf8_slice: []const u8 = blk: {
-        if (utf8_jstring == null) break :blk "";
-        const chars = env.*.*.GetStringUTFChars.?(env, utf8_jstring, null) orelse break :blk "";
-        defer env.*.*.ReleaseStringUTFChars.?(env, utf8_jstring, chars);
-        const len = std.mem.span(chars).len;
-        if (len > utf8_buf.len) break :blk "";
-        @memcpy(utf8_buf[0..len], chars[0..len]);
-        break :blk utf8_buf[0..len];
-    };
+    const utf8_owned = jni_string.dupUtf8(env, allocator, utf8_jstring);
+    defer if (utf8_owned) |owned| allocator.free(owned);
+    const utf8_slice: []const u8 = if (utf8_owned) |owned| (if (owned.len <= 256) owned else "") else "";
 
     var buf: [128]u8 = undefined;
     var writer: std.Io.Writer = .fixed(&buf);
@@ -847,17 +841,12 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     const terminal = abysshFromHandle(handle) orelse return jniEmptyByteArray(env);
     if (data_jstring == null) return jniEmptyByteArray(env);
 
-    const chars = env.*.*.GetStringUTFChars.?(env, data_jstring, null) orelse return jniEmptyByteArray(env);
-    defer env.*.*.ReleaseStringUTFChars.?(env, data_jstring, chars);
-    const data_len = std.mem.span(chars).len;
-    if (data_len == 0) return jniEmptyByteArray(env);
-
     // encodePaste may need to mutate the data in place (stripping unsafe
     // bytes and, for non-bracketed pastes, converting newlines to \r), so
-    // copy the JNI string into a mutable buffer before encoding.
-    const data_copy = allocator.alloc(u8, data_len) catch return jniEmptyByteArray(env);
+    // it gets its own copy of the string.
+    const data_copy = jni_string.dupUtf8(env, allocator, data_jstring) orelse return jniEmptyByteArray(env);
     defer allocator.free(data_copy);
-    @memcpy(data_copy, chars[0..data_len]);
+    if (data_copy.len == 0) return jniEmptyByteArray(env);
 
     const segments = ghostty.input.encodePaste(data_copy, ghostty.input.PasteOptions.fromTerminal(&terminal.terminal));
     const total = segments[0].len + segments[1].len + segments[2].len;
@@ -1836,7 +1825,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
 
     const text = selectionTextFromPins(terminal, start_pin, end_pin, allocator) catch return null;
     defer allocator.free(text);
-    return jniNewStringUTF(env, text.ptr);
+    return jniNewString(env, text);
 }
 
 /// Like nativeFormatSelectionRange but takes absolute screen-space cell
@@ -1860,7 +1849,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
 
     const text = selectionTextFromPins(terminal, start_pin, end_pin, allocator) catch return null;
     defer allocator.free(text);
-    return jniNewStringUTF(env, text.ptr);
+    return jniNewString(env, text);
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeSelectWordAt(
@@ -1883,7 +1872,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
         .trim = true,
     }) catch return null;
     defer allocator.free(text);
-    return jniNewStringUTF(env, text.ptr);
+    return jniNewString(env, text);
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeSelectLineAt(
@@ -1909,7 +1898,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
         .trim = true,
     }) catch return null;
     defer allocator.free(text);
-    return jniNewStringUTF(env, text.ptr);
+    return jniNewString(env, text);
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeSelectAll(
@@ -1928,7 +1917,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
         .trim = true,
     }) catch return null;
     defer allocator.free(text);
-    return jniNewStringUTF(env, text.ptr);
+    return jniNewString(env, text);
 }
 
 // Cap on matches returned to the host, so a one-letter query over a long
@@ -1948,9 +1937,8 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     _ = thiz;
     const terminal = abysshFromHandle(handle) orelse return jniIntArray(env, &.{});
     if (query_jstring == null) return jniIntArray(env, &.{});
-    const chars = env.*.*.GetStringUTFChars.?(env, query_jstring, null) orelse return jniIntArray(env, &.{});
-    defer env.*.*.ReleaseStringUTFChars.?(env, query_jstring, chars);
-    const query = std.mem.span(chars);
+    const query = jni_string.dupUtf8(env, allocator, query_jstring) orelse return jniIntArray(env, &.{});
+    defer allocator.free(query);
     if (query.len == 0) return jniIntArray(env, &.{});
 
     const screen = terminal.terminal.screens.active;
@@ -2019,7 +2007,5 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     const cell = pin.rowAndCell().cell;
     const link_id = page.lookupHyperlink(cell) orelse return null;
     const uri = page.hyperlink_set.get(page.memory, link_id).uri.slice(page.memory);
-    const uri_z = allocator.dupeSentinel(u8, uri, 0) catch return null;
-    defer allocator.free(uri_z);
-    return jniNewStringUTF(env, uri_z.ptr);
+    return jniNewString(env, uri);
 }

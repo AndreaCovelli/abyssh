@@ -4,6 +4,7 @@ const std = @import("std");
 const mosh = @import("mosh");
 
 const c = @import("c");
+const jni_string = @import("jni_string.zig");
 const wake = @import("abyssh_wake.zig");
 
 const allocator = std.heap.c_allocator;
@@ -27,12 +28,16 @@ fn logError(comptime fmt: []const u8, args: anytype) void {
 // JNI helpers
 // ---------------------------------------------------------------------------
 
+/// The UTF-8 form of `s`, owned by the caller. Null when `s` is null, on failure, or
+/// when it holds a NUL, which would cut the string short once it reaches C.
 fn jniDupString(env: *c.JNIEnv, s: c.jstring) ?[]u8 {
-    if (s == null) return null;
-    const chars = env.*.*.GetStringUTFChars.?(env, s, null);
-    if (chars == null) return null;
-    defer env.*.*.ReleaseStringUTFChars.?(env, s, chars);
-    return allocator.dupe(u8, std.mem.span(chars)) catch null;
+    const bytes = jni_string.dupUtf8(env, allocator, s) orelse return null;
+    if (std.mem.indexOfScalar(u8, bytes, 0) != null) {
+        std.crypto.secureZero(u8, bytes);
+        allocator.free(bytes);
+        return null;
+    }
+    return bytes;
 }
 
 fn clientFromHandle(handle: c.jlong) *anyopaque {
