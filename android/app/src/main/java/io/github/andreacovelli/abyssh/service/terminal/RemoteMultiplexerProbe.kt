@@ -17,6 +17,7 @@ import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSessi
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlCommands
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyPolicy
 import io.github.andreacovelli.abyssh.service.ssh.NativeSshService
+import java.util.concurrent.CopyOnWriteArraySet
 
 private const val COMMAND_TIMEOUT_MS = 20_000L
 private const val EXEC_READ_BYTES = 4096
@@ -36,6 +37,14 @@ internal class RemoteMultiplexerProbe(
     private val hostKeyPolicy: HostKeyPolicy,
     private val availabilityCache: MultiplexerAvailabilityCache = MultiplexerAvailabilityCache.shared,
 ) {
+    private val running = CopyOnWriteArraySet<RunningCommand>()
+
+    /**
+     * Ends the commands running now, which then fail with "Connection cancelled"; later
+     * commands run as usual. Safe to call from any thread.
+     */
+    fun cancel() = running.forEach(RunningCommand::cancel)
+
     fun availability(spec: TabSpec): MultiplexerAvailability {
         val type = spec.multiplexer ?: return MultiplexerAvailability.Available
         val multiplexer =
@@ -124,18 +133,27 @@ internal class RemoteMultiplexerProbe(
 
     private fun runCommand(spec: TabSpec, command: String): MultiplexerCommandResult =
         NativeSshService(hostKeyPolicy = hostKeyPolicy).use { ssh ->
-            ssh.connect(spec)
-            if (ssh.openExec(withExitEnvelope(command))) {
-                readExecOutput(ssh)
-            } else {
-                MultiplexerCommandResult(EXIT_NO_CHANNEL, "", "Remote server did not open an exec channel")
+            val running = RunningCommand(ssh)
+            this.running += running
+            try {
+                ssh.connect(spec)
+                running.throwIfCancelled()
+                if (ssh.openExec(withExitEnvelope(command))) {
+                    readExecOutput(running)
+                } else {
+                    MultiplexerCommandResult(EXIT_NO_CHANNEL, "", "Remote server did not open an exec channel")
+                }
+            } finally {
+                this.running -= running
             }
         }
 
-    private fun readExecOutput(ssh: NativeSshService): MultiplexerCommandResult {
+    private fun readExecOutput(running: RunningCommand): MultiplexerCommandResult {
+        val ssh = running.ssh
         val output = StringBuilder()
         val deadline = System.currentTimeMillis() + COMMAND_TIMEOUT_MS
         while (System.currentTimeMillis() < deadline) {
+            running.throwIfCancelled()
             val chunk = ssh.read(EXEC_READ_BYTES)
             when {
                 chunk != null && chunk.isNotEmpty() -> output.append(String(chunk, Charsets.UTF_8))
@@ -144,6 +162,21 @@ internal class RemoteMultiplexerProbe(
             }
         }
         return MultiplexerCommandResult(EXIT_TIMED_OUT, output.toString(), "Command timed out")
+    }
+}
+
+/** A command's connection, which [cancel] ends from another thread. */
+private class RunningCommand(val ssh: NativeSshService) {
+    @Volatile private var cancelled = false
+
+    fun cancel() {
+        cancelled = true
+        ssh.cancelConnect()
+    }
+
+    // Authentication can't be cut short, so the command checks between steps.
+    fun throwIfCancelled() {
+        if (cancelled) throw UiTextException(UiText.Resource(R.string.error_connection_cancelled), "Connection cancelled")
     }
 }
 

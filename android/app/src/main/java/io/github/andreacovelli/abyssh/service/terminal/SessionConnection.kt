@@ -14,7 +14,9 @@ import io.github.andreacovelli.abyssh.service.mosh.MoshRuntimeState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -96,6 +98,7 @@ internal class SessionConnection(
     override fun connect(spec: TabSpec, sessionKey: String) {
         // A Retry shouldn't queue behind an attempt that is still waiting on the network.
         transports.cancelConnect()
+        multiplexers.cancel()
         disconnectRequested = false
         this.spec = spec
         val previous = connectJob
@@ -123,6 +126,7 @@ internal class SessionConnection(
     override fun disconnect(onClosed: () -> Unit) {
         disconnectRequested = true
         transports.cancelConnect()
+        multiplexers.cancel()
         connectJob?.cancel()
         reconnectJob?.cancel()
         reconnectJob = null
@@ -215,16 +219,17 @@ internal class SessionConnection(
         }
     }
 
-    private fun preconditionFailure(spec: TabSpec): UiText? {
+    private suspend fun preconditionFailure(spec: TabSpec): UiText? {
         val bridge = emulator.bridge
+        val remote = spec.transport != Transport.LocalShell
         return when {
             !bridge.isLoaded() -> UiText.Resource(R.string.error_native_terminal_unavailable, bridge.nativeStatus())
             transports.unavailableReason(spec.transport) != null -> transports.unavailableReason(spec.transport)
-            spec.transport != Transport.LocalShell && spec.username.isBlank() -> UiText.Resource(R.string.error_username_required)
+            remote && spec.username.isBlank() -> UiText.Resource(R.string.error_username_required)
             // Checked before the multiplexer probe, which already connects to the host.
-            spec.transport != Transport.LocalShell && localNetwork?.blocks(spec.host) == true ->
+            remote && localNetwork != null && scope.offSessionThread { localNetwork.blocks(spec.host) } ->
                 UiText.Resource(R.string.error_local_network_denied)
-            else -> multiplexers.availability(spec).errorMessage(spec.multiplexer)
+            else -> scope.offSessionThread { multiplexers.availability(spec) }.errorMessage(spec.multiplexer)
         }
     }
 
@@ -427,6 +432,13 @@ internal class SessionConnection(
         state.update { if (it.status == status) it else it.copy(status = status) }
     }
 }
+
+/**
+ * Runs [block], which looks up a host or logs in, on another thread, so the session
+ * thread stays free. A cancelled caller returns at once and leaves [block] to finish.
+ */
+private suspend fun <T> CoroutineScope.offSessionThread(block: () -> T): T =
+    async(Dispatchers.IO) { runCatching(block) }.await().getOrThrow()
 
 /** The cause to show after a failure's prefix, such as "Reconnect failed: …". */
 private fun Throwable.reason(): UiText = toUiText(UiText.Resource(R.string.error_unknown))
