@@ -28,6 +28,7 @@ private const val BOOTSTRAP_READ_BYTES = 4096
 private const val BOOTSTRAP_POLL_MS = 50L
 private const val BOOTSTRAP_WINDOW_MS = 10_000L
 private const val BOOTSTRAP_EXTENSION_MS = 15_000L
+private const val SERVER_PID_WAIT_MS = 2_000L
 private const val SHUTDOWN_WAIT_MS = 1_000L
 private const val SHUTDOWN_POLL_MS = 10L
 
@@ -72,6 +73,12 @@ internal class MoshTransport(
     // Kept across clients, so a reconnect while the tab is hidden stays quiet.
     private var quiet = false
 
+    // The mosh-server the last bootstrap started, until it is known to have exited. The
+    // next bootstrap on the same host stops it.
+    private var server: MoshServer? = null
+
+    private class MoshServer(val host: String, val port: Int, val username: String, val pid: Int)
+
     /** Stops or resumes heartbeats and acks, now and for clients started later. */
     fun setQuiet(quiet: Boolean) {
         this.quiet = quiet
@@ -107,6 +114,7 @@ internal class MoshTransport(
             if (acknowledged || service.pollState()?.state == MoshState.Failed.code) break
             Thread.sleep(SHUTDOWN_POLL_MS)
         }
+        if (acknowledged) server = null
         Log.d(TAG, "MOSH: shutdown ${if (acknowledged) "acknowledged" else "not acknowledged"}")
     }
 
@@ -125,14 +133,17 @@ internal class MoshTransport(
         Log.d(TAG, "MOSH: Resolved endpoint host=$endpointHost from profile host=${spec.host}")
         // Use exec channel to bypass shell init noise and MOTD.
         // Falls back to shell if the remote server doesn't support exec.
-        val moshCommand = MoshReconnectPolicy.bootstrapCommand()
+        // A server left on another host, or for another user, can't be reached from here.
+        val stalePid = server?.takeIf { it.host == spec.host && it.port == spec.port && it.username == spec.username }?.pid
+        val moshCommand = MoshReconnectPolicy.bootstrapCommand(stalePid)
         val execOpened = runCatching { ssh.openExec(moshCommand) }.getOrDefault(false)
         if (!execOpened) {
             Log.w(TAG, "MOSH: exec channel unavailable, falling back to shell")
             ssh.openShell(geometry.cols, geometry.rows, geometry.ptyWidthPx, geometry.ptyHeightPx)
             ssh.write("$moshCommand\n".toByteArray(Charsets.UTF_8))
         }
-        Log.d(TAG, "MOSH: SSH connected, ${if (execOpened) "exec" else "shell"} channel opened")
+        server = null
+        Log.d(TAG, "MOSH: SSH connected, ${if (execOpened) "exec" else "shell"} channel opened${stalePid?.let { ", stopping server $it" }.orEmpty()}")
 
         // Read output until we find MOSH CONNECT, the channel hits EOF, or
         // we time out. If the first window has no output and no EOF on exec,
@@ -144,8 +155,11 @@ internal class MoshTransport(
             endpoint = readBootstrapWindow(endpointHost, output, execOpened, BOOTSTRAP_EXTENSION_MS)
         }
         if (endpoint == null) bootstrapFailed(output.toString(), execOpened)
+        val pid = readServerPid(output, execOpened)
         ssh.close()
         startClient(endpoint, geometry)
+        server = pid?.let { MoshServer(spec.host, spec.port, spec.username, it) }
+        Log.d(TAG, "MOSH: server pid ${pid ?: "unknown"}")
         Log.d(TAG, "MOSH: Phase 2 — mosh client ready")
     }
 
@@ -176,6 +190,7 @@ internal class MoshTransport(
             } else if (runtime?.state == MoshState.Stopped.code) {
                 // The server sends its shutdown once its shell exits; the client acks it and stops.
                 shellExited = true
+                server = null
                 Log.d(TAG, "MOSH: server ended the session")
             } else {
                 // Sleep until a datagram arrives, input is sent, or the client's next
@@ -249,6 +264,17 @@ internal class MoshTransport(
             }
         }
         return null
+    }
+
+    /** Reads on until mosh-server reports its pid, which it prints after the connect line. */
+    private suspend fun readServerPid(output: StringBuilder, execOpened: Boolean): Int? {
+        val deadline = SystemClock.elapsedRealtime() + SERVER_PID_WAIT_MS
+        while (true) {
+            MoshBootstrapParser.serverPid(output)?.let { return it }
+            if (SystemClock.elapsedRealtime() >= deadline || (execOpened && ssh.isChannelEof())) return null
+            val chunk = ssh.read(BOOTSTRAP_READ_BYTES)
+            if (chunk != null && chunk.isNotEmpty()) output.append(String(chunk, Charsets.UTF_8)) else delay(BOOTSTRAP_POLL_MS)
+        }
     }
 
     private fun bootstrapFailed(rawOutput: String, execOpened: Boolean): Nothing {

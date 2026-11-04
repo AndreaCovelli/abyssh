@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.service.mosh
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -32,5 +33,21 @@ class MoshReconnectPolicyTest {
             ),
         )
         assertTrue(command.endsWith("mosh-server new -s -c 256"))
+    }
+
+    @Test
+    fun bootstrapStopsTheStaleServerFirst() {
+        val command = MoshReconnectPolicy.bootstrapCommand(staleServerPid = 4242)
+
+        assertEquals(
+            "sh -c 'case \"\$(ps -o comm= -p 4242 2>/dev/null)\" in *mosh-server) kill 4242;; esac'; ",
+            command.substringBefore("env "),
+        )
+        assertTrue(command.endsWith(MoshReconnectPolicy.bootstrapCommand()))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun bootstrapRejectsAnInvalidPid() {
+        MoshReconnectPolicy.bootstrapCommand(staleServerPid = 0)
     }
 }
