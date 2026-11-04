@@ -283,7 +283,47 @@ fn nowMs() i64 {
     return time.milliTimestamp();
 }
 
+// How long closing a channel or session waits for the socket to take its last packets.
+const teardown_wait_ms = 2_000;
+
+/// Repeats a libssh2 teardown call while it returns EAGAIN, until `deadline_ms`.
+fn retryTeardown(session: *NativeSshSession, deadline_ms: i64, call: anytype, args: anytype) c_int {
+    while (true) {
+        const rc: c_int = @call(.auto, call, args);
+        if (rc != c.LIBSSH2_ERROR_EAGAIN) return rc;
+        const left_ms = deadline_ms - nowMs();
+        if (left_ms <= 0) return rc;
+        if (pollSocket(session, @intCast(left_ms)) == .failed) return rc;
+    }
+}
+
+/// Closes and frees `channel`. libssh2 returns EAGAIN while the socket is busy and
+/// frees nothing, so wait for it; if it still can't, the session free reclaims it.
+fn freeChannel(session: *NativeSshSession, channel: *c.LIBSSH2_CHANNEL, deadline_ms: i64) void {
+    _ = retryTeardown(session, deadline_ms, c.libssh2_channel_close, .{channel});
+    const rc = retryTeardown(session, deadline_ms, c.libssh2_channel_free, .{channel});
+    if (rc != 0) logInfo("SSH channel free rc={}", .{rc});
+}
+
+/// Says goodbye and frees `ssh_session`. When the socket is still too busy at
+/// `deadline_ms`, shutting it down makes libssh2's sends fail, so the free completes
+/// instead of leaking the session.
+fn freeSession(session: *NativeSshSession, ssh_session: *c.LIBSSH2_SESSION, deadline_ms: i64) void {
+    _ = retryTeardown(session, deadline_ms, c.libssh2_session_disconnect_ex, .{ ssh_session, c.SSH_DISCONNECT_BY_APPLICATION, "bye", "en" });
+    if (retryTeardown(session, deadline_ms, c.libssh2_session_free, .{ssh_session}) != c.LIBSSH2_ERROR_EAGAIN) return;
+    if (session.socket_fd >= 0) _ = c.shutdown(session.socket_fd, c.SHUT_RDWR);
+    var attempts: usize = 0;
+    while (c.libssh2_session_free(ssh_session) == c.LIBSSH2_ERROR_EAGAIN) {
+        attempts += 1;
+        if (attempts >= 8) {
+            logError("SSH session free kept returning EAGAIN; leaking it", .{});
+            return;
+        }
+    }
+}
+
 fn destroyNativeSshSession(session: *NativeSshSession) void {
+    const deadline_ms = nowMs() + teardown_wait_ms;
     if (session.upload_handle) |uh| {
         _ = closeSftpHandle(session, uh, "destroy upload handle");
         session.upload_handle = null;
@@ -293,12 +333,10 @@ fn destroyNativeSshSession(session: *NativeSshSession) void {
         session.sftp = null;
     }
     if (session.channel) |channel| {
-        _ = c.libssh2_channel_close(channel);
-        _ = c.libssh2_channel_free(channel);
+        freeChannel(session, channel, deadline_ms);
     }
     if (session.session) |ssh_session| {
-        _ = c.libssh2_session_disconnect_ex(ssh_session, c.SSH_DISCONNECT_BY_APPLICATION, "bye", "en");
-        _ = c.libssh2_session_free(ssh_session);
+        freeSession(session, ssh_session, deadline_ms);
     }
     closeSocket(session.socket_fd);
     if (session.username) |username| allocator.free(username);
@@ -1154,8 +1192,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         }
     }
     if (session.channel) |old_ch| {
-        _ = c.libssh2_channel_close(old_ch);
-        _ = c.libssh2_channel_free(old_ch);
+        freeChannel(session, old_ch, nowMs() + teardown_wait_ms);
     }
     session.channel = channel;
     session.resize_in_flight = false;
@@ -1241,20 +1278,17 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         if (startup_rc == 0) break;
         if (startup_rc != c.LIBSSH2_ERROR_EAGAIN) {
             setLibssh2Error(session, "Exec start failed", startup_rc);
-            _ = c.libssh2_channel_close(channel.?);
-            _ = c.libssh2_channel_free(channel.?);
+            freeChannel(session, channel.?, nowMs() + teardown_wait_ms);
             return c.JNI_FALSE;
         }
         if (!waitSocket(session, setup_wait_timeout_ms)) {
             setError(session, "Exec start timed out", .{});
-            _ = c.libssh2_channel_close(channel.?);
-            _ = c.libssh2_channel_free(channel.?);
+            freeChannel(session, channel.?, nowMs() + teardown_wait_ms);
             return c.JNI_FALSE;
         }
     }
     if (session.channel) |old_ch| {
-        _ = c.libssh2_channel_close(old_ch);
-        _ = c.libssh2_channel_free(old_ch);
+        freeChannel(session, old_ch, nowMs() + teardown_wait_ms);
     }
     session.channel = channel;
     session.resize_in_flight = false;
@@ -1297,8 +1331,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         }
     }
     if (session.channel) |old_ch| {
-        _ = c.libssh2_channel_close(old_ch);
-        _ = c.libssh2_channel_free(old_ch);
+        freeChannel(session, old_ch, nowMs() + teardown_wait_ms);
     }
     session.channel = channel;
     session.resize_in_flight = false;
@@ -1454,6 +1487,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     _ = env;
     _ = thiz;
     const session = sessionFromHandle(handle) orelse return;
+    const deadline_ms = nowMs() + teardown_wait_ms;
     // Best-effort SFTP teardown: even if it stalls (e.g. the peer is gone), we
     // must still free the channel, session, and socket below. libssh2_session_free
     // releases any remaining SFTP state, so a stalled shutdown is not fatal here.
@@ -1466,13 +1500,11 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         session.sftp = null;
     }
     if (session.channel) |channel| {
-        _ = c.libssh2_channel_close(channel);
-        _ = c.libssh2_channel_free(channel);
+        freeChannel(session, channel, deadline_ms);
         session.channel = null;
     }
     if (session.session) |ssh_session| {
-        _ = c.libssh2_session_disconnect_ex(ssh_session, c.SSH_DISCONNECT_BY_APPLICATION, "bye", "en");
-        _ = c.libssh2_session_free(ssh_session);
+        freeSession(session, ssh_session, deadline_ms);
         session.session = null;
     }
     closeSocket(session.socket_fd);
