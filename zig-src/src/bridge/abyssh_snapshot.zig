@@ -282,6 +282,17 @@ fn clampI32(value: c.jint, minimum: i32, fallback: i32) i32 {
     return @intCast(value);
 }
 
+// The largest grid the terminal accepts, so a resize from a server (Mosh sends its own)
+// can't wrap the u16 or ask for gigabytes. MoshTransport.kt uses the same bounds.
+const max_grid_cols: i32 = 2048;
+const max_grid_rows: i32 = 1024;
+
+/// A grid dimension from Kotlin: `fallback` when below 1, at most `maximum`.
+fn gridDimension(value: c.jint, maximum: i32, fallback: u16) u16 {
+    if (value < 1) return fallback;
+    return @intCast(@min(value, maximum));
+}
+
 fn rgbFromBytes(bytes: [*c]const u8) ghostty.color.RGB {
     return .{ .r = bytes[0], .g = bytes[1], .b = bytes[2] };
 }
@@ -570,8 +581,8 @@ export fn abyssh_create_terminal(cols: c.jint, rows: c.jint, max_scrollback_byte
     const terminal = allocator.create(AbysshTerminal) catch return 0;
     errdefer allocator.destroy(terminal);
 
-    const init_cols: u16 = @intCast(clampI32(cols, 1, 80));
-    const init_rows: u16 = @intCast(clampI32(rows, 1, 24));
+    const init_cols: u16 = gridDimension(cols, max_grid_cols, 80);
+    const init_rows: u16 = gridDimension(rows, max_grid_rows, 24);
     // TinyIo is Ghostty's small blocking std.Io for embedders; the terminal
     // only needs it for secure random IDs and kitty image storage locking.
     var inner = ghostty.Terminal.init(ghostty.TinyIo.init.io(), allocator, .{
@@ -1590,8 +1601,8 @@ export fn abyssh_write_remote(handle: c.jlong, data_ptr: [*c]const u8, data_len:
 
 export fn abyssh_resize(handle: c.jlong, cols: c.jint, rows: c.jint, cell_width: c.jint, cell_height: c.jint) callconv(.c) void {
     const terminal = abysshFromHandle(handle) orelse return;
-    const new_cols: u16 = @intCast(clampI32(cols, 1, terminal.cols));
-    const new_rows: u16 = @intCast(clampI32(rows, 1, terminal.rows));
+    const new_cols: u16 = gridDimension(cols, max_grid_cols, terminal.cols);
+    const new_rows: u16 = gridDimension(rows, max_grid_rows, terminal.rows);
     const new_cell_width: u32 = @intCast(clampI32(cell_width, 1, 1));
     const new_cell_height: u32 = @intCast(clampI32(cell_height, 1, 1));
     // resize also sets width_px/height_px and turns off synchronized output.
