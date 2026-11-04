@@ -1,13 +1,20 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import android.util.Log
+import io.github.andreacovelli.abyssh.R
+import io.github.andreacovelli.abyssh.model.UiText
+import io.github.andreacovelli.abyssh.model.toUiText
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSize
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxWindowLayout
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+private const val TAG = "TmuxPane"
 
 /**
  * A tab that shows one window of [control], with a terminal per pane kept at the pane's
@@ -97,13 +104,32 @@ internal class TmuxPaneConnection(
         this.windowId = windowId
     }
 
-    override fun showLayout(layout: TmuxWindowLayout, activePane: Int) = onSessionThread { panes.showLayout(layout, activePane) }
+    override fun showLayout(layout: TmuxWindowLayout, activePane: Int) {
+        onSessionThread { panes.showLayout(layout, activePane) }
+    }
 
-    override fun showPane(paneId: Int, size: TmuxPaneSize, seed: ByteArray) = onSessionThread { panes.showPane(paneId, size, seed) }
+    override fun showPane(paneId: Int, size: TmuxPaneSize, seed: ByteArray) {
+        onSessionThread { panes.showPane(paneId, size, seed) }
+    }
 
-    override fun paneOutput(paneId: Int, data: ByteArray) = onSessionThread { panes.paneOutput(paneId, data) }
+    override fun paneOutput(paneId: Int, data: ByteArray) {
+        onSessionThread { panes.paneOutput(paneId, data) }
+    }
 
-    private fun onSessionThread(block: () -> Unit) {
-        scope.launch(dispatcher) { if (attached) block() }
+    // A pane's terminal crosses JNI, which throws many exception types; the failure
+    // becomes the tab's error instead of ending the app.
+    @Suppress("TooGenericExceptionCaught")
+    private fun onSessionThread(block: () -> Unit): Job = scope.launch(dispatcher) {
+        if (!attached) return@launch
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Pane update failed", e)
+            state.update {
+                it.copy(status = SessionStatus.Error, error = UiText.Resource(R.string.error_native_terminal_backend, e.toUiText(UiText.Resource(R.string.error_unknown))))
+            }
+        }
     }
 }

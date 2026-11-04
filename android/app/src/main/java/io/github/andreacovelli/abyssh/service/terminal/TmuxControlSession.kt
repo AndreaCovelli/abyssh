@@ -392,7 +392,18 @@ internal class TmuxControlSession(
 
     private fun onThread(block: () -> Unit) {
         if (disposed) return
-        scope.launch(dispatcher) { if (!disposed) block() }
+        scope.launch(dispatcher) {
+            if (disposed) return@launch
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Commands go out over the SSH channel, whose writes throw once it is dead.
+                Log.e(TAG, "Control session work failed", e)
+                if (!disposed) onConnectionLost(e)
+            }
+        }
     }
 
     private fun post(action: TmuxControlHost.() -> Unit) {
