@@ -1371,6 +1371,9 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     for (names.items, 0..) |name, idx| {
         const j_name = jniNewStringOrNull(env, name) orelse continue;
         env.*.*.SetObjectArrayElement.?(env, result, @intCast(idx), j_name);
+        // The array holds its own reference. Without this, a large directory fills
+        // the JNI local reference table and aborts the app.
+        env.*.*.DeleteLocalRef.?(env, j_name);
     }
     return result;
 }
