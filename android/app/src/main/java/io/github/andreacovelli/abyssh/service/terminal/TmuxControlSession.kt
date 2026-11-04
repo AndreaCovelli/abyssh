@@ -107,6 +107,9 @@ internal class TmuxControlSession(
     /** SFTP over the control session's SSH connection. */
     val sftp = SftpSession(link.ssh, dispatcher)
 
+    /** Checks the control connection after a network change. */
+    val networkProbe = KeepaliveProbe(scope, dispatcher, link.ssh) { !disposed && readJob?.isActive == true }
+
     /** Pane output the tabs haven't written yet; the read loop waits while there is too much. */
     val paneBacklog = TmuxPaneBacklog()
 

@@ -7,8 +7,10 @@ import io.github.andreacovelli.abyssh.model.UiText
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -17,8 +19,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
+import io.github.andreacovelli.abyssh.ui.components.AbyssButton
+import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
+import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
 /**
@@ -92,10 +97,14 @@ internal fun TerminalDisconnectedContent(
 internal fun TerminalConnectingContent(
     label: String,
     tabStrip: (@Composable () -> Unit)?,
+    onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     TerminalStatusFrame(tabStrip = tabStrip, modifier = modifier) {
-        AbyssText(stringResource(R.string.terminal_connecting_to, label), style = AbyssTypography.current.body)
+        Column {
+            AbyssText(stringResource(R.string.terminal_connecting_to, label), style = AbyssTypography.current.body)
+            CancelConnectButton(onCancel)
+        }
     }
 }
 
@@ -105,9 +114,27 @@ internal fun TerminalPreparingContent(
     message: String,
     tabStrip: (@Composable () -> Unit)?,
     modifier: Modifier = Modifier,
+    onCancel: (() -> Unit)? = null,
 ) {
     TerminalStatusFrame(tabStrip = tabStrip, modifier = modifier, centered = true) {
-        AbyssText(message, style = AbyssTypography.current.body)
+        Column(horizontalAlignment = if (tabStrip == null) Alignment.Start else Alignment.CenterHorizontally) {
+            AbyssText(message, style = AbyssTypography.current.body)
+            onCancel?.let { CancelConnectButton(it) }
+        }
+    }
+}
+
+/** Stops a connection attempt that is taking too long, such as on a network that went away. */
+@Composable
+private fun CancelConnectButton(onCancel: () -> Unit) {
+    val colors = AbyssColors.current
+    Spacer(Modifier.height(16.dp))
+    AbyssButton(
+        onClick = onCancel,
+        variant = AbyssButtonVariant.Ghost,
+        borderColor = colors.textMuted,
+    ) {
+        AbyssText(stringResource(R.string.action_cancel), style = AbyssTypography.current.label, color = colors.textMuted)
     }
 }
 

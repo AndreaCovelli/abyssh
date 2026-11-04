@@ -129,6 +129,10 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun cancelConnect() {
+        sessionRepository.cancelActiveConnect()
+    }
+
     fun onHostKeyDecision(accepted: Boolean) {
         sessionRepository.respondToHostKey(accepted)
     }

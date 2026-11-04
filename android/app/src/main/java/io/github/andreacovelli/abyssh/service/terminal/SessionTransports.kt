@@ -76,6 +76,9 @@ internal class SessionTransports(
     val mosh = MoshTransport(ssh, NativeMoshService(), pacer, outputWaiter)
     private var transport: Transport = Transport.SSH
 
+    /** Whether the session runs over its own SSH connection, rather than Mosh or a local shell. */
+    val usesSsh: Boolean get() = transport == Transport.SSH || transport == Transport.TailscaleSSH
+
     /** Why [transport]'s native library can't run, or null when it can. */
     fun unavailableReason(transport: Transport): UiText? = when {
         transport == Transport.Mosh && !mosh.isLoaded -> UiText.Resource(R.string.error_native_mosh_unavailable)
