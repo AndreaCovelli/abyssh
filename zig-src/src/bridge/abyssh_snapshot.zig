@@ -380,8 +380,11 @@ fn logKittyState(stage: []const u8, terminal: *AbysshTerminal) void {
     );
 }
 
+/// Sets the list's length to `size_needed`. Capacity grows geometrically, so a buffer
+/// that is appended to a little at a time, like the PTY write buffer, doesn't
+/// reallocate and copy on every append.
 fn ensureListSize(list: *std.ArrayListUnmanaged(u8), size_needed: usize) ?[*]u8 {
-    list.ensureTotalCapacityPrecise(allocator, size_needed) catch return null;
+    list.ensureTotalCapacity(allocator, size_needed) catch return null;
     list.items.len = size_needed;
     return list.items.ptr;
 }
