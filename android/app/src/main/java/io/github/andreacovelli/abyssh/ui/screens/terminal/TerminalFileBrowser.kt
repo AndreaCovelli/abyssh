@@ -252,6 +252,7 @@ class TerminalFileBrowser internal constructor(
 /** A file an upload writes, and the mode of the file it replaces, if there is one. */
 data class UploadTarget(val tabId: String, val path: String, val name: String, val existingMode: Int?)
 
+private const val LISTING_FIELDS = 4
 private const val S_IFMT = 0xF000
 private const val S_IFDIR = 0x4000
 private const val PERMISSION_BITS = 0xFFF
@@ -280,9 +281,9 @@ internal fun uploadTempPath(path: String, random: Random = Random.Default): Stri
 internal fun parentPath(path: String): String = path.substringBeforeLast('/', "").ifBlank { "/" }
 
 /**
- * Parses the native SFTP listing of [directory]: one row per entry with the name, kind
- * (`dir`, `file`, `link`, or other), size in bytes, and modification time in epoch
- * seconds, separated by tabs.
+ * Parses the native SFTP listing of [directory]: one row per entry with the kind (`dir`,
+ * `file`, `link`, or other), size in bytes, modification time in epoch seconds, and
+ * name, separated by tabs. The name comes last because it may hold tabs itself.
  */
 internal fun parseDirectoryListing(
     rows: List<String>,
@@ -290,15 +291,16 @@ internal fun parseDirectoryListing(
     formatMtime: (Long) -> String,
 ): List<FileBrowserEntry> {
     val base = directory.trimEnd('/')
-    return rows.map { row ->
-        val parts = row.split('\t')
-        val name = parts.getOrNull(0).orEmpty()
-        val size = parts.getOrNull(2)?.toLongOrNull()
-        val mtime = parts.getOrNull(3)?.toLongOrNull()
+    return rows.mapNotNull { row ->
+        val parts = row.split('\t', limit = LISTING_FIELDS)
+        if (parts.size < LISTING_FIELDS) return@mapNotNull null
+        val name = parts[3]
+        val size = parts[1].toLongOrNull()
+        val mtime = parts[2].toLongOrNull()
         FileBrowserEntry(
             name = name,
             path = "$base/$name",
-            type = when (parts.getOrNull(1)) {
+            type = when (parts[0]) {
                 "dir" -> FileEntryType.Directory
                 "file" -> FileEntryType.File
                 "link" -> FileEntryType.Symlink

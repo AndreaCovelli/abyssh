@@ -1483,6 +1483,12 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         if (rc > 0) {
             const name = entry_buf[0..@intCast(rc)];
             if (std.mem.eql(u8, name, ".") or std.mem.eql(u8, name, "..")) continue;
+            // A name is one path segment. The browser joins it onto the directory to
+            // open or delete it, so a name with a slash could point anywhere.
+            if (std.mem.indexOfAny(u8, name, "/\x00") != null) {
+                logInfo("SFTP list skipped an entry whose name holds a slash or NUL", .{});
+                continue;
+            }
             const kind: []const u8 = blk: {
                 const has_perms = (attrs.flags & c.LIBSSH2_SFTP_ATTR_PERMISSIONS) != 0;
                 if (!has_perms) break :blk "other";
@@ -1495,8 +1501,9 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
             };
             const size: u64 = if ((attrs.flags & c.LIBSSH2_SFTP_ATTR_SIZE) != 0) @intCast(attrs.filesize) else 0;
             const mtime: u64 = if ((attrs.flags & c.LIBSSH2_SFTP_ATTR_ACMODTIME) != 0) @intCast(attrs.mtime) else 0;
-            const perms: u64 = if ((attrs.flags & c.LIBSSH2_SFTP_ATTR_PERMISSIONS) != 0) @intCast(attrs.permissions) else 0;
-            const line = std.fmt.allocPrint(allocator, "{s}\t{s}\t{}\t{}\t{}", .{ name, kind, size, mtime, perms }) catch {
+            // The name goes last: it may hold tabs and newlines, and the reader splits
+            // only the first three tabs.
+            const line = std.fmt.allocPrint(allocator, "{s}\t{}\t{}\t{s}", .{ kind, size, mtime, name }) catch {
                 setError(session, "SFTP list allocation failed after {} entries", .{names.items.len});
                 read_failed = true;
                 break;
@@ -1551,7 +1558,10 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     const string_class = env.*.*.FindClass.?(env, "java/lang/String") orelse return null;
     const result = env.*.*.NewObjectArray.?(env, @intCast(names.items.len), string_class, null) orelse return null;
     for (names.items, 0..) |name, idx| {
-        const j_name = jniNewStringOrNull(env, name) orelse continue;
+        const j_name = jniNewStringOrNull(env, name) orelse {
+            setError(session, "SFTP list failed: cannot pass entry {d} to Java", .{idx});
+            return null;
+        };
         env.*.*.SetObjectArrayElement.?(env, result, @intCast(idx), j_name);
         // The array holds its own reference. Without this, a large directory fills
         // the JNI local reference table and aborts the app.

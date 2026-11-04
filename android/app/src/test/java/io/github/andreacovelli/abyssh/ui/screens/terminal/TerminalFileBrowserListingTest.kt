@@ -22,7 +22,7 @@ class TerminalFileBrowserListingTest {
     @Test
     fun `listing rows become entries under the directory`() {
         val entries = parseDirectoryListing(
-            rows = listOf("src\tdir\t4096\t100", "a.txt\tfile\t12\t200", "lnk\tlink\t0\t0", "dev\tchar\t0\t0"),
+            rows = listOf("dir\t4096\t100\tsrc", "file\t12\t200\ta.txt", "link\t0\t0\tlnk", "char\t0\t0\tdev"),
             directory = "/home/user/",
             formatMtime = { "t$it" },
         )
@@ -37,13 +37,25 @@ class TerminalFileBrowserListingTest {
     }
 
     @Test
-    fun `zero or missing size and time are left out`() {
-        val entry = parseDirectoryListing(listOf("x\tfile\t0", "y"), "/", formatMtime = { "t$it" })
+    fun `zero or unreadable size and time are left out`() {
+        val entry = parseDirectoryListing(listOf("file\t0\t?\tx"), "/", formatMtime = { "t$it" }).single()
 
-        assertNull(entry[0].sizeBytes)
-        assertNull(entry[0].modifiedAtText)
-        assertEquals(FileEntryType.Other, entry[1].type)
-        assertEquals("/y", entry[1].path)
+        assertNull(entry.sizeBytes)
+        assertNull(entry.modifiedAtText)
+    }
+
+    @Test
+    fun `names keep their tabs and newlines`() {
+        val entry = parseDirectoryListing(listOf("file\t1\t1\ta\tb\nc"), "/d", formatMtime = { "t$it" }).single()
+
+        assertEquals("a\tb\nc", entry.name)
+        assertEquals("/d/a\tb\nc", entry.path)
+        assertEquals(FileEntryType.File, entry.type)
+    }
+
+    @Test
+    fun `short rows are dropped`() {
+        assertEquals(emptyList<FileBrowserEntry>(), parseDirectoryListing(listOf("file\t1\t1"), "/", formatMtime = { "t$it" }))
     }
 
     @Test
