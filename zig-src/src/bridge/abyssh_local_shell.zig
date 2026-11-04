@@ -130,6 +130,17 @@ fn configurePty(fd: c_int) void {
     _ = c.tcsetattr(fd, c.TCSANOW, &tios);
 }
 
+/// Closes every descriptor above stderr in the child. Otherwise the shell and everything
+/// it starts keep the app's other sockets open, such as an SSH tab's, so closing that
+/// tab wouldn't end its server session. Uses plain close() rather than close_range(2),
+/// which older kernels lack and Android's seccomp filter may reject.
+fn closeInheritedFds() void {
+    const limit = c.sysconf(c._SC_OPEN_MAX);
+    const last: c_int = if (limit > 3) @intCast(@min(limit, std.math.maxInt(c_int))) else 1024;
+    var fd: c_int = 3;
+    while (fd < last) : (fd += 1) _ = c.close(fd);
+}
+
 fn unblockChildSignals() void {
     var signals_to_unblock: c.sigset_t = undefined;
     if (c.sigfillset(&signals_to_unblock) != 0) return;
@@ -228,6 +239,7 @@ fn childExec(
     if (c.dup2(slave_fd, 1) < 0) c._exit(121);
     if (c.dup2(slave_fd, 2) < 0) c._exit(120);
     if (slave_fd > 2) _ = c.close(slave_fd);
+    closeInheritedFds();
 
     _ = c.clearenv();
     _ = c.setenv("TERM", term, 1);

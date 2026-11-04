@@ -457,7 +457,8 @@ fn connectSocket(session: *NativeSshSession, host: [:0]const u8, port: u16) !c_i
     var cur = addr_list;
     while (cur) |info| : (cur = info.ai_next) {
         if (session.cancelled) return error.Cancelled;
-        const fd = c.socket(info.ai_family, info.ai_socktype, info.ai_protocol);
+        // CLOEXEC keeps the socket out of local shells, which would hold the session open.
+        const fd = c.socket(info.ai_family, info.ai_socktype | c.SOCK_CLOEXEC, info.ai_protocol);
         if (fd < 0) continue;
         if (connectWithin(session, fd, info)) {
             disableNagle(fd);
