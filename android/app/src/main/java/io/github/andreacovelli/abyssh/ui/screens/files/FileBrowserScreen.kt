@@ -37,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,7 +63,7 @@ fun FileBrowserScreen(
     onDeleteFile: (FileBrowserEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var searchQuery by remember { mutableStateOf("") }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     var optionsEntryPath by remember { mutableStateOf<String?>(null) }
 
     // At the top of the tree, going up returns to the terminal.
