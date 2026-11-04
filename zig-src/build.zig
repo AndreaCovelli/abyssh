@@ -159,7 +159,9 @@ fn buildNativeLibrary(
         // Built with debug info. AGP strips the copy it packages and keeps the symbols
         // for crash reports (debugSymbolLevel in android/app/build.gradle.kts).
         .strip = false,
-        .unwind_tables = .none,
+        // Unwind tables let Android's crash reports walk the native stack past the
+        // crashing function. Frame pointers stay off; crash reports don't need them.
+        .unwind_tables = .async,
         .omit_frame_pointer = true,
     });
     root_module.addIncludePath(b.path("src/bridge"));
@@ -190,7 +192,7 @@ fn buildNativeLibrary(
     lib.link_function_sections = true;
     lib.link_data_sections = true;
     lib.link_gc_sections = true;
-    lib.link_eh_frame_hdr = false;
+    lib.link_eh_frame_hdr = true;
     lib.lto = .thin;
     // Align segments to 16 KB, which Android 15 devices with 16 KB pages need. The
     // linker's default for x86_64 is 4 KB; check:native checks every built library.

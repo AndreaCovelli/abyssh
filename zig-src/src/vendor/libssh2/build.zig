@@ -66,10 +66,11 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .link_libc = true,
-            .unwind_tables = .none,
+            // Debug info and unwind tables stay in: the app strips the final library
+            // and keeps the symbols for crash reports, which the unwind tables let
+            // walk the stack.
+            .unwind_tables = .async,
             .omit_frame_pointer = true,
-            // Debug info stays in: the app strips the final library and keeps the
-            // symbols for crash reports.
             .stack_protector = true,
         }),
     });
