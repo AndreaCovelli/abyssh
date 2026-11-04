@@ -1,0 +1,11 @@
+Fira Code 5.002 (variable, and Bold)
+Copyright 2014-2020 The Fira Code Project Authors (https://github.com/tonsky/FiraCode)
+
+Source:
+https://github.com/google/fonts/tree/5020a98352f1909554697e1da4132da253727138/ofl/firacode
+
+res/font/fira_code_regular.ttf is FiraCode[wght].ttf as published. fira_code_bold.ttf is
+its static instance at wght 700, made with fontTools varLib.instancer. Fira Code has no
+italic.
+
+Licensed under the SIL Open Font License 1.1. See fira_code_ofl.txt.
