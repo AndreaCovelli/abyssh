@@ -21,7 +21,7 @@ fun AbyssTheme(
     val context = LocalContext.current
     val palette = themeName
         ?.let { GhosttyThemeRegistry.getTheme(context, it) }
-        ?.toChuColorPalette(pureBlack)
+        ?.toAbyssColorPalette(pureBlack)
         ?: AbyssDarkColors
 
     val fontOption = remember(fontName) { AbyssFontOption.fromId(fontName) }
@@ -44,7 +44,7 @@ fun AbyssTheme(
     }
 
     CompositionLocalProvider(
-        LocalChuColors provides palette,
+        LocalAbyssColors provides palette,
         LocalChuFont provides fontOption,
         LocalChuTypography provides typography,
     ) {

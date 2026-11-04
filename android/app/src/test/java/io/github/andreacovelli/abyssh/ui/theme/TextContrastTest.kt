@@ -38,8 +38,8 @@ class TextContrastTest {
     @Test
     fun `muted text keeps its contrast on every panel`() {
         for (theme in listOf(faint, mocha)) {
-            theme.toChuColorPalette().assertReadable()
-            theme.toChuColorPalette(pureBlack = true).assertReadable()
+            theme.toAbyssColorPalette().assertReadable()
+            theme.toAbyssColorPalette(pureBlack = true).assertReadable()
         }
     }
 
@@ -51,7 +51,7 @@ class TextContrastTest {
 
     @Test
     fun `disabled text differs from muted text`() {
-        assertNotEquals(faint.toChuColorPalette().textMuted, faint.toChuColorPalette().disabledText)
+        assertNotEquals(faint.toAbyssColorPalette().textMuted, faint.toAbyssColorPalette().disabledText)
         assertNotEquals(AbyssDarkColors.textMuted, AbyssDarkColors.disabledText)
     }
 }

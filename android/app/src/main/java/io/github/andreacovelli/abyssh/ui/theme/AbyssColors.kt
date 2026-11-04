@@ -45,11 +45,11 @@ val AbyssDarkColors: AbyssColorPalette = AbyssColorPalette(
     disabledText = Color(0xFF6C7086),
 )
 
-val LocalChuColors = staticCompositionLocalOf { AbyssDarkColors }
+val LocalAbyssColors = staticCompositionLocalOf { AbyssDarkColors }
 
 object AbyssColors {
     val current: AbyssColorPalette
         @Composable
         @ReadOnlyComposable
-        get() = LocalChuColors.current
+        get() = LocalAbyssColors.current
 }

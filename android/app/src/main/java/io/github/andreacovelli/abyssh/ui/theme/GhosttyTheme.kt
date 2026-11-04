@@ -130,7 +130,7 @@ fun GhosttyTheme.withPureBlack(): GhosttyTheme {
  * The UI palette for this theme. With [pureBlack], a dark theme gets a black
  * background and panels close to black, which borders keep apart.
  */
-fun GhosttyTheme.toChuColorPalette(pureBlack: Boolean = false): AbyssColorPalette {
+fun GhosttyTheme.toAbyssColorPalette(pureBlack: Boolean = false): AbyssColorPalette {
     if (pureBlack && isDark) return withPureBlack().toUiPalette(oled = true)
     return toUiPalette(oled = false)
 }
