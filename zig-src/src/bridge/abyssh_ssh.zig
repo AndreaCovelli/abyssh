@@ -202,6 +202,48 @@ fn waitSocket(session: *NativeSshSession, timeout_ms: c_int) bool {
     return pollSocket(session, timeout_ms) == .ready;
 }
 
+/// Waits for the socket while authenticating. Auth runs in non-blocking mode so that a
+/// server that stalls can't hold the session thread past `deadline_ms`, and a cancel
+/// ends the wait at once. Returns false, with the error set, when the wait ends.
+fn awaitAuthSocket(session: *NativeSshSession, deadline_ms: i64, what: []const u8) bool {
+    const left_ms = deadline_ms - nowMs();
+    if (left_ms > 0) {
+        switch (pollSocket(session, @intCast(left_ms))) {
+            .ready => return true,
+            .timeout => {},
+            .failed => {
+                setError(session, "{s} failed: connection lost", .{what});
+                return false;
+            },
+        }
+    }
+    setError(session, "{s} timed out", .{what});
+    return false;
+}
+
+const AuthMethods = union(enum) {
+    /// The comma-separated methods the server accepts, owned by libssh2 until its next call.
+    methods: []const u8,
+    /// The server accepted the "none" request that asking for the list sends.
+    authenticated,
+    failed,
+};
+
+/// Asks the server which auth methods it accepts, which also tries "none" auth.
+fn queryAuthMethods(session: *NativeSshSession, ssh_session: *c.LIBSSH2_SESSION, username: []const u8, deadline_ms: i64, what: []const u8) AuthMethods {
+    while (true) {
+        const list = c.libssh2_userauth_list(ssh_session, username.ptr, @intCast(username.len));
+        if (list != null) return .{ .methods = std.mem.span(list) };
+        if (c.libssh2_userauth_authenticated(ssh_session) != 0) return .authenticated;
+        const rc = c.libssh2_session_last_errno(ssh_session);
+        if (rc != c.LIBSSH2_ERROR_EAGAIN) {
+            setLibssh2Error(session, what, rc);
+            return .failed;
+        }
+        if (!awaitAuthSocket(session, deadline_ms, what)) return .failed;
+    }
+}
+
 fn trySetChannelEnv(session: *NativeSshSession, channel: *c.LIBSSH2_CHANNEL, name: []const u8, value: []const u8) void {
     while (true) {
         const rc = c.libssh2_channel_setenv_ex(
@@ -689,8 +731,6 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         setError(session, "Missing username", .{});
         return c.JNI_FALSE;
     };
-    c.libssh2_session_set_blocking(ssh_session, 1);
-    defer c.libssh2_session_set_blocking(ssh_session, 0);
     logInfo("nativeAuthenticateNone user={s}", .{username_slice});
     if (c.libssh2_userauth_authenticated(ssh_session) != 0) {
         logInfo("None auth already authenticated after handshake", .{});
@@ -698,39 +738,17 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     }
 
     const deadline_ms = nowMs() + setup_wait_timeout_ms;
-    var attempts: u32 = 0;
-    while (true) {
-        attempts += 1;
-        logInfo("None auth probe methods attempt={}", .{attempts});
-        const userauth_list = c.libssh2_userauth_list(ssh_session, username_slice.ptr, @intCast(username_slice.len));
-        logInfo("None auth probe returned attempt={}", .{attempts});
-        if (userauth_list == null) {
-            const rc = c.libssh2_session_last_errno(ssh_session);
-            if (rc == c.LIBSSH2_ERROR_EAGAIN) {
-                if ((attempts % 32) == 0) {
-                    logInfo("None auth waiting (EAGAIN) attempts={}", .{attempts});
-                }
-                if (nowMs() >= deadline_ms) {
-                    setError(session, "None auth timed out after {} attempts", .{attempts});
-                    return c.JNI_FALSE;
-                }
-                if (!waitSocket(session, setup_wait_timeout_ms)) {
-                    setError(session, "None auth timed out", .{});
-                    return c.JNI_FALSE;
-                }
-                continue;
-            }
-            if (c.libssh2_userauth_authenticated(ssh_session) != 0) {
-                logInfo("None auth succeeded - session authenticated", .{});
-                return c.JNI_TRUE;
-            }
-            logError("None auth failed: no methods and not authenticated rc={}", .{rc});
-            setError(session, "None auth failed: server returned no methods and session not authenticated", .{});
+    switch (queryAuthMethods(session, ssh_session, username_slice, deadline_ms, "None auth")) {
+        .authenticated => {
+            logInfo("None auth succeeded - session authenticated", .{});
+            return c.JNI_TRUE;
+        },
+        .failed => return c.JNI_FALSE,
+        .methods => |methods| {
+            logError("None auth rejected, server requires: {s}", .{methods});
+            setError(session, "None auth rejected, server requires: {s}", .{methods});
             return c.JNI_FALSE;
-        }
-        logError("None auth rejected, server requires: {s}", .{std.mem.span(userauth_list)});
-        setError(session, "None auth rejected, server requires: {s}", .{std.mem.span(userauth_list)});
-        return c.JNI_FALSE;
+        },
     }
 }
 
@@ -822,8 +840,6 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         return c.JNI_FALSE;
     };
     defer allocator.free(password_slice);
-    c.libssh2_session_set_blocking(ssh_session, 1);
-    defer c.libssh2_session_set_blocking(ssh_session, 0);
     logInfo("Password auth attempt start username_len={} password_len={}", .{ username_slice.len, password_slice.len });
     const password_deadline_ms = nowMs() + setup_wait_timeout_ms;
     while (true) {
@@ -833,16 +849,11 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
             return c.JNI_TRUE;
         }
         if (rc != c.LIBSSH2_ERROR_EAGAIN) {
-            logError("Password auth failed rc={} (keyboard-interactive fallback disabled for diagnostics)", .{rc});
+            logError("Password auth failed rc={}", .{rc});
             setLibssh2Error(session, "Password auth failed", rc);
             return c.JNI_FALSE;
         }
-        if (nowMs() >= password_deadline_ms) {
-            logError("Password auth timed out (keyboard-interactive fallback disabled for diagnostics)", .{});
-            setError(session, "Password auth timed out", .{});
-            return c.JNI_FALSE;
-        }
-        _ = waitSocket(session, io_wait_timeout_ms);
+        if (!awaitAuthSocket(session, password_deadline_ms, "Password auth")) return c.JNI_FALSE;
     }
 }
 
@@ -881,14 +892,11 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     defer if (passphrase_z) |pz| allocator.free(pz);
     const passphrase_ptr: ?[*:0]const u8 = if (passphrase_z) |pz| pz.ptr else null;
 
-    c.libssh2_session_set_blocking(ssh_session, 1);
-    defer c.libssh2_session_set_blocking(ssh_session, 0);
-
-    const auth_list_ptr = c.libssh2_userauth_list(ssh_session, username_slice.ptr, @intCast(username_slice.len));
-    if (auth_list_ptr != null) {
-        logInfo("Public key memory auth methods user={s} methods={s}", .{ username_slice, std.mem.span(auth_list_ptr) });
-    } else {
-        logInfo("Public key memory auth methods user={s} methods=<none>", .{username_slice});
+    const deadline_ms = nowMs() + setup_wait_timeout_ms;
+    switch (queryAuthMethods(session, ssh_session, username_slice, deadline_ms, "Public key memory auth")) {
+        .authenticated => return c.JNI_TRUE,
+        .failed => return c.JNI_FALSE,
+        .methods => |methods| logInfo("Public key memory auth methods user={s} methods={s}", .{ username_slice, methods }),
     }
 
     logInfo(
@@ -896,7 +904,6 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         .{ username_slice, if (compact_public) |pk| pk.len else @as(usize, 0), private_key_slice.len, if (passphrase_slice) |ps| ps.len else @as(usize, 0) },
     );
 
-    const deadline_ms = nowMs() + setup_wait_timeout_ms;
     while (true) {
         const rc = c.libssh2_userauth_publickey_frommemory(
             ssh_session,
@@ -924,14 +931,8 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
             }
             return c.JNI_FALSE;
         }
-        if (nowMs() >= deadline_ms) {
-            setError(session, "Public key memory auth timed out", .{});
-            return c.JNI_FALSE;
-        }
-        _ = waitSocket(session, io_wait_timeout_ms);
+        if (!awaitAuthSocket(session, deadline_ms, "Public key memory auth")) return c.JNI_FALSE;
     }
-
-    return c.JNI_FALSE;
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeOpenShell(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, cols: c.jint, rows: c.jint, width_px: c.jint, height_px: c.jint, term: c.jstring) callconv(.c) c.jboolean {
