@@ -1,0 +1,12 @@
+JetBrains Mono 2.211 (Regular, Bold, Italic, Bold Italic)
+Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
+
+Source:
+https://github.com/google/fonts/tree/6e4b84c976cadb3c49a40fd9a1c203e4f7fcf2da/ofl/jetbrainsmono
+
+res/font/jetbrains_mono_regular.ttf is JetBrainsMono[wght].ttf as published. Bold
+(wght 700) and, from JetBrainsMono-Italic[wght].ttf, Italic (400) and Bold Italic (700)
+are static instances made with fontTools varLib.instancer, stored as
+jetbrains_mono_bold.ttf, jetbrains_mono_italic.ttf, and jetbrains_mono_bold_italic.ttf.
+
+Licensed under the SIL Open Font License 1.1. See jetbrains_mono_ofl.txt.

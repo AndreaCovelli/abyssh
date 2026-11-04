@@ -272,6 +272,10 @@ private fun TerminalPane(
                     onAppSelectionDrag = vm.input::onAppSelectionDrag,
                     stickyModifiers = input.modifierState,
                     onShiftSelectionStart = input::spendStickyShift,
+                    onRectangleSelectionStart = input::spendStickyAlt,
+                    wordSeparators = host.settings.wordSeparators,
+                    ligatures = host.settings.ligatures,
+                    cursorBlinkDefault = host.settings.cursorBlink,
                     onScroll = vm.input::onScroll,
                     onFontSizeChange = { sizeSp ->
                         host.fontSize.floatValue = sizeSp

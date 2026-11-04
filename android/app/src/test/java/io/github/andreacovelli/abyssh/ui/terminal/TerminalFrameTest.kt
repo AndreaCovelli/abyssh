@@ -109,6 +109,18 @@ class TerminalFrameTest {
         underlineArgb: IntArray = IntArray(text.length),
         selection: IntRange? = null,
         colors: TerminalCanvasColors = this.colors,
+    ) = frame(text, fgs, bgs, flags, decorations, underlineArgb, selection, colors).row(0)
+
+    private fun frame(
+        text: String,
+        fgs: IntArray = IntArray(text.length) { fg },
+        bgs: IntArray = IntArray(text.length) { bg },
+        flags: ByteArray = ByteArray(text.length),
+        decorations: ByteArray = ByteArray(text.length),
+        underlineArgb: IntArray = IntArray(text.length),
+        selection: IntRange? = null,
+        colors: TerminalCanvasColors = this.colors,
+        blinkTextHidden: Boolean = false,
     ) = TerminalFrame(
         snapshot = TerminalSnapshot.fromCells(
             cols = text.length,
@@ -128,7 +140,30 @@ class TerminalFrameTest {
         cell = cell,
         colors = colors,
         selection = selection,
-    ).row(0)
+        blinkTextHidden = blinkTextHidden,
+    )
+
+    @Test
+    fun `blinking text is its own run and hides in the off half`() {
+        val blink = TerminalSnapshot.CELL_FLAG_BLINK.toByte()
+        val flags = byteArrayOf(0, blink, blink, 0)
+        val shown = frame("abcd", flags = flags)
+        val hidden = frame("abcd", flags = flags, blinkTextHidden = true)
+
+        assertEquals(1, shown.row(0).textRunEnd(0) { PAINT_PRIMARY })
+        assertEquals(3, shown.row(0).textRunEnd(1) { PAINT_PRIMARY })
+        assertFalse(shown.row(0).isBlinkHidden(1))
+        assertTrue(hidden.row(0).isBlinkHidden(1))
+        assertFalse(hidden.row(0).isBlinkHidden(0))
+    }
+
+    @Test
+    fun `a row with blinking text is drawn afresh each frame`() {
+        val blink = TerminalSnapshot.CELL_FLAG_BLINK.toByte()
+
+        assertTrue(frame("ab", flags = byteArrayOf(0, blink)).hasHighlights(0))
+        assertFalse(frame("ab").hasHighlights(0))
+    }
 
     @Test
     fun `a row's selected columns are the selection inside it`() {
@@ -156,5 +191,32 @@ class TerminalFrameTest {
         assertEquals(null, frame.selectedCols(2))
         assertTrue(frame.hasHighlights(1))
         assertFalse(frame.hasHighlights(2))
+    }
+
+    @Test
+    fun `a rectangle selects the same columns in every row it spans`() {
+        val frame = TerminalFrame(
+            snapshot = TerminalSnapshot.fromCells(
+                cols = 4,
+                rows = 3,
+                cursorX = 0,
+                cursorY = 0,
+                cursorVisible = false,
+                defaultBgArgb = bg,
+                defaultFgArgb = fg,
+                codepoints = IntArray(12),
+                fgArgb = IntArray(12),
+                bgArgb = IntArray(12),
+                flags = ByteArray(12),
+            ),
+            cell = cell,
+            colors = colors,
+            selection = 2..5,
+            selectionColumns = 1..2,
+        )
+
+        assertEquals(1..2, frame.selectedCols(0))
+        assertEquals(1..2, frame.selectedCols(1))
+        assertEquals(null, frame.selectedCols(2))
     }
 }

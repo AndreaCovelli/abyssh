@@ -107,11 +107,17 @@ fun TerminalScreen(
             status == SessionStatus.Connecting -> TerminalConnectingContent(
                 label = connectingLabel(multiplexer, stripMode, activeTab, routeTab),
                 tabStrip = tabStrip,
+                onCancel = if (preparing) {
+                    { vm.multiplexer.dismissRecovery(onBack) }
+                } else {
+                    vm::cancelConnect
+                },
                 modifier = screenModifier,
             )
             !session.hasSnapshot -> TerminalPreparingContent(
                 message = preparingMessage(status == SessionStatus.Reconnecting, stripMode, activeTab, routeTab),
                 tabStrip = tabStrip,
+                onCancel = vm::cancelConnect.takeIf { status == SessionStatus.Reconnecting },
                 modifier = screenModifier,
             )
             else -> TerminalSessionContent(

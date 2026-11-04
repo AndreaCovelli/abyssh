@@ -18,15 +18,60 @@ import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 import kotlin.math.max
 import kotlin.math.roundToInt
 
+/**
+ * Selected cells from [anchorIndex] to [focusIndex], in reading order, or with
+ * [rectangle] the block of cells whose opposite corners they are.
+ */
 data class TerminalSelection(
     val anchorIndex: Int,
     val focusIndex: Int,
+    val rectangle: Boolean = false,
 ) {
+    /** The cells from the first selected row's start cell to the last row's end cell. */
     fun normalized(cellCount: Int): IntRange? {
         if (cellCount <= 0) return null
         val start = minOf(anchorIndex, focusIndex).coerceIn(0, cellCount - 1)
         val end = maxOf(anchorIndex, focusIndex).coerceIn(0, cellCount - 1)
         return start..end
+    }
+
+    /** The columns a [rectangle] selection covers in every row, or null for a linear one. */
+    fun columns(cols: Int): IntRange? {
+        if (!rectangle || cols <= 0) return null
+        val anchorCol = Math.floorMod(anchorIndex, cols)
+        val focusCol = Math.floorMod(focusIndex, cols)
+        return minOf(anchorCol, focusCol)..maxOf(anchorCol, focusCol)
+    }
+
+    /** The first selected cell: the top-left corner of a [rectangle]. */
+    fun startCell(cols: Int): Int {
+        val first = minOf(anchorIndex, focusIndex)
+        val columns = columns(cols) ?: return first
+        return first - Math.floorMod(first, cols) + columns.first
+    }
+
+    /** The last selected cell: the bottom-right corner of a [rectangle]. */
+    fun endCell(cols: Int): Int {
+        val last = maxOf(anchorIndex, focusIndex)
+        val columns = columns(cols) ?: return last
+        return last - Math.floorMod(last, cols) + columns.last
+    }
+
+    /**
+     * Moves the start handle to [cell]. A [rectangle] keeps its bottom-right corner, so
+     * the handles stay on the corners they're drawn at.
+     */
+    fun withStartHandle(cell: Int, cols: Int): TerminalSelection = if (rectangle) {
+        copy(anchorIndex = cell, focusIndex = endCell(cols))
+    } else {
+        withStart(cell, updateAnchor = anchorIndex <= focusIndex)
+    }
+
+    /** Moves the end handle to [cell]; a [rectangle] keeps its top-left corner. */
+    fun withEndHandle(cell: Int, cols: Int): TerminalSelection = if (rectangle) {
+        copy(anchorIndex = startCell(cols), focusIndex = cell)
+    } else {
+        withEnd(cell, updateAnchor = anchorIndex > focusIndex)
     }
 
     fun withStart(newStartCell: Int, updateAnchor: Boolean): TerminalSelection =
@@ -61,33 +106,50 @@ data class TerminalSelectionState(
     val text: String?,
 )
 
-internal fun TerminalSnapshot.wordAt(cellIndex: Int): IntRange? {
-    if (cols <= 0 || cellIndex !in 0 until cellCount) return null
-    val row = cellIndex / cols
-    val rowStart = row * cols
-    val rowEnd = rowStart + cols - 1
+/**
+ * The characters that end a word, besides blank cells: Ghostty's default
+ * selection-word-chars.
+ */
+const val DEFAULT_WORD_SEPARATORS = " \t'\"│`|:;,()[]{}<>$"
 
-    val cp = codepointAt(cellIndex)
-    if (cp == 0 || (cp == 32 && !isSpacerContinuation(cellIndex))) return null
+/**
+ * The word at [cellIndex], within its row. A word is a run of cells that aren't blank
+ * and whose characters aren't in [separators]; on a separator, the run of separators
+ * around it. Null on a blank cell.
+ */
+internal fun TerminalSnapshot.wordAt(cellIndex: Int, separators: String = DEFAULT_WORD_SEPARATORS): IntRange? {
+    if (cols <= 0 || cellIndex !in 0 until cellCount) return null
+    val rowStart = cellIndex / cols * cols
+    val rowEnd = rowStart + cols - 1
+    if (isBlankCell(cellIndex)) return null
+    val onSeparator = isSeparatorCell(cellIndex, separators)
+    fun sameKind(index: Int) = !isBlankCell(index) && isSeparatorCell(index, separators) == onSeparator
 
     var start = cellIndex
-    while (start > rowStart) {
-        val prev = start - 1
-        val prevCp = codepointAt(prev)
-        if (prevCp == 0 || (prevCp == 32 && !isSpacerContinuation(prev))) break
-        start--
-    }
+    while (start > rowStart && sameKind(start - 1)) start--
     var end = cellIndex
-    while (end < rowEnd) {
-        val next = end + 1
-        val nextCp = codepointAt(next)
-        if (nextCp == 0 || (nextCp == 32 && !isSpacerContinuation(next))) break
-        end++
-    }
+    while (end < rowEnd && sameKind(end + 1)) end++
     return start..end
 }
 
-internal fun extractSelectionText(snapshot: TerminalSnapshot, range: IntRange): String? {
+private fun TerminalSnapshot.isBlankCell(index: Int): Boolean {
+    if (isSpacerContinuation(index)) return false
+    val cp = codepointAt(index)
+    return cp == 0 || cp == ' '.code
+}
+
+// The second half of a wide character goes with its first half.
+private fun TerminalSnapshot.isSeparatorCell(index: Int, separators: String): Boolean {
+    val owner = if (isSpacerContinuation(index) && index > 0) index - 1 else index
+    val cp = codepointAt(owner)
+    return cp != 0 && Character.isValidCodePoint(cp) && separators.indexOf(String(Character.toChars(cp))) >= 0
+}
+
+/**
+ * The text of cells [range], or with [columns] only those columns of each row in it, as
+ * a rectangle selection copies them. Trailing blanks in each row are dropped.
+ */
+internal fun extractSelectionText(snapshot: TerminalSnapshot, range: IntRange, columns: IntRange? = null): String? {
     if (snapshot.cols <= 0 || snapshot.cellCount == 0) return null
 
     val normalizedRange = IntRange(
@@ -100,8 +162,12 @@ internal fun extractSelectionText(snapshot: TerminalSnapshot, range: IntRange): 
 
     for (row in startRow..endRow) {
         val rowStart = row * snapshot.cols
-        val from = maxOf(normalizedRange.first, rowStart)
-        val until = minOf(normalizedRange.last, rowStart + snapshot.cols - 1)
+        val from = if (columns != null) rowStart + columns.first else maxOf(normalizedRange.first, rowStart)
+        val until = if (columns != null) {
+            rowStart + minOf(columns.last, snapshot.cols - 1)
+        } else {
+            minOf(normalizedRange.last, rowStart + snapshot.cols - 1)
+        }
         var lastContentIdx = until
         while (lastContentIdx >= from) {
             val cp = snapshot.codepointAt(lastContentIdx)
@@ -130,7 +196,7 @@ internal fun extractSelectionText(snapshot: TerminalSnapshot, range: IntRange): 
  * when the terminal can't, and the text is then taken from the snapshot.
  */
 typealias SelectionTextReader =
-    suspend (screenStart: Int, screenEnd: Int, visibleStart: Int, visibleEnd: Int) -> String?
+    suspend (screenStart: Int, screenEnd: Int, visibleStart: Int, visibleEnd: Int, rectangle: Boolean) -> String?
 
 /** The text under [selection], read through [reader] when there is one. */
 internal suspend fun readSelectionText(
@@ -139,14 +205,18 @@ internal suspend fun readSelectionText(
     reader: SelectionTextReader?,
 ): String? {
     val visibleRange = selection.normalized(snapshot.cellCount) ?: return null
-    if (reader == null || snapshot.cols <= 0) return extractSelectionText(snapshot, visibleRange)
+    val columns = selection.columns(snapshot.cols)
+    if (reader == null || snapshot.cols <= 0) return extractSelectionText(snapshot, visibleRange, columns)
     val screenOffset = snapshot.viewportScrollY * snapshot.cols
-    val screenStart = (minOf(selection.anchorIndex, selection.focusIndex) + screenOffset)
-        .coerceAtLeast(0)
-    val screenEnd = (maxOf(selection.anchorIndex, selection.focusIndex) + screenOffset)
-        .coerceAtLeast(screenStart)
-    return reader(screenStart, screenEnd, visibleRange.first, visibleRange.last)
-        ?: extractSelectionText(snapshot, visibleRange)
+    // A rectangle's corners are its start and end cells, so the same two cells
+    // describe either kind of selection to the terminal.
+    val screenStart = (selection.startCell(snapshot.cols) + screenOffset).coerceAtLeast(0)
+    val screenEnd = (selection.endCell(snapshot.cols) + screenOffset).coerceAtLeast(screenStart)
+    val lastCell = snapshot.cellCount - 1
+    val visibleStart = selection.startCell(snapshot.cols).coerceIn(0, lastCell)
+    val visibleEnd = selection.endCell(snapshot.cols).coerceIn(visibleStart, lastCell)
+    return reader(screenStart, screenEnd, visibleStart, visibleEnd, selection.rectangle)
+        ?: extractSelectionText(snapshot, visibleRange, columns)
 }
 
 internal fun buildSelectionState(
@@ -162,13 +232,14 @@ internal fun buildSelectionState(
     val cellCount = snapshot.cellCount
 
     val visibleRange = selection.normalized(cellCount) ?: return null
-    val startCol = visibleRange.first % cols
+    val columns = selection.columns(cols)
+    val startCol = columns?.first ?: (visibleRange.first % cols)
     val startRow = visibleRange.first / cols
-    val endCol = visibleRange.last % cols
+    val endCol = columns?.last ?: (visibleRange.last % cols)
     val endRow = visibleRange.last / cols
     val fullWidth = cols * cellWidth
-    val boundsLeft = if (startRow == endRow) startCol * cellWidth else 0f
-    val boundsRight = if (startRow == endRow) (endCol + 1) * cellWidth else fullWidth
+    val boundsLeft = if (startRow == endRow || columns != null) startCol * cellWidth else 0f
+    val boundsRight = if (startRow == endRow || columns != null) (endCol + 1) * cellWidth else fullWidth
     val boundsTop = startRow * cellHeight
     val boundsBottom = (endRow + 1) * cellHeight
 

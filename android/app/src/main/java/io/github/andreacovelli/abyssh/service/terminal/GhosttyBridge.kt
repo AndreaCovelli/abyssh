@@ -85,8 +85,14 @@ class GhosttyBridge {
     external fun nativeAnimationTick(handle: Long): Long
     // Milliseconds until the app's synchronized output hold times out, or -1 when there is none.
     external fun nativeSyncHoldRemainingMs(handle: Long): Long
-    external fun nativeFormatSelectionRange(handle: Long, startCell: Int, endCell: Int): String?
-    external fun nativeFormatSelectionScreenRange(handle: Long, startScreenCell: Int, endScreenCell: Int): String?
+    // With rectangle, the two cells are opposite corners of a block selection.
+    external fun nativeFormatSelectionRange(handle: Long, startCell: Int, endCell: Int, rectangle: Boolean): String?
+    external fun nativeFormatSelectionScreenRange(
+        handle: Long,
+        startScreenCell: Int,
+        endScreenCell: Int,
+        rectangle: Boolean,
+    ): String?
     external fun nativeSelectWordAt(handle: Long, cellX: Int, cellY: Int): String?
     external fun nativeSelectLineAt(handle: Long, cellX: Int, cellY: Int): String?
     external fun nativeSelectAll(handle: Long): String?
@@ -94,5 +100,7 @@ class GhosttyBridge {
     // end row, end col (inclusive) per match, rows counted from the oldest scrollback row.
     external fun nativeSearch(handle: Long, query: String): IntArray
     external fun nativeScrollToScreenRow(handle: Long, screenRow: Int)
+    // Scrolls delta OSC 133 prompts up (negative) or down; false when the view stayed put.
+    external fun nativeScrollToPrompt(handle: Long, delta: Int): Boolean
     external fun nativeHyperlinkAt(handle: Long, cellX: Int, cellY: Int): String?
 }

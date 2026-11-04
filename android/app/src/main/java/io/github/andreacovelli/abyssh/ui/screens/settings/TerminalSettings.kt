@@ -75,6 +75,7 @@ internal fun TerminalSettings(
         FontSizeCard(fontSize = state.fontSize, onFontSizeChanged = actions::setFontSize)
         ScrollbackCard(scrollbackMb = state.scrollbackMb, onScrollbackChanged = actions::setScrollbackMb)
         TabModeCard(tabMode = state.tabMode, onTabModeChanged = actions::setTabMode)
+        TerminalTextSettingsCards(state = state.text, actions = actions.text)
         AccessoryKeysCard(
             layoutIds = state.accessoryLayoutIds,
             singleRow = state.accessoryBarSingleRow,

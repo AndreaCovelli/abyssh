@@ -34,6 +34,11 @@ class TerminalInput internal constructor(
         activeEngine?.scroll(delta, x, y, momentum)
     }
 
+    /** Scrolls [delta] shell prompts up (negative) or down. */
+    fun scrollToPrompt(delta: Int) {
+        activeEngine?.scrollToPrompt(delta)
+    }
+
     fun onPrimaryMouseClick(mods: Int, x: Float, y: Float) {
         sendMouseEvent(TerminalMouseButton.Left, TerminalMouseAction.Press, x, y, trackLastCell = false, mods = mods)
         sendMouseEvent(TerminalMouseButton.Left, TerminalMouseAction.Release, x, y, trackLastCell = false, mods = mods)

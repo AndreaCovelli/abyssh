@@ -1,0 +1,10 @@
+Hack 3.003 (Regular, Bold, Italic, Bold Italic)
+Copyright 2018 Source Foundry Authors (https://github.com/source-foundry/Hack)
+
+Source:
+https://github.com/source-foundry/Hack/releases/download/v3.003/Hack-v3.003-ttf.zip
+
+Stored unchanged as res/font/hack_regular.ttf, hack_bold.ttf, hack_italic.ttf, and
+hack_bold_italic.ttf.
+
+Licensed under the MIT License and the Bitstream Vera License. See hack_license.txt.

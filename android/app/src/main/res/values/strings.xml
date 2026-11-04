@@ -172,6 +172,12 @@
     <string name="settings_scrollback">Scrollback</string>
     <string name="settings_scrollback_hint">Memory each tab may use for lines scrolled off the screen. Applies when a tab connects.</string>
     <string name="settings_scrollback_megabytes">%1$d MB</string>
+    <string name="settings_ligatures">Ligatures</string>
+    <string name="settings_ligatures_hint">Let the font join characters such as -> or != into one symbol, where it supports them.</string>
+    <string name="settings_cursor_blink">Blinking cursor</string>
+    <string name="settings_cursor_blink_hint">For apps that don\'t choose a cursor themselves. Blinking stops when Android\'s Remove animations setting is on.</string>
+    <string name="settings_word_separators">Word separators</string>
+    <string name="settings_word_separators_hint">Characters that end a word when you double-tap to select one, besides spaces.</string>
     <string name="settings_ctrl_v_pastes">Ctrl+V pastes</string>
     <string name="settings_ctrl_v_pastes_hint">Ctrl+Shift+V always pastes. Turn this off to send Ctrl+V to the shell (e.g. vim block select).</string>
     <string name="settings_volume_keys_as_arrows">Volume keys as arrows</string>
@@ -200,6 +206,10 @@
     <string name="command_search_description">Search the terminal output</string>
     <string name="command_zoom">Zoom</string>
     <string name="command_zoom_description">Toggle zoom mode</string>
+    <string name="command_previous_prompt">Previous prompt</string>
+    <string name="command_previous_prompt_description">Scroll to the previous shell prompt</string>
+    <string name="command_next_prompt">Next prompt</string>
+    <string name="command_next_prompt_description">Scroll to the next shell prompt</string>
     <string name="action_reset">Reset</string>
     <string name="settings_tab_mode_palette">Palette</string>
     <string name="settings_tab_mode_strip">Tab strip</string>
@@ -294,6 +304,7 @@
     <string name="terminal_zoom_font_size">Font size %1$d</string>
     <string name="terminal_zoom_scale">Zoom %1$.1f×</string>
     <string name="action_paste">Paste</string>
+    <string name="terminal_selection_block">Block</string>
     <string name="terminal_reconnecting_to">Reconnecting to %1$s…</string>
     <string name="terminal_reconnecting_ellipsis">Reconnecting…</string>
     <string name="terminal_preparing">Preparing terminal…</string>

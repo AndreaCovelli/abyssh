@@ -24,6 +24,7 @@ import io.github.andreacovelli.abyssh.ui.terminal.TerminalSpecialKey
 import io.github.andreacovelli.abyssh.ui.terminal.isCopyShortcut
 import io.github.andreacovelli.abyssh.ui.terminal.isPasteShortcut
 import io.github.andreacovelli.abyssh.ui.terminal.isSearchShortcut
+import io.github.andreacovelli.abyssh.ui.terminal.promptJumpShortcut
 import kotlinx.coroutines.awaitCancellation
 
 /**
@@ -104,6 +105,12 @@ internal class TerminalInputController(
         selectionState = null
     }
 
+    /** Switches the selection between lines of text and a rectangle of columns. */
+    fun toggleRectangleSelection() {
+        selection = selection?.let { it.copy(rectangle = !it.rectangle) }
+        requestFocus()
+    }
+
     // Tapping the menu can move focus off the input view, which leaves keys like
     // Backspace with nowhere to go, so copying takes it back.
     fun copySelection() {
@@ -154,6 +161,10 @@ internal class TerminalInputController(
         if (modifierState.shift) modifierState = modifierState.copy(shift = false)
     }
 
+    fun spendStickyAlt() {
+        if (modifierState.alt) modifierState = modifierState.copy(alt = false)
+    }
+
     /**
      * Runs an accessory bar key. In the command palette ([inSwitcher]), arrows, Enter, and
      * Esc move through the tab list instead of reaching the terminal.
@@ -174,6 +185,7 @@ internal class TerminalInputController(
         }
         // Paste applies the sticky modifiers but leaves them held.
         if (result.shouldPaste) pasteClipboard()
+        if (result.promptJump != 0) input.scrollToPrompt(result.promptJump)
     }
 
     private fun onText(text: String) {
@@ -266,8 +278,10 @@ internal class TerminalInputController(
 
     private fun forwardKey(key: Int, codepoint: Int, mods: Int, action: Int, charCode: Int) {
         val press = action == GhosttyKeyAction.Press
+        val promptJump = promptJumpShortcut(key, mods)
         when {
             isSearchShortcut(key, mods) -> if (press) vm.search.open()
+            promptJump != 0 -> if (action != GhosttyKeyAction.Release) input.scrollToPrompt(promptJump)
             isCopyShortcut(key, mods, hasSelectedText || (!press && copyShortcutHeld)) -> {
                 copyShortcutHeld = action != GhosttyKeyAction.Release
                 if (press) copySelection()

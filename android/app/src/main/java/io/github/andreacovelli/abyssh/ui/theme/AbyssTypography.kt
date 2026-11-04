@@ -7,6 +7,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import io.github.andreacovelli.abyssh.R
@@ -24,15 +25,36 @@ data class AbyssTypeScale(
     val codeSmall: TextStyle,
 )
 
+/**
+ * A bundled monospace family. The styled faces are null where the family ships none
+ * (Fira Code has no italic); the terminal then slants or thickens the nearest face.
+ */
 enum class AbyssFontOption(
     val id: String,
     val label: String,
     val regularFontResId: Int,
+    val boldFontResId: Int?,
+    val italicFontResId: Int?,
+    val boldItalicFontResId: Int?,
 ) {
-    JetBrainsMono("jetbrains_mono", "JetBrains Mono", R.font.jetbrains_mono_regular),
-    FiraCode("fira_code", "Fira Code", R.font.fira_code_regular),
-    Hack("hack", "Hack", R.font.hack_regular),
-    GeistMono("geist_mono", "Geist Mono", R.font.geist_mono_regular),
+    JetBrainsMono(
+        "jetbrains_mono",
+        "JetBrains Mono",
+        R.font.jetbrains_mono_regular,
+        R.font.jetbrains_mono_bold,
+        R.font.jetbrains_mono_italic,
+        R.font.jetbrains_mono_bold_italic,
+    ),
+    FiraCode("fira_code", "Fira Code", R.font.fira_code_regular, R.font.fira_code_bold, null, null),
+    Hack("hack", "Hack", R.font.hack_regular, R.font.hack_bold, R.font.hack_italic, R.font.hack_bold_italic),
+    GeistMono(
+        "geist_mono",
+        "Geist Mono",
+        R.font.geist_mono_regular,
+        R.font.geist_mono_bold,
+        R.font.geist_mono_italic,
+        R.font.geist_mono_bold_italic,
+    ),
     ;
 
     companion object {
@@ -57,9 +79,14 @@ val AbyssUiFontFamily: FontFamily = FontFamily(
 )
 
 private fun monoFamily(option: AbyssFontOption): FontFamily = FontFamily(
-    Font(option.regularFontResId, FontWeight.Normal),
-    Font(option.regularFontResId, FontWeight.Medium),
-    Font(option.regularFontResId, FontWeight.SemiBold),
+    listOfNotNull(
+        Font(option.regularFontResId, FontWeight.Normal),
+        Font(option.regularFontResId, FontWeight.Medium),
+        Font(option.regularFontResId, FontWeight.SemiBold),
+        option.boldFontResId?.let { Font(it, FontWeight.Bold) },
+        option.italicFontResId?.let { Font(it, FontWeight.Normal, FontStyle.Italic) },
+        option.boldItalicFontResId?.let { Font(it, FontWeight.Bold, FontStyle.Italic) },
+    ),
 )
 
 fun abyssTypographyFor(option: AbyssFontOption): AbyssTypeScale {

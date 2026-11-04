@@ -104,6 +104,9 @@ sealed interface AccessoryAction {
     data class SendText(val text: String) : AccessoryAction
 
     data object Paste : AccessoryAction
+
+    /** Scrolls [delta] shell prompts up (negative) or down, by their OSC 133 marks. */
+    data class JumpToPrompt(val delta: Int) : AccessoryAction
 }
 
 data class AccessoryKeyItem(
@@ -139,6 +142,8 @@ data class AccessoryDispatchResult(
     val specialKey: TerminalSpecialKey? = null,
     val shouldPaste: Boolean = false,
     val suppressImeInput: Boolean = false,
+    /** Shell prompts to scroll, negative for earlier ones; 0 for none. */
+    val promptJump: Int = 0,
 )
 
 object TerminalAccessoryDispatcher {
@@ -164,6 +169,11 @@ object TerminalAccessoryDispatcher {
         AccessoryAction.Paste -> AccessoryDispatchResult(
             modifierState = modifierState,
             shouldPaste = true,
+        )
+
+        is AccessoryAction.JumpToPrompt -> AccessoryDispatchResult(
+            modifierState = modifierState,
+            promptJump = action.delta,
         )
     }
 }
@@ -204,6 +214,8 @@ object TerminalAccessoryLayoutStore {
         AccessoryKeyItem("f11", TerminalSpecialKey.F11.label, AccessoryAction.SendSpecialKey(TerminalSpecialKey.F11)),
         AccessoryKeyItem("f12", TerminalSpecialKey.F12.label, AccessoryAction.SendSpecialKey(TerminalSpecialKey.F12)),
         AccessoryKeyItem("paste", "Paste", AccessoryAction.Paste),
+        AccessoryKeyItem("prompt_previous", "Prompt ↑", AccessoryAction.JumpToPrompt(-1)),
+        AccessoryKeyItem("prompt_next", "Prompt ↓", AccessoryAction.JumpToPrompt(1)),
     )
 
     private val compositeGroups: List<AccessoryKeyGroup> = listOf(

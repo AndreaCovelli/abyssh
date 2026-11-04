@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalTabMode
+import io.github.andreacovelli.abyssh.ui.terminal.DEFAULT_WORD_SEPARATORS
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCustomKeyGroup
 import io.github.andreacovelli.abyssh.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.SharingStarted
@@ -42,6 +43,14 @@ data class TerminalSettingsState(
     val matchDisplayRefreshRate: Boolean = false,
     val hideScreenContents: Boolean = false,
     val disableAutocorrect: Boolean = true,
+    val text: TerminalTextState = TerminalTextState(),
+)
+
+/** How the terminal treats its text, from [TerminalTextActions]. */
+data class TerminalTextState(
+    val wordSeparators: String = DEFAULT_WORD_SEPARATORS,
+    val ligatures: Boolean = false,
+    val cursorBlink: Boolean = false,
 )
 
 data class SettingsUiState(
@@ -76,6 +85,13 @@ interface TerminalSettingsActions {
     fun setMatchDisplayRefreshRate(enabled: Boolean)
     fun setHideScreenContents(enabled: Boolean)
     fun setDisableAutocorrect(enabled: Boolean)
+    val text: TerminalTextActions
+}
+
+interface TerminalTextActions {
+    fun setWordSeparators(value: String)
+    fun setLigatures(enabled: Boolean)
+    fun setCursorBlink(enabled: Boolean)
 }
 
 class SettingsViewModel(
@@ -98,6 +114,7 @@ class SettingsViewModel(
                 settings.localShellEnabled, settings.remoteClipboardWriteEnabled, settings.ctrlVPastes,
                 settings.keepScreenAwake, settings.matchDisplayRefreshRate, settings.hideScreenContents,
                 settings.disableAutocorrect, settings.volumeKeysAsArrows,
+                settings.text.wordSeparators, settings.text.ligatures, settings.text.cursorBlink,
             ),
         ) { currentState() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), currentState())
@@ -129,6 +146,11 @@ class SettingsViewModel(
             matchDisplayRefreshRate = settings.matchDisplayRefreshRate.value,
             hideScreenContents = settings.hideScreenContents.value,
             disableAutocorrect = settings.disableAutocorrect.value,
+            text = TerminalTextState(
+                wordSeparators = settings.text.wordSeparators.value,
+                ligatures = settings.text.ligatures.value,
+                cursorBlink = settings.text.cursorBlink.value,
+            ),
         ),
     )
 
@@ -156,6 +178,12 @@ class SettingsViewModel(
     override fun setMatchDisplayRefreshRate(enabled: Boolean) = settings.setMatchDisplayRefreshRate(enabled)
     override fun setHideScreenContents(enabled: Boolean) = settings.setHideScreenContents(enabled)
     override fun setDisableAutocorrect(enabled: Boolean) = settings.setDisableAutocorrect(enabled)
+
+    override val text = object : TerminalTextActions {
+        override fun setWordSeparators(value: String) = settings.text.setWordSeparators(value)
+        override fun setLigatures(enabled: Boolean) = settings.text.setLigatures(enabled)
+        override fun setCursorBlink(enabled: Boolean) = settings.text.setCursorBlink(enabled)
+    }
 
     companion object {
         fun factory(application: Application): ViewModelProvider.Factory =

@@ -4,6 +4,7 @@ import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
 import io.github.andreacovelli.abyssh.service.network.NetworkWaiter
 
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
+import io.github.andreacovelli.abyssh.model.UiText
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,6 +55,9 @@ class TerminalSessionEngine internal constructor(
     /** SFTP over this session's SSH connection, which a tmux window's tab shares with its control session. */
     val sftp: SftpSession
 
+    /** Checks this tab's own SSH connection after a network change; null for a tmux window's tab. */
+    internal val networkProbe: KeepaliveProbe?
+
     init {
         if (tmuxControl != null) {
             val tmux = TmuxPaneConnection(
@@ -81,6 +85,7 @@ class TerminalSessionEngine internal constructor(
             connection = tmux
             terminals = tmux.panes
             sftp = tmuxControl.sftp
+            networkProbe = null
         } else {
             val emulator = TerminalEmulator(
                 bridge,
@@ -107,6 +112,9 @@ class TerminalSessionEngine internal constructor(
                 )
             terminals = SingleTerminal(emulator, connection)
             sftp = SftpSession(transports.ssh, dispatcher)
+            networkProbe = KeepaliveProbe(scope, dispatcher, transports.ssh) {
+                transports.usesSsh && _state.value.status == SessionStatus.Connected
+            }
         }
     }
 
@@ -225,6 +233,18 @@ class TerminalSessionEngine internal constructor(
         }
     }
 
+    /**
+     * Scrolls the focused terminal [delta] shell prompts up (negative) or down, by the
+     * OSC 133 marks its shell writes. Nothing happens when the shell sends none.
+     */
+    fun scrollToPrompt(delta: Int) {
+        if (delta == 0) return
+        scope.launch(dispatcher) {
+            val target = terminals.focused() ?: return@launch
+            if (bridge.nativeScrollToPrompt(target.emulator.handle, delta)) target.emulator.requestSnapshot(force = true)
+        }
+    }
+
     fun scrollToScreenRow(screenRow: Int) = onFocused { target ->
         bridge.nativeScrollToScreenRow(target.emulator.handle, screenRow - target.row)
     }
@@ -251,17 +271,24 @@ class TerminalSessionEngine internal constructor(
      * scrollback row, or of visible cells [visibleStart]..[visibleEnd] when that fails.
      * Null when the tab shows several terminals, whose text then comes from the snapshot.
      */
-    suspend fun selectionText(screenStart: Int, screenEnd: Int, visibleStart: Int, visibleEnd: Int): String? =
+    suspend fun selectionText(
+        screenStart: Int,
+        screenEnd: Int,
+        visibleStart: Int,
+        visibleEnd: Int,
+        rectangle: Boolean,
+    ): String? =
         withContext(dispatcher) {
             val target = terminals.focused()?.takeIf { it.fillsTab } ?: return@withContext null
             val handle = target.emulator.handle
-            bridge.nativeFormatSelectionScreenRange(handle, screenStart, screenEnd)
-                ?: bridge.nativeFormatSelectionRange(handle, visibleStart, visibleEnd)
+            bridge.nativeFormatSelectionScreenRange(handle, screenStart, screenEnd, rectangle)
+                ?: bridge.nativeFormatSelectionRange(handle, visibleStart, visibleEnd, rectangle)
         }
 
     fun respondToHostKey(accepted: Boolean) = hostKeys.respond(accepted)
 
-    fun disconnect() {
+    /** Closes the connection, or stops trying to open it; the tab then shows [reason], if any. */
+    fun disconnect(reason: UiText? = null) {
         // A tmux window's tab shares the prompt with the other windows' tabs.
         if (tmuxControl == null) hostKeys.cancel()
         connection.disconnect {
@@ -271,6 +298,7 @@ class TerminalSessionEngine internal constructor(
                     status = SessionStatus.Disconnected,
                     nativeVersion = nativeVersion,
                     sessionKey = _state.value.sessionKey,
+                    error = reason,
                 )
         }
     }

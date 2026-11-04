@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -15,7 +16,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The renderer draws a run of cells as one string, so the paints must not let the
- * shaper merge characters into a code font's ligature.
+ * shaper merge characters into a code font's ligature unless the setting asks for it.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -25,8 +26,9 @@ class TerminalLigaturesTest {
 
     private fun font(name: String): Typeface = Typeface.createFromFile(File("src/main/res/font/$name.ttf"))
 
-    private fun primaryPaint(face: Typeface): Paint =
-        TerminalTextPaints(TerminalFonts(face, face, Typeface.DEFAULT, IntArray(0)), sizePx).forChoice(PAINT_PRIMARY)
+    private fun primaryPaint(face: Typeface, ligatures: Boolean = false): Paint =
+        TerminalTextPaints(TerminalFonts(face, face, Typeface.DEFAULT, IntArray(0)), sizePx, ligatures)
+            .forChoice(PAINT_PRIMARY)
 
     private fun drawRun(paint: Paint, text: String, cellWidth: Float): Bitmap =
         blank(text.length, cellWidth).also { Canvas(it).drawText(text, 0f, sizePx, paint) }
@@ -65,5 +67,15 @@ class TerminalLigaturesTest {
     @Test
     fun `Fira Code draws an arrow as separate characters`() {
         assertDrawnCellByCell("fira_code_regular", "->")
+    }
+
+    @Test
+    fun `with ligatures on Fira Code joins an arrow within its cells`() {
+        val paint = primaryPaint(font("fira_code_regular"), ligatures = true)
+        val cellWidth = paint.measureText("M")
+
+        assertFalse(drawRun(paint, "->", cellWidth).sameAs(drawCells(paint, "->", cellWidth)))
+        // The renderer keeps a run whole only when it measures its cells' width.
+        assertEquals(2 * cellWidth, paint.measureText("->"), 0.5f)
     }
 }

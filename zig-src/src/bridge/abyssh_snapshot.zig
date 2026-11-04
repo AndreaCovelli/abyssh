@@ -35,7 +35,10 @@ const verbose_snapshot_perf_logs = false;
 //      0 = block, 1 = bar, 2 = underline, 3 = block_hollow)
 //  15  app_tracks_mouse (1 when the app has enabled any mouse mode, so taps
 //      go to it as clicks instead of opening links)
-//  16  row_count (how many rows follow; rows when the snapshot is full)
+//  16  cursor_blink (0 = steady and 1 = blinking, as the app asked through
+//      DECSCUSR or DECSET 12; 2 = the app asked for neither, so the host's
+//      setting decides)
+//  17  row_count (how many rows follow; rows when the snapshot is full)
 //
 // After the header come row_count LE i32 row indices, in increasing order,
 // then row_count * cols cells of SNAPSHOT_CELL_SIZE_BYTES each, one row after
@@ -51,7 +54,7 @@ const verbose_snapshot_perf_logs = false;
 //          3 curly, 4 dotted, 5 dashed), bit 3 strikethrough, bit 4
 //          overline, bit 5 set when bytes 12..14 hold an underline color
 //  12..14  underline r, g, b (SGR 58); 0 when the cell has none
-const SNAPSHOT_HEADER_I32_COUNT = 17;
+const SNAPSHOT_HEADER_I32_COUNT = 18;
 const SNAPSHOT_CELL_SIZE_BYTES = 15;
 const DECORATION_STRIKETHROUGH: u8 = 1 << 3;
 const DECORATION_OVERLINE: u8 = 1 << 4;
@@ -1093,7 +1096,16 @@ export fn abyssh_build_text_snapshot(handle: c.jlong, full_requested: bool, out_
     writeIntLe(i32, buffer[0..base_total_size], 56, cursor_style);
     const app_tracks_mouse: i32 = if (terminal.terminal.flags.mouse_event != .none) 1 else 0;
     writeIntLe(i32, buffer[0..base_total_size], 60, app_tracks_mouse);
-    writeIntLe(i32, buffer[0..base_total_size], 64, @intCast(row_count));
+    // Ghostty's default blink is off, so the mode is on only when the app asked
+    // for a blinking cursor.
+    const cursor_blink: i32 = if (terminal.terminal.modes.get(.cursor_blinking))
+        1
+    else if (terminal.terminal.cursor.is_default)
+        2
+    else
+        0;
+    writeIntLe(i32, buffer[0..base_total_size], 64, cursor_blink);
+    writeIntLe(i32, buffer[0..base_total_size], 68, @intCast(row_count));
 
     // The dirty flags are consumed from here on: a failure below returns
     // null, and the host then asks for a full snapshot.
@@ -1799,13 +1811,16 @@ fn screenCellToPin(terminal: *AbysshTerminal, screen_cell: i64) ?ghostty.Pin {
     } });
 }
 
+/// The text between two pins, or with `rectangle` of the block they are opposite
+/// corners of.
 fn selectionTextFromPins(
     terminal: *AbysshTerminal,
     start_pin: ghostty.Pin,
     end_pin: ghostty.Pin,
+    rectangle: bool,
     alloc: std.mem.Allocator,
 ) ![:0]const u8 {
-    const sel = ghostty.Selection.init(start_pin, end_pin, false);
+    const sel = ghostty.Selection.init(start_pin, end_pin, rectangle);
     defer sel.deinit(terminal.terminal.screens.active);
     return terminal.terminal.screens.active.selectionString(alloc, .{
         .sel = sel,
@@ -1819,6 +1834,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     handle: c.jlong,
     start_cell: c.jint,
     end_cell: c.jint,
+    rectangle: c.jboolean,
 ) callconv(.c) c.jstring {
     _ = thiz;
     const terminal = abysshFromHandle(handle) orelse return null;
@@ -1833,7 +1849,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     const start_pin = viewportCellToPin(terminal, start_x, start_y) orelse return null;
     const end_pin = viewportCellToPin(terminal, end_x, end_y) orelse return null;
 
-    const text = selectionTextFromPins(terminal, start_pin, end_pin, allocator) catch return null;
+    const text = selectionTextFromPins(terminal, start_pin, end_pin, rectangle != 0, allocator) catch return null;
     defer allocator.free(text);
     return jniNewString(env, text);
 }
@@ -1849,6 +1865,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     handle: c.jlong,
     start_screen_cell: c.jint,
     end_screen_cell: c.jint,
+    rectangle: c.jboolean,
 ) callconv(.c) c.jstring {
     _ = thiz;
     const terminal = abysshFromHandle(handle) orelse return null;
@@ -1857,7 +1874,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     const start_pin = screenCellToPin(terminal, start_screen_cell) orelse return null;
     const end_pin = screenCellToPin(terminal, end_screen_cell) orelse return null;
 
-    const text = selectionTextFromPins(terminal, start_pin, end_pin, allocator) catch return null;
+    const text = selectionTextFromPins(terminal, start_pin, end_pin, rectangle != 0, allocator) catch return null;
     defer allocator.free(text);
     return jniNewString(env, text);
 }
@@ -1994,6 +2011,28 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     if (target >= top_y and target < top_y + rows) return;
     terminal.terminal.scrollViewport(.{ .delta = target - @divTrunc(rows, 2) - top_y });
     update_render_state(terminal);
+}
+
+/// Scrolls the viewport `delta` shell prompts up (negative) or down (positive), using
+/// the OSC 133 marks the shell wrote. Returns whether the viewport moved; it stays put
+/// when the shell sends no marks or no prompt lies in that direction.
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeScrollToPrompt(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+    delta: c.jint,
+) callconv(.c) c.jboolean {
+    _ = env;
+    _ = thiz;
+    const terminal = abysshFromHandle(handle) orelse return c.JNI_FALSE;
+    if (delta == 0) return c.JNI_FALSE;
+    const pages = &terminal.terminal.screens.active.pages;
+    const before = pages.pointFromPin(.screen, pages.getTopLeft(.viewport)) orelse return c.JNI_FALSE;
+    terminal.terminal.scrollViewport(.{ .delta_prompt = delta });
+    const after = pages.pointFromPin(.screen, pages.getTopLeft(.viewport)) orelse return c.JNI_FALSE;
+    if (after.screen.y == before.screen.y) return c.JNI_FALSE;
+    update_render_state(terminal);
+    return c.JNI_TRUE;
 }
 
 fn jniIntArray(env: *c.JNIEnv, values: []const c.jint) c.jintArray {

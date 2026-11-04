@@ -331,6 +331,23 @@ class AccessoryLogicTest {
         assertTrue("catalog must include composite groups", hasGroup)
     }
 
+    @Test
+    fun `dispatch JumpToPrompt returns the jump and keeps modifiers`() {
+        val r = TerminalAccessoryDispatcher.dispatch(AccessoryAction.JumpToPrompt(-1), ModifierState(ctrl = true))
+        assertEquals(-1, r.promptJump)
+        assertTrue(r.modifierState.ctrl)
+        assertNull(r.specialKey)
+        assertNull(r.text)
+    }
+
+    @Test
+    fun `prompt jumps are in the catalog but not the default layout`() {
+        val ids = TerminalAccessoryLayoutStore.catalog().map { it.id }
+        assertTrue("prompt_previous" in ids && "prompt_next" in ids)
+        val defaults = TerminalAccessoryLayoutStore.defaultLayoutIds()
+        assertFalse("prompt_previous" in defaults || "prompt_next" in defaults)
+    }
+
     // ── Paste action convenience ──────────────────────────────────────────
 
     @Test

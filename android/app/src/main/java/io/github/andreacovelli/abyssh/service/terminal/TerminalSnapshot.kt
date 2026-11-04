@@ -45,6 +45,11 @@ class TerminalRow(
     /** The SGR 58 underline color, read when [TerminalSnapshot.DECORATION_UNDERLINE_COLOR] is set. */
     val underlineArgb: IntArray = IntArray(codepoints.size),
 ) {
+    /** Whether a cell blinks (SGR 5), so the row's drawing depends on the blink phase. */
+    val hasBlink: Boolean by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        flags.any { (it.toInt() and TerminalSnapshot.CELL_FLAG_BLINK) != 0 }
+    }
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is TerminalRow) return false
@@ -102,6 +107,8 @@ data class TerminalSnapshot(
     val cursorY: Int,
     val cursorVisible: Boolean,
     val cursorStyle: Int = CURSOR_STYLE_BLOCK,
+    /** Whether the app asked for a blinking cursor: one of the CURSOR_BLINK_ constants. */
+    val cursorBlink: Int = CURSOR_BLINK_DEFAULT,
     val defaultBgArgb: Int,
     val defaultFgArgb: Int,
     val rowData: List<TerminalRow>,
@@ -145,6 +152,16 @@ data class TerminalSnapshot(
 
     fun graphemeExtrasAt(cellIndex: Int): IntArray? = rowData[cellIndex / cols].graphemeExtras[cellIndex % cols]
 
+    /** Whether any row has blinking text. */
+    val hasBlinkText: Boolean get() = rowData.any { it.hasBlink }
+
+    /** Whether the cursor blinks, with [default] for an app that didn't ask. */
+    fun cursorBlinks(default: Boolean): Boolean = when (cursorBlink) {
+        CURSOR_BLINK_BLINKING -> true
+        CURSOR_BLINK_STEADY -> false
+        else -> default
+    }
+
     companion object {
         const val CELL_FLAG_HAS_GRAPHEME: Int = 0x40
         const val CELL_FLAG_SPACER: Int = 0x80
@@ -167,7 +184,12 @@ data class TerminalSnapshot(
         const val CURSOR_STYLE_BAR: Int = 1
         const val CURSOR_STYLE_UNDERLINE: Int = 2
         const val CURSOR_STYLE_BLOCK_HOLLOW: Int = 3
-        private const val HEADER_I32_COUNT = 17
+        const val CURSOR_BLINK_STEADY: Int = 0
+        const val CURSOR_BLINK_BLINKING: Int = 1
+
+        /** The app asked for neither, so the blinking cursor setting decides. */
+        const val CURSOR_BLINK_DEFAULT: Int = 2
+        private const val HEADER_I32_COUNT = 18
         private const val CELL_SIZE_BYTES = 15
         private const val IMAGE_HEADER_BYTES = 60
 
@@ -260,6 +282,7 @@ data class TerminalSnapshot(
             val appHandlesSelectionDrag = wrapped.int == 1
             val cursorStyle = wrapped.int
             val appTracksMouse = wrapped.int == 1
+            val cursorBlink = wrapped.int
             val rowCount = wrapped.int
 
             require(cols >= 0 && rows >= 0 && rowCount in 0..rows) { "Bad snapshot size: ${cols}x$rows rows=$rowCount" }
@@ -312,6 +335,7 @@ data class TerminalSnapshot(
                 cursorY = cursorY,
                 cursorVisible = cursorVisible,
                 cursorStyle = cursorStyle,
+                cursorBlink = cursorBlink,
                 defaultBgArgb = packArgb(defaultBgR, defaultBgG, defaultBgB),
                 defaultFgArgb = packArgb(defaultFgR, defaultFgG, defaultFgB),
                 rowData = rowData.map { checkNotNull(it) },

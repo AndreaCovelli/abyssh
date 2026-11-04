@@ -42,6 +42,9 @@ internal data class TerminalUiSettings(
     val volumeKeysAsArrows: Boolean,
     val ctrlVPastes: Boolean,
     val showCustomActionsFab: Boolean,
+    val wordSeparators: String,
+    val ligatures: Boolean,
+    val cursorBlink: Boolean,
 )
 
 @Composable
@@ -66,6 +69,9 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
     val volumeKeysAsArrows by repo.volumeKeysAsArrows.collectAsStateWithLifecycle()
     val ctrlVPastes by repo.ctrlVPastes.collectAsStateWithLifecycle()
     val showCustomActionsFab by repo.showCustomActionsFab.collectAsStateWithLifecycle()
+    val wordSeparators by repo.text.wordSeparators.collectAsStateWithLifecycle()
+    val ligatures by repo.text.ligatures.collectAsStateWithLifecycle()
+    val cursorBlink by repo.text.cursorBlink.collectAsStateWithLifecycle()
     return TerminalUiSettings(
         ghosttyTheme = ghosttyTheme,
         tabMode = tabMode,
@@ -78,6 +84,9 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
         volumeKeysAsArrows = volumeKeysAsArrows,
         ctrlVPastes = ctrlVPastes,
         showCustomActionsFab = showCustomActionsFab,
+        wordSeparators = wordSeparators,
+        ligatures = ligatures,
+        cursorBlink = cursorBlink,
     )
 }
 
@@ -156,6 +165,8 @@ internal fun rememberAbysshKeys(
                 vm.files.selectPane(ConnectionTab.Terminal)
                 overlay.zoom.toggle()
             },
+            BuiltinCommand.PreviousPrompt to { vm.input.scrollToPrompt(-1) },
+            BuiltinCommand.NextPrompt to { vm.input.scrollToPrompt(1) },
         )
         AbysshKeyBindings.build(
             builtinShortcuts = settings.builtinShortcuts,

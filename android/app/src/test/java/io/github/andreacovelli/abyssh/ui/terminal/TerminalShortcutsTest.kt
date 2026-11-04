@@ -66,6 +66,15 @@ class TerminalShortcutsTest {
     }
 
     @Test
+    fun `ctrl shift up and down jump between prompts`() {
+        assertEquals(-1, promptJumpShortcut(GhosttyKey.arrowUp, ctrl or shift))
+        assertEquals(1, promptJumpShortcut(GhosttyKey.arrowDown, ctrl or shift))
+        assertEquals(0, promptJumpShortcut(GhosttyKey.arrowUp, ctrl))
+        assertEquals(0, promptJumpShortcut(GhosttyKey.arrowUp, ctrl or shift or alt))
+        assertEquals(0, promptJumpShortcut(GhosttyKey.arrowLeft, ctrl or shift))
+    }
+
+    @Test
     fun `ctrl c copies only with a selection`() {
         assertTrue(isCopyShortcut(GhosttyKey.keyC, ctrl, hasSelection = true))
         assertTrue(isCopyShortcut(GhosttyKey.keyC, ctrl or shift, hasSelection = true))

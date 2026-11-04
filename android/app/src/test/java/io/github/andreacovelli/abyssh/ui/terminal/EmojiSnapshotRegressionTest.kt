@@ -15,7 +15,7 @@ class EmojiSnapshotRegressionTest {
         val cols = 4
         val rows = 1
         val cellCount = cols * rows
-        val headerBytes = 17 * 4 + rows * 4
+        val headerBytes = 18 * 4 + rows * 4
         val gridBytes = cellCount * 15
         val extrasOffset = headerBytes + gridBytes
 
@@ -42,6 +42,7 @@ class EmojiSnapshotRegressionTest {
         raw.putInt(0) // app_handles_selection_drag
         raw.putInt(TerminalSnapshot.CURSOR_STYLE_BLOCK) // cursor_style
         raw.putInt(0) // app_tracks_mouse
+        raw.putInt(TerminalSnapshot.CURSOR_BLINK_DEFAULT) // cursor_blink
         raw.putInt(rows) // row_count
         repeat(rows) { raw.putInt(it) } // row indices
 
@@ -82,7 +83,7 @@ class EmojiSnapshotRegressionTest {
     fun parsesAppSelectionDragFlagFromSnapshotHeader() {
         val cols = 1
         val rows = 1
-        val headerBytes = 17 * 4 + rows * 4
+        val headerBytes = 18 * 4 + rows * 4
         val gridBytes = cols * rows * 15
         val raw = ByteBuffer.allocate(headerBytes + gridBytes).order(ByteOrder.LITTLE_ENDIAN)
 
@@ -102,6 +103,7 @@ class EmojiSnapshotRegressionTest {
         raw.putInt(1)
         raw.putInt(TerminalSnapshot.CURSOR_STYLE_BAR) // cursor_style
         raw.putInt(0) // app_tracks_mouse
+        raw.putInt(TerminalSnapshot.CURSOR_BLINK_DEFAULT) // cursor_blink
         raw.putInt(rows) // row_count
         repeat(rows) { raw.putInt(it) } // row indices
 
@@ -185,7 +187,7 @@ class EmojiSnapshotRegressionTest {
         val cols = 3
         val rows = 1
         val cellCount = cols * rows
-        val headerBytes = 17 * 4 + rows * 4
+        val headerBytes = 18 * 4 + rows * 4
         val gridBytes = cellCount * 15
         val extrasOffset = headerBytes + gridBytes
 
@@ -216,6 +218,7 @@ class EmojiSnapshotRegressionTest {
         raw.putInt(0) // app_handles_selection_drag
         raw.putInt(TerminalSnapshot.CURSOR_STYLE_BLOCK) // cursor_style
         raw.putInt(0) // app_tracks_mouse
+        raw.putInt(TerminalSnapshot.CURSOR_BLINK_DEFAULT) // cursor_blink
         raw.putInt(rows) // row_count
         repeat(rows) { raw.putInt(it) } // row indices
 

@@ -72,6 +72,7 @@ internal class TerminalCanvasCallbacks(
     val onMouseButton: (button: Int, action: Int, mods: Int, x: Float, y: Float) -> Unit,
     val onAppSelectionDrag: (action: Int, mods: Int, x: Float, y: Float) -> Unit,
     val onShiftSelectionStart: () -> Unit,
+    val onRectangleSelectionStart: () -> Unit,
     val onFontSizeChange: (sizeSp: Float) -> Unit,
 )
 
@@ -88,6 +89,7 @@ internal class TerminalGestureEnv(
     val fontSizeSp: Float,
     val fontSizeRange: ClosedFloatingPointRange<Float>,
     val stickyModifiers: ModifierState,
+    val wordSeparators: String,
     val haptics: HapticFeedback,
     val callbacks: TerminalCanvasCallbacks,
 ) {
@@ -326,7 +328,8 @@ internal class TerminalCanvasGestures(
                     val cell = current.cellAt(pos)
                     if (!selecting && cell != null && downCell != null && cell != downCell) {
                         selecting = true
-                        current.callbacks.onSelectionChange(TerminalSelection(downCell, downCell))
+                        current.callbacks.onSelectionChange(TerminalSelection(downCell, downCell, rectangle = held.alt))
+                        if (held.alt) current.callbacks.onRectangleSelectionStart()
                     }
                     if (selecting && cell != null) {
                         updateSelectionDrag(current.selection, cell, current.callbacks.onSelectionChange)
@@ -363,7 +366,7 @@ internal class TerminalCanvasGestures(
 
     private fun selectWordAt(current: TerminalGestureEnv, position: Offset) {
         val cell = current.cellAt(position) ?: return
-        val word = current.snapshot.wordAt(cell) ?: return
+        val word = current.snapshot.wordAt(cell, current.wordSeparators) ?: return
         current.callbacks.onSelectionChange(TerminalSelection(word.first, word.last))
         current.longPressHaptic()
     }
@@ -477,7 +480,8 @@ internal class TerminalCanvasGestures(
                 return
             }
             val cell = current.cellAt(downPos) ?: return
-            current.callbacks.onSelectionChange(TerminalSelection(cell, cell))
+            current.callbacks.onSelectionChange(TerminalSelection(cell, cell, rectangle = held.alt))
+            if (held.alt) current.callbacks.onRectangleSelectionStart()
             current.longPressHaptic()
             if (snapshot.appHandlesSelectionDrag) current.callbacks.onShiftSelectionStart()
             dragMode = DragMode.ClientSelectionDrag
@@ -642,12 +646,14 @@ private fun nonPrimaryMouseButton(buttons: PointerButtons): Int? = when {
 /**
  * The modifiers held when a gesture starts. Shift keeps a left click or drag in the
  * terminal, for selection and links, so it is left out of the bits the app gets for left
- * button events ([primary]) but kept for a right click ([secondary]).
+ * button events ([primary]) but kept for a right click ([secondary]). Alt makes a new
+ * selection a rectangle.
  */
-private class HeldModifiers(val shift: Boolean, val primary: Int, val secondary: Int) {
+private class HeldModifiers(val shift: Boolean, val alt: Boolean, val primary: Int, val secondary: Int) {
     companion object {
         fun of(env: TerminalGestureEnv, keyboard: PointerKeyboardModifiers) = HeldModifiers(
             shift = env.stickyModifiers.shift || keyboard.isShiftPressed,
+            alt = env.stickyModifiers.alt || keyboard.isAltPressed,
             primary = env.mouseMods(keyboard, includeShift = false),
             secondary = env.mouseMods(keyboard),
         )

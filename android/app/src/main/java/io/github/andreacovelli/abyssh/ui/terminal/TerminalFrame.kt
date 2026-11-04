@@ -6,7 +6,8 @@ import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 internal const val TEXT_STYLE_MASK: Int =
     TerminalSnapshot.CELL_FLAG_BOLD or
         TerminalSnapshot.CELL_FLAG_ITALIC or
-        TerminalSnapshot.CELL_FLAG_FAINT
+        TerminalSnapshot.CELL_FLAG_FAINT or
+        TerminalSnapshot.CELL_FLAG_BLINK
 
 private const val ALPHA_SHIFT: Int = 24
 private const val RGB_MASK: Int = 0x00FFFFFF
@@ -17,29 +18,53 @@ internal class TerminalFrame(
     val cell: TerminalCellMetrics,
     val colors: TerminalCanvasColors,
     val selection: IntRange? = null,
+    // The columns of a rectangle selection, which covers them in each row of selection.
+    val selectionColumns: IntRange? = null,
     // Flagged true for the current match.
     val searchSpans: Map<Int, List<Pair<SearchSpan, Boolean>>> = emptyMap(),
+    // The off half of the blink cycle: blinking text is hidden.
+    val blinkTextHidden: Boolean = false,
+    // The off half of a blinking cursor's cycle.
+    val cursorHidden: Boolean = false,
 ) {
     /** The selected columns of [row], or null when none are. */
     fun selectedCols(row: Int): IntRange? {
         val selection = selection ?: return null
         val rowStart = row * snapshot.cols
+        val columns = selectionColumns
+        if (columns != null) {
+            val inRows = rowStart + snapshot.cols - 1 >= selection.first && rowStart <= selection.last
+            return if (inRows) columns.first..minOf(columns.last, snapshot.cols - 1) else null
+        }
         val first = maxOf(selection.first, rowStart)
         val last = minOf(selection.last, rowStart + snapshot.cols - 1)
         return if (first <= last) (first - rowStart)..(last - rowStart) else null
     }
 
-    /** True when [row] has selected cells or search hits, which change without its cells. */
-    fun hasHighlights(row: Int): Boolean = selectedCols(row) != null || !searchSpans[row].isNullOrEmpty()
+    /**
+     * True when [row] has selected cells, search hits, or blinking text, which change
+     * without its cells.
+     */
+    fun hasHighlights(row: Int): Boolean =
+        selectedCols(row) != null || !searchSpans[row].isNullOrEmpty() || snapshot.rowData[row].hasBlink
 
-    fun row(row: Int): FrameRow = FrameRow(snapshot.rowData[row], colors, selectedCols(row))
+    fun row(row: Int): FrameRow = FrameRow(snapshot.rowData[row], colors, selectedCols(row), blinkTextHidden)
 }
 
 /** One row of a frame, its cells by column with the selection applied. */
-internal class FrameRow(val cells: TerminalRow, private val colors: TerminalCanvasColors, private val selected: IntRange? = null) {
+internal class FrameRow(
+    val cells: TerminalRow,
+    private val colors: TerminalCanvasColors,
+    private val selected: IntRange? = null,
+    private val blinkTextHidden: Boolean = false,
+) {
     val cols: Int get() = cells.codepoints.size
 
     fun isSelected(col: Int): Boolean = selected?.contains(col) == true
+
+    /** Whether the cell's text blinks and is in the hidden half of the cycle. */
+    fun isBlinkHidden(col: Int): Boolean =
+        blinkTextHidden && (cells.flags[col].toInt() and TerminalSnapshot.CELL_FLAG_BLINK) != 0
 
     fun isInverse(col: Int): Boolean =
         !isSelected(col) && (cells.flags[col].toInt() and TerminalSnapshot.CELL_FLAG_INVERSE) != 0

@@ -92,6 +92,7 @@ internal class TmuxWindowCompositor {
             cursorY = (active?.cursorY ?: 0) + (activeRect?.y ?: 0),
             cursorVisible = cursorInPane,
             cursorStyle = active?.cursorStyle ?: TerminalSnapshot.CURSOR_STYLE_BLOCK,
+            cursorBlink = active?.cursorBlink ?: TerminalSnapshot.CURSOR_BLINK_DEFAULT,
             defaultBgArgb = base.defaultBgArgb,
             defaultFgArgb = base.defaultFgArgb,
             rowData = rowData,

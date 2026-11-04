@@ -2,8 +2,10 @@ package io.github.andreacovelli.abyssh.service.terminal
 
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
 import io.github.andreacovelli.abyssh.service.network.NetworkAvailability
+import io.github.andreacovelli.abyssh.service.network.defaultNetworkChanges
 
 import android.app.Application
+import android.util.Log
 import io.github.andreacovelli.abyssh.ui.components.plainTextClip
 import android.content.ClipboardManager
 import io.github.andreacovelli.abyssh.R
@@ -27,6 +29,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -34,6 +37,7 @@ import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+private const val TAG = "TerminalSessions"
 
 /**
  * The open terminal tabs and which one is active. Each tab owns a
@@ -137,6 +141,20 @@ class TerminalSessionRepository private constructor(application: Application) {
             }.collect(foreground::update)
         }
         scope.launch { activeTab.collect(tmuxTabs::activeTabChanged) }
+        // After a network change, each SSH connection checks that its server still
+        // answers, so one left on the old network reconnects within seconds.
+        scope.launch {
+            liveTabs
+                .map { it.isNotEmpty() }
+                .distinctUntilChanged()
+                .flatMapLatest { live -> if (live) defaultNetworkChanges(appContext) else emptyFlow() }
+                .collect {
+                    Log.i(TAG, "Default network changed; probing SSH connections")
+                    val tabs = _tabs.value
+                    tabs.forEach { it.engine.networkProbe?.probe() }
+                    tabs.mapNotNull { it.engine.tmuxControl }.distinct().forEach { it.networkProbe.probe() }
+                }
+        }
     }
 
     fun attachClient() {
@@ -219,6 +237,20 @@ class TerminalSessionRepository private constructor(application: Application) {
         _activeTabId.value = tabAfterClose(tabs, tab.id, _activeTabId.value)
         _tabs.value = tabs - tab
         tab.engine.dispose()
+    }
+
+    /**
+     * Stops the active tab's connection attempt; the tab stays, with a Reconnect button.
+     * A tmux control-mode tab ends its control session instead, which closes its tabs.
+     */
+    fun cancelActiveConnect() {
+        val tab = activeTab.value ?: return
+        val control = tab.engine.tmuxControl
+        if (control != null) {
+            tmuxTabs.end(control)
+        } else {
+            tab.engine.disconnect(UiText.Resource(R.string.error_connection_cancelled))
+        }
     }
 
     fun reconnectActive() {

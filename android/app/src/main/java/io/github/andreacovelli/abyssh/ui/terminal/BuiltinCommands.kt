@@ -27,7 +27,9 @@ enum class BuiltinCommand(
     Settings("settings", R.string.command_settings, R.string.command_settings_description, 's'),
     Close("close", R.string.command_close, R.string.command_close_description, 'q'),
     Search("search", R.string.command_search, R.string.command_search_description, 'f'),
-    Zoom("zoom", R.string.command_zoom, R.string.command_zoom_description, 'z');
+    Zoom("zoom", R.string.command_zoom, R.string.command_zoom_description, 'z'),
+    PreviousPrompt("previous_prompt", R.string.command_previous_prompt, R.string.command_previous_prompt_description, 'k'),
+    NextPrompt("next_prompt", R.string.command_next_prompt, R.string.command_next_prompt_description, 'j');
 
     companion object {
         fun fromId(id: String): BuiltinCommand? = entries.find { it.id == id }

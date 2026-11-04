@@ -41,6 +41,19 @@ internal fun isSearchShortcut(key: Int, mods: Int): Boolean =
         mods and (MOD_ALT or MOD_SUPER) == 0
 
 /**
+ * How many shell prompts Ctrl+Shift+Up or Down jumps: -1 for the previous one, 1 for
+ * the next, and 0 for any other key. Ghostty and other desktop terminals use the chord.
+ */
+internal fun promptJumpShortcut(key: Int, mods: Int): Int {
+    if (mods and (MOD_CTRL or MOD_SHIFT or MOD_ALT or MOD_SUPER) != (MOD_CTRL or MOD_SHIFT)) return 0
+    return when (key) {
+        GhosttyKey.arrowUp -> -1
+        GhosttyKey.arrowDown -> 1
+        else -> 0
+    }
+}
+
+/**
  * Whether a key press should copy the selection instead of reaching the terminal.
  * With text selected, Ctrl+C and Ctrl+Shift+C copy it; without a selection, Ctrl+C
  * stays an interrupt for the shell.

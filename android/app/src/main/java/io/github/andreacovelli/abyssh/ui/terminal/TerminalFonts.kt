@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.res.ResourcesCompat
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.service.terminal.TerminalRow
+import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 import io.github.andreacovelli.abyssh.ui.theme.LocalChuFont
 import kotlin.math.ceil
 import kotlin.math.max
@@ -47,6 +48,9 @@ internal class TerminalFonts(
     // Icon codepoints the primary font file itself maps (e.g. its own Powerline
     // branch symbol). Read from the file because Paint.hasGlyph() also counts system fonts.
     private val primaryPuaCoverage: IntArray,
+    // The primary family's styled faces, null where it ships none. Glyph choice uses the
+    // regular face: the faces of one family cover the same characters.
+    val primaryStyles: PrimaryStyleFaces = PrimaryStyleFaces(),
 ) {
     // hasGlyph depends only on the typeface, so these probes never change size.
     private val primaryProbe = Paint().apply { typeface = primary }
@@ -112,6 +116,13 @@ internal class TerminalFonts(
 internal fun privateUseChoice(codepoint: Int, primaryPuaCoverage: IntArray): Int =
     if (primaryPuaCoverage.binarySearch(codepoint) >= 0) PAINT_PRIMARY else PAINT_SYMBOLS
 
+/** The bold, italic, and bold italic faces of the primary font, where it has them. */
+internal data class PrimaryStyleFaces(
+    val bold: Typeface? = null,
+    val italic: Typeface? = null,
+    val boldItalic: Typeface? = null,
+)
+
 @Composable
 internal fun rememberTerminalFonts(): TerminalFonts {
     val context = LocalContext.current
@@ -122,29 +133,66 @@ internal fun rememberTerminalFonts(): TerminalFonts {
             symbols = context.loadFont(R.font.symbols_nerd_font_mono_regular, Typeface.MONOSPACE),
             fallback = context.loadFont(R.font.noto_sans_symbols2_regular, Typeface.DEFAULT),
             primaryPuaCoverage = FontCmap.privateUseCoverage(context, fontOption.regularFontResId),
+            primaryStyles = PrimaryStyleFaces(
+                bold = context.loadOptionalFont(fontOption.boldFontResId),
+                italic = context.loadOptionalFont(fontOption.italicFontResId),
+                boldItalic = context.loadOptionalFont(fontOption.boldItalicFontResId),
+            ),
         )
     }
 }
 
-private fun Context.loadFont(fontResId: Int, default: Typeface): Typeface =
-    runCatching { ResourcesCompat.getFont(this, fontResId) }.getOrNull() ?: default
+private fun Context.loadFont(fontResId: Int, default: Typeface): Typeface = loadOptionalFont(fontResId) ?: default
 
-/** One text paint per typeface, at the canvas's font size. */
-internal class TerminalTextPaints(fonts: TerminalFonts, sizePx: Float) {
-    private val primary = textPaint(fonts.primary, sizePx).withoutLigatures()
-    private val symbols = textPaint(fonts.symbols, sizePx).withoutLigatures()
-    private val fallback = textPaint(fonts.fallback, sizePx).withoutLigatures()
+private fun Context.loadOptionalFont(fontResId: Int?): Typeface? =
+    fontResId?.let { runCatching { ResourcesCompat.getFont(this, it) }.getOrNull() }
 
-    // The system typeface reaches Android's NotoColorEmoji fallback; the symbols Nerd
-    // Font has no color emoji or ZWJ shaping. Its ligatures stay on: they build the
-    // emoji sequences.
-    private val emoji = textPaint(Typeface.DEFAULT, sizePx)
+/**
+ * One text paint per typeface and text style, at the canvas's font size. The primary
+ * font draws bold and italic with its own faces; a missing face, and every other
+ * typeface, is thickened or slanted instead.
+ */
+internal class TerminalTextPaints(fonts: TerminalFonts, sizePx: Float, val ligatures: Boolean = false) {
+    private val primary = textPaint(fonts.primary, sizePx).primaryFeatures()
+    private val paints: Array<Paint> = Array(CHOICE_COUNT * STYLE_COUNT) { i ->
+        val choice = i / STYLE_COUNT
+        val bold = (i % STYLE_COUNT) and STYLE_BOLD != 0
+        val italic = (i % STYLE_COUNT) and STYLE_ITALIC != 0
+        when (choice) {
+            PAINT_PRIMARY -> primaryPaint(fonts, sizePx, bold, italic)
+            PAINT_SYMBOLS -> textPaint(fonts.symbols, sizePx).withoutLigatures().fakeStyle(bold, italic)
+            PAINT_FALLBACK -> textPaint(fonts.fallback, sizePx).withoutLigatures().fakeStyle(bold, italic)
+            // The system typeface reaches Android's NotoColorEmoji fallback; the symbols
+            // Nerd Font has no color emoji or ZWJ shaping. Its ligatures stay on: they
+            // build the emoji sequences.
+            else -> textPaint(Typeface.DEFAULT, sizePx).fakeStyle(bold, italic)
+        }
+    }
 
-    fun forChoice(choice: Int): Paint = when (choice) {
-        PAINT_SYMBOLS -> symbols
-        PAINT_FALLBACK -> fallback
-        PAINT_EMOJI -> emoji
-        else -> primary
+    /** The paint for [choice] in the bold and italic of [style], a cell's flags. */
+    fun forChoice(choice: Int, style: Int = 0): Paint {
+        val index = if (choice in 0 until CHOICE_COUNT) choice else PAINT_PRIMARY
+        var styleIndex = 0
+        if (style and TerminalSnapshot.CELL_FLAG_BOLD != 0) styleIndex = styleIndex or STYLE_BOLD
+        if (style and TerminalSnapshot.CELL_FLAG_ITALIC != 0) styleIndex = styleIndex or STYLE_ITALIC
+        return paints[index * STYLE_COUNT + styleIndex]
+    }
+
+    private fun primaryPaint(fonts: TerminalFonts, sizePx: Float, bold: Boolean, italic: Boolean): Paint {
+        val faces = fonts.primaryStyles
+        // The nearest face first, then whatever it lacks is faked.
+        val (face, fakeBold, fakeItalic) = when {
+            bold && italic -> when {
+                faces.boldItalic != null -> Triple(faces.boldItalic, false, false)
+                faces.italic != null -> Triple(faces.italic, true, false)
+                faces.bold != null -> Triple(faces.bold, false, true)
+                else -> Triple(fonts.primary, true, true)
+            }
+            bold -> faces.bold?.let { Triple(it, false, false) } ?: Triple(fonts.primary, true, false)
+            italic -> faces.italic?.let { Triple(it, false, false) } ?: Triple(fonts.primary, false, true)
+            else -> return primary
+        }
+        return textPaint(face, sizePx).primaryFeatures().fakeStyle(fakeBold, fakeItalic)
     }
 
     /** The cell size, measured from the primary font. */
@@ -172,6 +220,23 @@ internal class TerminalTextPaints(fonts: TerminalFonts, sizePx: Float) {
      * terminal places in separate cells.
      */
     private fun Paint.withoutLigatures() = apply { fontFeatureSettings = NO_LIGATURES }
+
+    // With [ligatures] on, the primary font keeps them; the renderer then measures each
+    // run and draws one whose ligatures change its width cell by cell, without them.
+    private fun Paint.primaryFeatures() = if (ligatures) this else withoutLigatures()
+
+    private fun Paint.fakeStyle(bold: Boolean, italic: Boolean) = apply {
+        isFakeBoldText = bold
+        textSkewX = if (italic) FAKE_ITALIC_SKEW_X else 0f
+    }
+
+    private companion object {
+        const val CHOICE_COUNT = PAINT_EMOJI + 1
+        const val STYLE_BOLD = 1
+        const val STYLE_ITALIC = 2
+        const val STYLE_COUNT = 4
+        const val FAKE_ITALIC_SKEW_X = -0.25f
+    }
 }
 
 internal const val NO_LIGATURES = "'liga' 0, 'clig' 0, 'calt' 0"

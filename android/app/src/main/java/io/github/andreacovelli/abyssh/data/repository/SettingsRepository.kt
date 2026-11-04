@@ -25,6 +25,9 @@ class SettingsRepository(context: Context) {
     /** The dark and light themes, which one shows, and pure black. */
     val theme = ThemeSettings(prefs)
 
+    /** Word separators, ligatures, and blinking. */
+    val text = TerminalTextSettings(prefs)
+
 
     private val _fontName = MutableStateFlow(
         AbyssFontOption.fromId(prefs.getString(KEY_FONT, DEFAULT_FONT)).id,

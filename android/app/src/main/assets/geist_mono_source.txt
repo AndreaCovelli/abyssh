@@ -1,0 +1,10 @@
+Geist Mono 1.700 (Regular, Bold, Italic, Bold Italic)
+Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font)
+
+Source:
+https://github.com/vercel/geist-font/tree/a0a06a3d916dcf92fe96f12051a124f89056b36a/fonts/GeistMono/ttf
+
+Stored unchanged as res/font/geist_mono_regular.ttf, geist_mono_bold.ttf,
+geist_mono_italic.ttf, and geist_mono_bold_italic.ttf.
+
+Licensed under the SIL Open Font License 1.1. See geist_mono_ofl.txt.

@@ -98,8 +98,13 @@ class TerminalSearchController internal constructor(
     }
 
     /** Reads selected text on the session thread; see [TerminalSessionEngine.selectionText]. */
-    suspend fun selectionText(screenStart: Int, screenEnd: Int, visibleStart: Int, visibleEnd: Int): String? =
-        activeEngine?.selectionText(screenStart, screenEnd, visibleStart, visibleEnd)
+    suspend fun selectionText(
+        screenStart: Int,
+        screenEnd: Int,
+        visibleStart: Int,
+        visibleEnd: Int,
+        rectangle: Boolean,
+    ): String? = activeEngine?.selectionText(screenStart, screenEnd, visibleStart, visibleEnd, rectangle)
 
     fun dismissLink() {
         _tappedLink.value = null

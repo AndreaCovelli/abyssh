@@ -16,7 +16,6 @@ import kotlin.math.max
 
 internal const val FAINT_TEXT_ALPHA: Int = 96
 private const val OPAQUE_ALPHA: Int = 255
-private const val ITALIC_SKEW_X: Float = -0.25f
 private const val CURSOR_BAR_FRACTION: Float = 0.15f
 private const val CURSOR_UNDERLINE_FRACTION: Float = 0.15f
 
@@ -176,6 +175,8 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
     ): Int {
         val row = cells.cells
         val end = cells.textRunEnd(start) { fonts.choiceAt(row, it) }
+        // A run has one text style, so blinking text is its own run.
+        if (cells.isBlinkHidden(start)) return end
         val choice = fonts.choiceAt(row, start)
         if (choice == PAINT_SPRITE) {
             drawSpriteRun(canvas, cells, start, end, cell)
@@ -184,8 +185,9 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         val cellWidth = cell.width
         val baseline = cell.baseline
         if (cellOffsets.size <= end) cellOffsets = IntArray(cells.cols + 1)
-        // The primary font's ASCII glyphs are one cell wide, so only other runs are measured.
-        var ascii = choice == PAINT_PRIMARY
+        // The primary font's ASCII glyphs are one cell wide, so only other runs are measured,
+        // and runs its ligatures may join.
+        var ascii = choice == PAINT_PRIMARY && !paints.ligatures
         text.setLength(0)
         for (col in start until end) {
             cellOffsets[col] = text.length
@@ -195,11 +197,12 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
             if (col == start || codepoint != ' '.code) appendCell(row, col)
         }
         cellOffsets[end] = text.length
-        val paint = paints.forChoice(choice)
-        paint.applyTextStyle(cells.foregroundAt(start), cells.textStyleAt(start))
-        // Italics slant around the baseline, which pushes their tops into the next cell
-        // and, in the last column, off the screen. Shifting left by half the slant at
-        // mid-ascent centers each slanted glyph on its cell.
+        val style = cells.textStyleAt(start)
+        val paint = paints.forChoice(choice, style)
+        paint.applyTextStyle(cells.foregroundAt(start), style)
+        // Faked italics slant around the baseline, which pushes their tops into the next
+        // cell and, in the last column, off the screen. Shifting left by half the slant at
+        // mid-ascent centers each slanted glyph on its cell. A real italic face needs none.
         val slant = paint.textSkewX * baseline / 2f
         // Pass the builder, not text.toString(): Canvas copies a CharSequence into a
         // pooled char buffer, so no String is allocated per run per frame.
@@ -261,7 +264,7 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
 
     private fun drawCursor(canvas: Canvas, frame: TerminalFrame, paints: TerminalTextPaints) {
         val snapshot = frame.snapshot
-        if (!snapshot.cursorVisible || snapshot.cursorX !in 0 until snapshot.cols || snapshot.cursorY !in 0 until snapshot.rows) {
+        if (frame.cursorHidden || !snapshot.cursorVisible || snapshot.cursorX !in 0 until snapshot.cols || snapshot.cursorY !in 0 until snapshot.rows) {
             return
         }
         val left = snapshot.cursorX * frame.cell.width
@@ -315,24 +318,23 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         val col = snapshot.cursorX
         val codepoint = row.codepoints[col]
         if (codepoint == 0 || codepoint == ' '.code) return
+        if (frame.blinkTextHidden && (row.flags[col].toInt() and TerminalSnapshot.CELL_FLAG_BLINK) != 0) return
         val choice = fonts.choiceAt(row, col)
         if (choice == PAINT_SPRITE) {
             sprites.draw(canvas, codepoint, left, top, frame.cell, color)
             return
         }
         val glyph = if (row.hasGraphemeExtras(col)) row.glyphAt(col) else fonts.glyphFor(codepoint)
-        val paint = paints.forChoice(choice)
-        paint.applyTextStyle(color, style = 0)
-        // Set again so the cursor text keeps its own alpha.
+        // The same face as the cell, but in the cursor text color at its own alpha.
+        val paint = paints.forChoice(choice, row.flags[col].toInt() and TEXT_STYLE_MASK)
         paint.color = color
         canvas.drawText(glyph, left, top + frame.cell.baseline, paint)
     }
 }
 
+/** Sets the text color, faded for faint text. Bold and italic come with the paint. */
 private fun Paint.applyTextStyle(argb: Int, style: Int) {
     color = argb
-    isFakeBoldText = (style and TerminalSnapshot.CELL_FLAG_BOLD) != 0
-    textSkewX = if ((style and TerminalSnapshot.CELL_FLAG_ITALIC) != 0) ITALIC_SKEW_X else 0f
     alpha = if ((style and TerminalSnapshot.CELL_FLAG_FAINT) != 0) FAINT_TEXT_ALPHA else OPAQUE_ALPHA
 }
 
