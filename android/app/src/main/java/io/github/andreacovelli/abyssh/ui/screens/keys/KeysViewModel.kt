@@ -72,10 +72,21 @@ class KeysViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Set while an import runs, so a second tap on Import doesn't add the key twice.
+    private var importing = false
+
     fun import(nameHint: String, privateKeyPem: String) {
+        if (importing) return
+        importing = true
         viewModelScope.launch {
+            val result =
+                try {
+                    sshKeyRepository.import(nameHint, privateKeyPem)
+                } finally {
+                    importing = false
+                }
             val event =
-                when (val result = sshKeyRepository.import(nameHint, privateKeyPem)) {
+                when (result) {
                     is ImportResult.Success ->
                         KeysEvent.Imported(result.key.name, result.publicKeyDerived)
                     ImportResult.Blank -> KeysEvent.ImportFailed(UiText.Resource(R.string.keys_import_blank))

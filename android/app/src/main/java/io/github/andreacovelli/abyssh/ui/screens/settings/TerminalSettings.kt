@@ -26,8 +26,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -139,6 +141,39 @@ internal fun TerminalSettings(
     }
 }
 
+/**
+ * The typed size. Only a size in range is applied, so typing 18 doesn't pass through 1;
+ * leaving the field or pressing Done puts back the size in use.
+ */
+@Composable
+private fun FontSizeField(current: Int, onFontSizeChanged: (Float) -> Unit) {
+    var text by remember(current) { mutableStateOf("$current") }
+    val focusManager = LocalFocusManager.current
+    AbyssTextField(
+        value = text,
+        onValueChange = { value ->
+            text = value.filter { it.isDigit() }.take(FONT_SIZE_FIELD_DIGITS)
+            val parsed = text.toIntOrNull()
+            if (parsed != null && parsed in MIN_FONT_SIZE..MAX_FONT_SIZE && parsed != current) {
+                onFontSizeChanged(parsed.toFloat())
+            }
+        },
+        label = stringResource(R.string.settings_font_size),
+        showLabel = false,
+        singleLine = true,
+        modifier = Modifier
+            .width(72.dp)
+            .onFocusChanged { if (!it.isFocused) text = "$current" },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        autoFocus = false,
+        textAlign = TextAlign.Center,
+        onSubmit = { focusManager.clearFocus() },
+    )
+}
+
+// Enough digits for MAX_FONT_SIZE.
+private const val FONT_SIZE_FIELD_DIGITS = 2
+
 @Composable
 private fun FontSizeCard(
     fontSize: Float,
@@ -166,23 +201,7 @@ private fun FontSizeCard(
                     enabled = current > MIN_FONT_SIZE,
                     onClick = { onFontSizeChanged((current - 1).coerceAtLeast(MIN_FONT_SIZE).toFloat()) },
                 )
-                AbyssTextField(
-                    value = "${fontSize.toInt()}",
-                    onValueChange = { value ->
-                        val digits = value.filter { it.isDigit() }
-                        if (digits.isNotEmpty()) {
-                            val parsed = digits.toIntOrNull() ?: MIN_FONT_SIZE
-                            onFontSizeChanged(parsed.coerceIn(MIN_FONT_SIZE, MAX_FONT_SIZE).toFloat())
-                        }
-                    },
-                    label = "",
-                    showLabel = false,
-                    singleLine = true,
-                    modifier = Modifier.width(72.dp),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    autoFocus = false,
-                    textAlign = TextAlign.Center,
-                )
+                FontSizeField(current = current, onFontSizeChanged = onFontSizeChanged)
                 FontSizeStepButton(
                     icon = R.drawable.ic_add,
                     contentDescription = stringResource(R.string.settings_font_size_increase),
