@@ -172,6 +172,8 @@
     <string name="settings_scrollback_megabytes">%1$d MB</string>
     <string name="settings_ctrl_v_pastes">Ctrl+V pastes</string>
     <string name="settings_ctrl_v_pastes_hint">Ctrl+Shift+V always pastes. Turn this off to send Ctrl+V to the shell (e.g. vim block select).</string>
+    <string name="settings_volume_keys_as_arrows">Volume keys as arrows</string>
+    <string name="settings_volume_keys_as_arrows_hint">Volume Up and Down send the Up and Down arrows while the terminal has focus.</string>
     <string name="settings_keep_screen_awake">Keep screen awake</string>
     <string name="settings_keep_screen_awake_hint">Prevent the display from sleeping while a session is connected</string>
     <string name="settings_match_display_refresh_rate">Match screen refresh rate</string>

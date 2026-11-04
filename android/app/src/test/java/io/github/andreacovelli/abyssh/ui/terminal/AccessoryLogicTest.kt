@@ -85,6 +85,12 @@ class AccessoryLogicTest {
     }
 
     @Test
+    fun `applyToText ctrl space is NUL and ctrl question mark is DEL`() {
+        assertEquals("\u0000", ModifierState(ctrl = true).applyToText(" "))
+        assertEquals("\u007f", ModifierState(ctrl = true).applyToText("?"))
+    }
+
+    @Test
     fun `applyToText alt wraps in escape prefix`() {
         val result = ModifierState(alt = true).applyToText("xy")
         assertEquals("\u001bxy", result)

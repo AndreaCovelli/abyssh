@@ -73,6 +73,10 @@ class SettingsRepository(context: Context) {
     private val _ctrlVPastes = MutableStateFlow(prefs.getBoolean(KEY_CTRL_V_PASTES, true))
     val ctrlVPastes: StateFlow<Boolean> = _ctrlVPastes.asStateFlow()
 
+    // Off by default, so the volume keys change the volume while the terminal has focus.
+    private val _volumeKeysAsArrows = MutableStateFlow(prefs.getBoolean(KEY_VOLUME_KEYS_AS_ARROWS, false))
+    val volumeKeysAsArrows: StateFlow<Boolean> = _volumeKeysAsArrows.asStateFlow()
+
     private val _terminalTabMode = MutableStateFlow(
         parseTabMode(prefs.getString(KEY_TAB_MODE, TerminalTabMode.Classic.name)),
     )
@@ -171,6 +175,11 @@ class SettingsRepository(context: Context) {
         _remoteClipboardWriteEnabled.value = enabled
     }
 
+    fun setVolumeKeysAsArrows(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_VOLUME_KEYS_AS_ARROWS, enabled) }
+        _volumeKeysAsArrows.value = enabled
+    }
+
     fun setCtrlVPastes(enabled: Boolean) {
         prefs.edit { putBoolean(KEY_CTRL_V_PASTES, enabled) }
         _ctrlVPastes.value = enabled
@@ -237,6 +246,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_MATCH_DISPLAY_REFRESH_RATE = "match_display_refresh_rate"
         private const val KEY_HIDE_SCREEN_CONTENTS = "hide_screen_contents"
         private const val KEY_DISABLE_AUTOCORRECT = "disable_autocorrect"
+        private const val KEY_VOLUME_KEYS_AS_ARROWS = "volume_keys_as_arrows"
         private const val KEY_REMOTE_CLIPBOARD_WRITE_ENABLED = "remote_clipboard_write_enabled"
         private const val KEY_CTRL_V_PASTES = "ctrl_v_pastes"
         private const val KEY_TERMINAL_FONT_SIZE = "terminal_font_size_sp"

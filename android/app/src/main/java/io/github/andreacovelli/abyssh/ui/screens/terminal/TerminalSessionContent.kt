@@ -296,7 +296,10 @@ private fun TerminalPane(
             AndroidView(
                 modifier = Modifier.align(Alignment.BottomStart).size(1.dp).alpha(0f),
                 factory = input::createInputView,
-                update = { view -> view.disableAutocorrect = host.settings.disableAutocorrect },
+                update = { view ->
+                    view.disableAutocorrect = host.settings.disableAutocorrect
+                    view.volumeKeysAsArrows = host.settings.volumeKeysAsArrows
+                },
                 onRelease = input::releaseInputView,
             )
             val settings = host.settings

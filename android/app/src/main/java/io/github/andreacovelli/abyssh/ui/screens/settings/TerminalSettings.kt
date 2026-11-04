@@ -107,6 +107,12 @@ internal fun TerminalSettings(
             onCheckedChange = actions::setCtrlVPastes,
         )
         SettingSwitchCard(
+            title = stringResource(R.string.settings_volume_keys_as_arrows),
+            hint = stringResource(R.string.settings_volume_keys_as_arrows_hint),
+            checked = state.volumeKeysAsArrows,
+            onCheckedChange = actions::setVolumeKeysAsArrows,
+        )
+        SettingSwitchCard(
             title = stringResource(R.string.settings_keep_screen_awake),
             hint = stringResource(R.string.settings_keep_screen_awake_hint),
             checked = state.keepScreenAwake,

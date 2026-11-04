@@ -13,10 +13,8 @@ object KeyMapper {
         val mods = translateMods(metaState)
         val mapped = when (keyCode) {
             // Navigation and editing keys
-            KeyEvent.KEYCODE_DPAD_UP,
-            KeyEvent.KEYCODE_VOLUME_UP -> MappedKey(key = TerminalSpecialKey.Up.engineKey, codepoint = 0, mods = mods)
-            KeyEvent.KEYCODE_DPAD_DOWN,
-            KeyEvent.KEYCODE_VOLUME_DOWN -> MappedKey(key = TerminalSpecialKey.Down.engineKey, codepoint = 0, mods = mods)
+            KeyEvent.KEYCODE_DPAD_UP -> MappedKey(key = TerminalSpecialKey.Up.engineKey, codepoint = 0, mods = mods)
+            KeyEvent.KEYCODE_DPAD_DOWN -> MappedKey(key = TerminalSpecialKey.Down.engineKey, codepoint = 0, mods = mods)
             KeyEvent.KEYCODE_DPAD_LEFT -> MappedKey(key = TerminalSpecialKey.Left.engineKey, codepoint = 0, mods = mods)
             KeyEvent.KEYCODE_DPAD_RIGHT -> MappedKey(key = TerminalSpecialKey.Right.engineKey, codepoint = 0, mods = mods)
             KeyEvent.KEYCODE_PAGE_UP -> MappedKey(key = TerminalSpecialKey.PageUp.engineKey, codepoint = 0, mods = mods)
@@ -148,6 +146,16 @@ object KeyMapper {
         KeyEvent.KEYCODE_PERIOD -> '.'.code
         KeyEvent.KEYCODE_SLASH -> '/'.code
         else -> 0
+    }
+
+    /** Up for Volume Up and Down for Volume Down, for the setting that turns them into arrows. */
+    fun volumeArrow(keyCode: Int, metaState: Int): MappedKey? {
+        val key = when (keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP -> TerminalSpecialKey.Up.engineKey
+            KeyEvent.KEYCODE_VOLUME_DOWN -> TerminalSpecialKey.Down.engineKey
+            else -> return null
+        }
+        return MappedKey(key = key, codepoint = 0, mods = translateMods(metaState))
     }
 
     /**

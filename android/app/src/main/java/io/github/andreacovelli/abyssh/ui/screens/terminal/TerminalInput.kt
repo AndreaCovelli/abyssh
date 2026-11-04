@@ -100,19 +100,28 @@ class TerminalInput internal constructor(
      */
     fun sendText(text: String, modifierState: ModifierState) {
         val mods = modifierState.terminalMods()
-        for (char in text) {
-            val key = when (char) {
-                '\r', '\n' -> GhosttyKey.enter
-                '\t' -> GhosttyKey.tab
-                else -> char.toGhosttyKey()
+        // By code point, so an emoji's surrogate pair goes as one character, not two halves.
+        var index = 0
+        while (index < text.length) {
+            val codepoint = text.codePointAt(index)
+            val charCount = Character.charCount(codepoint)
+            val key = if (charCount == 1) {
+                when (val char = text[index]) {
+                    '\r', '\n' -> GhosttyKey.enter
+                    '\t' -> GhosttyKey.tab
+                    else -> char.toGhosttyKey()
+                }
+            } else {
+                null
             }
             if (key == null) {
-                onTextInput(modifierState.applyToText(char.toString()))
-                continue
+                onTextInput(modifierState.applyToText(text.substring(index, index + charCount)))
+            } else {
+                val keyCodepoint = if (key == GhosttyKey.enter || key == GhosttyKey.tab) 0 else codepoint
+                onHardwareKey(key, keyCodepoint, mods, GhosttyKeyAction.Press)
+                onHardwareKey(key, keyCodepoint, mods, GhosttyKeyAction.Release)
             }
-            val codepoint = if (char == '\r' || char == '\n' || char == '\t') 0 else char.code
-            onHardwareKey(key, codepoint, mods, GhosttyKeyAction.Press)
-            onHardwareKey(key, codepoint, mods, GhosttyKeyAction.Release)
+            index += charCount
         }
     }
 
