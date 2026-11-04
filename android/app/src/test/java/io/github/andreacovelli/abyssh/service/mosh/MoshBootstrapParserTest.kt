@@ -31,4 +31,43 @@ class MoshBootstrapParserTest {
             MoshBootstrapParser.parse("192.0.2.7", output),
         )
     }
+
+    @Test
+    fun readsAConnectLineAmongOtherOutput() {
+        val noisy = "Warning: locale not set\nMOSH CONNECT 60002 ab+/cd-_efGHIJKLMNOPqr \nbye"
+        assertEquals(
+            MoshBootstrapParser.ParseResult.Success(MoshBootstrapParser.MoshEndpoint("h", 60002, "ab+/cd-_efGHIJKLMNOPqr")),
+            MoshBootstrapParser.parse("h", noisy),
+        )
+    }
+
+    @Test
+    fun takesTheFirstConnectLine() {
+        val twice = "MOSH CONNECT 60001 AAAAAAAAAAAAAAAAAAAAAA\nMOSH CONNECT 60002 BBBBBBBBBBBBBBBBBBBBBB\n"
+        val result = MoshBootstrapParser.parse("h", twice) as MoshBootstrapParser.ParseResult.Success
+        assertEquals(60001, result.endpoint.port)
+    }
+
+    @Test
+    fun rejectsPortsOutsideTheUdpRange() {
+        assertError("Port out of range: 0", "MOSH CONNECT 0 AAAAAAAAAAAAAAAAAAAAAA")
+        assertError("Port out of range: 65536", "MOSH CONNECT 65536 AAAAAAAAAAAAAAAAAAAAAA")
+        assertError("Invalid port: '99999999999'", "MOSH CONNECT 99999999999 AAAAAAAAAAAAAAAAAAAAAA")
+    }
+
+    @Test
+    fun rejectsAShortKey() {
+        assertError("Server output missing valid MOSH CONNECT line", "MOSH CONNECT 60001 tooShort")
+    }
+
+    @Test
+    fun explainsWhyThereIsNoConnectLine() {
+        assertError("mosh-server not found on remote host", "bash: mosh-server: command not found\n")
+        assertError("No MOSH bootstrap output received", " \r\n ")
+        assertError("Server output missing valid MOSH CONNECT line", "Permission denied\n")
+    }
+
+    private fun assertError(reason: String, output: String) {
+        assertEquals(MoshBootstrapParser.ParseResult.Error(reason), MoshBootstrapParser.parse("h", output))
+    }
 }
