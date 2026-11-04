@@ -147,4 +147,26 @@ class TmuxControlParserTest {
         assertArrayEquals("\\9x\\0".toByteArray(), unescapeOutput("\\9x\\0".toByteArray()))
         assertTrue(unescapeOutput("\\033".toByteArray()).contentEquals(byteArrayOf(0x1b)))
     }
+
+    @Test
+    fun aBlockEndsOnlyAtAGuardThatMatchesItsBegin() {
+        val events = parse(
+            "%begin 1793448188 300 1\r\n" +
+                "%end 1793448188 300 0\r\n" +
+                "%end 1793448100 300 1\r\n" +
+                "%error 1793448188 301 1\r\n" +
+                "captured\r\n" +
+                "%end 1793448188 300 1\r\n",
+        )
+
+        assertEquals(
+            listOf(
+                TmuxControlEvent.Reply(
+                    listOf("%end 1793448188 300 0", "%end 1793448100 300 1", "%error 1793448188 301 1", "captured"),
+                    failed = false,
+                ),
+            ),
+            events,
+        )
+    }
 }
