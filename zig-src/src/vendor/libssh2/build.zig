@@ -96,6 +96,9 @@ pub fn build(b: *std.Build) void {
         .files = libssh2_src,
         .root = upstream.path(""),
     });
+    // Our additions, which need libssh2's private headers.
+    lib.root_module.addIncludePath(upstream.path("src"));
+    lib.root_module.addCSourceFile(.{ .file = b.path("ssh2ext.c") });
     lib.root_module.linkLibrary(openssl_dep.artifact("crypto"));
 
     // Ensure openssl is built before libssh2

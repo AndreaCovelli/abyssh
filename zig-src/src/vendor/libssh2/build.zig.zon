@@ -15,5 +15,6 @@
     .paths = .{
         "build.zig",
         "build.zig.zon",
+        "ssh2ext.c",
     },
 }
