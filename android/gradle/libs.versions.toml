@@ -18,6 +18,9 @@ kotlinxCoroutines = "1.11.0"
 biometric = "1.1.0"
 fragment = "1.9.1"
 robolectric = "4.17"
+# The Android runtime Robolectric 4.17 runs for @Config(sdk = [34]). Change it together
+# with robolectric: the offline tests fail with a missing-jar error when they disagree.
+robolectricAndroidAll = "14-robolectric-10818077-i7"
 detekt = "1.23.8"
 spotless = "8.10.4"
 ktlint = "1.8.0"
@@ -53,6 +56,7 @@ androidx-test-core = { group = "androidx.test", name = "core", version.ref = "an
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+robolectric-android-all = { module = "org.robolectric:android-all-instrumented", version.ref = "robolectricAndroidAll" }
 roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version.ref = "roborazzi" }
 roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version.ref = "roborazzi" }
 # Not a project dependency: declared so Renovate tracks the version Spotless passes to ktlint.

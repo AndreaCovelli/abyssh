@@ -15,6 +15,19 @@ room {
     schemaDirectory("$projectDir/schemas")
 }
 
+// Robolectric fetches its Android runtime jar from Maven Central on first use, outside
+// Gradle, with no retry and into ~/.m2, which CI does not cache. Resolve it through
+// Gradle instead and copy it where Robolectric's offline mode looks for it.
+val robolectricRuntime: Configuration by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
+}
+val robolectricRuntimeDir = layout.buildDirectory.dir("robolectric-runtime")
+val robolectricRuntimeJars = tasks.register<Sync>("robolectricRuntimeJars") {
+    from(robolectricRuntime)
+    into(robolectricRuntimeDir)
+}
+
 android {
     namespace = "io.github.andreacovelli.abyssh"
     compileSdk {
@@ -119,6 +132,13 @@ android {
             // Robolectric needs the merged resources to resolve app resources in tests.
             isIncludeAndroidResources = true
             all { test ->
+                // Run Robolectric offline against the Android runtime jar Gradle resolved,
+                // so it comes from the Gradle cache rather than a separate download.
+                test.inputs.files(robolectricRuntimeJars)
+                    .withPropertyName("robolectricRuntimeJars")
+                    .withPathSensitivity(PathSensitivity.NONE)
+                test.systemProperty("robolectric.offline", "true")
+                test.systemProperty("robolectric.dependency.dir", robolectricRuntimeDir.get().asFile.absolutePath)
                 // Robolectric tests are slow to start; spread them over half the cores.
                 test.maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
                 // Roborazzi gates PNG capture on this system property; the Gradle
@@ -176,6 +196,7 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.robolectric)
+    robolectricRuntime(libs.robolectric.android.all)
     testImplementation(libs.roborazzi)
     testImplementation(libs.roborazzi.compose)
     testImplementation(platform(libs.androidx.compose.bom))

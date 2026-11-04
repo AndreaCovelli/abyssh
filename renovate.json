@@ -1,5 +1,12 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["github>AndreaCovelli/renovate-config"],
-  "forkProcessing": "enabled"
+  "forkProcessing": "enabled",
+  "packageRules": [
+    {
+      "description": "The version is the runtime Robolectric picks for SDK 34; update it by hand with Robolectric.",
+      "matchPackageNames": ["org.robolectric:android-all-instrumented"],
+      "enabled": false
+    }
+  ]
 }
