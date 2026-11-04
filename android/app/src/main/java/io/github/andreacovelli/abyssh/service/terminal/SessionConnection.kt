@@ -32,6 +32,9 @@ private const val RECONNECT_MAX_DOUBLINGS = 5
 private const val RECONNECT_MAX_DELAY_MS = 60_000L
 private const val MAX_PTY_DRAINS = 8
 
+// A session that stays up this long starts the next reconnect's backoff over.
+internal const val STABLE_SESSION_MS = 30_000L
+
 // The view's size changes on every frame while the keyboard slides in or out, so the far
 // end hears only the size that settles, as tmux control mode does.
 private const val REMOTE_RESIZE_SETTLE_MS = 150L
@@ -89,6 +92,11 @@ internal class SessionConnection(
 
     private val reconnectWait = ReconnectWait()
 
+    // Reconnect attempts since a session last stayed up for STABLE_SESSION_MS, and when
+    // the current one opened.
+    private var attemptsSinceStable = 0
+    private var openedAtMs = 0L
+
     // The view's latest size, and the size the far end was given, or null while no
     // transport is open. They differ while a resize settles.
     private var viewGeometry: TerminalGeometry? = null
@@ -109,6 +117,7 @@ internal class SessionConnection(
             reconnectJob?.cancel()
             reconnectJob = null
             stopReadLoop()
+            attemptsSinceStable = 0
             state.update {
                 it.copy(status = SessionStatus.Connecting, error = null, reconnectAttempt = 0, sessionKey = sessionKey)
             }
@@ -258,6 +267,7 @@ internal class SessionConnection(
     }
 
     private fun onOpened(spec: TabSpec) {
+        openedAtMs = SystemClock.elapsedRealtime()
         state.update { it.copy(status = SessionStatus.Connected, error = null, reconnectAttempt = 0) }
         emulator.requestSnapshot(force = true)
         // The view may have changed size while the transport was opening.
@@ -375,11 +385,13 @@ internal class SessionConnection(
     }
 
     private suspend fun reconnect(spec: TabSpec, reason: UiText) {
-        var attempt = 0
         stopReadLoop()
+        // A server that drops the session right after login keeps the backoff growing.
+        if (SystemClock.elapsedRealtime() - openedAtMs >= STABLE_SESSION_MS) attemptsSinceStable = 0
         var done = false
         while (!done && currentCoroutineContext().isActive && !disconnectRequested) {
-            attempt += 1
+            attemptsSinceStable += 1
+            val attempt = attemptsSinceStable
             state.update { it.copy(status = SessionStatus.Reconnecting, reconnectAttempt = attempt, error = reason) }
             reconnectWait.awaitAttempt(attempt)
             // An attempt made offline fails at once, so time without a network uses none up.
