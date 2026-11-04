@@ -263,9 +263,10 @@ pub fn build(b: *std.Build) void {
         openssl_test_step.dependOn(&ssl.step);
     }
 
-    // Zig tests that need no JNI or NDK, on the host: the backup container format and
-    // the vendored Mosh client, which links zlib built from source.
-    const test_step = b.step("test", "Run the backup and Mosh tests on the host");
+    // Zig tests that need no JNI or NDK, on the host: the backup container format, the
+    // fling cap for full-screen programs, and the vendored Mosh client, which links zlib
+    // built from source.
+    const test_step = b.step("test", "Run the backup, scroll, and Mosh tests on the host");
     const host = b.graph.host;
     const backup_tests = b.addTest(.{
         .name = "backup-tests",
@@ -278,6 +279,14 @@ pub fn build(b: *std.Build) void {
         }),
     });
     test_step.dependOn(&b.addRunArtifact(backup_tests).step);
+    const scroll_tests = b.addTest(.{
+        .name = "scroll-momentum-tests",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/bridge/scroll_momentum.zig"),
+            .target = host,
+        }),
+    });
+    test_step.dependOn(&b.addRunArtifact(scroll_tests).step);
     const host_mosh = b.dependency("mosh", .{
         .target = host,
         .optimize = .safe,

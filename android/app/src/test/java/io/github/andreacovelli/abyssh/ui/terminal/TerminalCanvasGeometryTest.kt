@@ -3,8 +3,6 @@ package io.github.andreacovelli.abyssh.ui.terminal
 import androidx.compose.ui.geometry.Offset
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TerminalCanvasGeometryTest {
@@ -61,23 +59,42 @@ class TerminalCanvasGeometryTest {
 
     @Test
     fun `a second tap close in time and place is a double tap`() {
-        val taps = DoubleTapState()
+        val taps = TapCounter()
 
-        assertFalse(taps.register(Offset(10f, 10f), time = 1_000, timeoutMs = 300, slopPx = 20f))
-        assertTrue(taps.register(Offset(15f, 12f), time = 1_200, timeoutMs = 300, slopPx = 20f))
+        assertEquals(1, taps.register(Offset(10f, 10f), time = 1_000, timeoutMs = 300, slopPx = 20f))
+        assertEquals(2, taps.register(Offset(15f, 12f), time = 1_200, timeoutMs = 300, slopPx = 20f))
     }
 
     @Test
     fun `a slow or distant second tap is not a double tap`() {
-        val taps = DoubleTapState()
+        val taps = TapCounter()
         taps.register(Offset(10f, 10f), time = 1_000, timeoutMs = 300, slopPx = 20f)
 
-        assertFalse(taps.register(Offset(10f, 10f), time = 1_400, timeoutMs = 300, slopPx = 20f))
-        assertFalse(taps.register(Offset(90f, 10f), time = 1_500, timeoutMs = 300, slopPx = 20f))
+        assertEquals(1, taps.register(Offset(10f, 10f), time = 1_400, timeoutMs = 300, slopPx = 20f))
+        assertEquals(1, taps.register(Offset(90f, 10f), time = 1_500, timeoutMs = 300, slopPx = 20f))
     }
 
     @Test
     fun `the first tap is never a double tap`() {
-        assertFalse(DoubleTapState().register(Offset.Zero, time = 0, timeoutMs = 300, slopPx = 20f))
+        assertEquals(1, TapCounter().register(Offset.Zero, time = 0, timeoutMs = 300, slopPx = 20f))
+    }
+
+    @Test
+    fun `a third tap in a row is a triple tap, and the next starts over`() {
+        val taps = TapCounter()
+        val counts = listOf(1_000L, 1_200L, 1_400L, 1_600L).map { time ->
+            taps.register(Offset(10f, 10f), time = time, timeoutMs = 300, slopPx = 20f)
+        }
+
+        assertEquals(listOf(1, 2, 3, 1), counts)
+    }
+
+    @Test
+    fun `a third tap far from the second is not a triple tap`() {
+        val taps = TapCounter()
+        taps.register(Offset(10f, 10f), time = 1_000, timeoutMs = 300, slopPx = 20f)
+        taps.register(Offset(10f, 10f), time = 1_200, timeoutMs = 300, slopPx = 20f)
+
+        assertEquals(1, taps.register(Offset(90f, 10f), time = 1_400, timeoutMs = 300, slopPx = 20f))
     }
 }

@@ -209,7 +209,7 @@ class TerminalSessionEngine internal constructor(
 
     /**
      * Scrolls the terminal under pixel ([x], [y]), or sends its program wheel events or
-     * arrow keys. A [momentum] step, from a fling, only scrolls the scrollback.
+     * arrow keys. A [momentum] step, from a fling, reaches a program only capped.
      */
     fun scroll(delta: Int, x: Float, y: Float, momentum: Boolean = false) {
         if (delta == 0) return

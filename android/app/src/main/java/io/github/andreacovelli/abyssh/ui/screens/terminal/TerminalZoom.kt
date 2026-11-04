@@ -1,6 +1,14 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.AnimationState
+import androidx.compose.animation.core.AnimationVector
+import androidx.compose.animation.core.DecayAnimationSpec
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateDecay
+import androidx.compose.animation.rememberSplineBasedDecay
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
@@ -22,12 +30,21 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.toSize
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
+import io.github.andreacovelli.abyssh.ui.terminal.TerminalGestureConfig
+import io.github.andreacovelli.abyssh.ui.terminal.rememberTerminalGestureConfig
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 private const val MAX_ZOOM = 6f
 
@@ -78,11 +95,16 @@ internal class TerminalZoomState {
         zoomOn(focus, size)
     }
 
-    /** A pinch or drag: scales by [zoom] around [centroid], then moves by [pan]. */
-    fun transform(centroid: Offset, pan: Offset, zoom: Float, size: Size) {
+    /**
+     * A pinch or drag: scales by [zoom] around [centroid], then moves by [pan]. Returns
+     * whether the canvas moved or changed scale.
+     */
+    fun transform(centroid: Offset, pan: Offset, zoom: Float, size: Size): Boolean {
+        val before = scale to offset
         val newScale = (scale * zoom).coerceIn(1f, MAX_ZOOM)
         // Keeps the point under the fingers under them while the scale changes.
         place(newScale, centroid - (centroid - offset) * (newScale / scale) + pan, size)
+        return (scale to offset) != before
     }
 
     /** A double tap: zooms in on [focus], or back out to the whole terminal. */
@@ -118,9 +140,58 @@ internal fun TerminalSnapshot.cursorFocus(size: Size): Offset {
 }
 
 /**
+ * Keeps a one-finger pan in zoom mode moving after the finger lifts, slowing as the
+ * terminal's own scrolling does, until it reaches an edge or a touch stops it.
+ */
+private class ZoomPanFling(
+    private val zoom: TerminalZoomState,
+    private val config: TerminalGestureConfig,
+    private val decay: DecayAnimationSpec<Offset>,
+) {
+    private var job: Job? = null
+
+    /** Whether the touch going on, or the last one, stopped a fling; it isn't a tap then. */
+    var stoppedFling = false
+        private set
+
+    suspend fun PointerInputScope.track(size: () -> Size) = coroutineScope {
+        val flingScope = this
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            stoppedFling = job?.isActive == true
+            job?.cancel()
+            val velocity = VelocityTracker()
+            velocity.addPosition(down.uptimeMillis, down.position)
+            var multiTouch = false
+            do {
+                val event = awaitPointerEvent()
+                if (event.changes.count { it.pressed } > 1) multiTouch = true
+                event.changes.firstOrNull { it.id == down.id }?.let { velocity.addPosition(it.uptimeMillis, it.position) }
+            } while (event.changes.any { it.pressed })
+            if (!multiTouch) job = flingScope.fling(velocity.calculateVelocity(), size)
+        }
+    }
+
+    private fun CoroutineScope.fling(velocity: Velocity, size: () -> Size): Job? {
+        val max = config.maxFlingVelocityPx
+        val initial = Offset(velocity.x.coerceIn(-max, max), velocity.y.coerceIn(-max, max))
+        if (zoom.scale <= 1f || initial.getDistance() < config.minFlingVelocityPx) return null
+        return launch {
+            var last = Offset.Zero
+            AnimationState(Offset.VectorConverter, Offset.Zero, AnimationVector(initial.x, initial.y)).animateDecay(decay) {
+                val moved = zoom.transform(Offset.Zero, value - last, 1f, size())
+                last = value
+                if (!moved) cancelAnimation()
+            }
+        }
+    }
+}
+
+/**
  * Draws [content] at [zoom]'s scale and offset. While zoom mode is on, a pinch zooms,
- * a drag pans, a double tap zooms in or out, a tap calls [onTap], and back leaves zoom
- * mode; the terminal underneath gets none of these touches.
+ * a drag pans and flings on when lifted, a double tap zooms in or out, a tap calls
+ * [onTap], and back leaves zoom mode; the terminal underneath gets none of these
+ * touches.
  */
 @Composable
 internal fun TerminalZoomFrame(
@@ -132,6 +203,9 @@ internal fun TerminalZoomFrame(
 ) {
     var size by remember { mutableStateOf(Size.Zero) }
     val currentOnTap by rememberUpdatedState(onTap)
+    val config = rememberTerminalGestureConfig()
+    val decay = rememberSplineBasedDecay<Offset>()
+    val fling = remember(zoom, config, decay) { ZoomPanFling(zoom, config, decay) }
     BackHandler(enabled = zoom.active, onBack = zoom::exit)
     LaunchedEffect(zoom.active, size) {
         if (!zoom.active) return@LaunchedEffect
@@ -154,6 +228,7 @@ internal fun TerminalZoomFrame(
             Box(
                 modifier = Modifier
                     .matchParentSize()
+                    .pointerInput(fling) { with(fling) { track { size } } }
                     .pointerInput(zoom) {
                         detectTransformGestures { centroid, pan, gestureZoom, _ ->
                             zoom.transform(centroid, pan, gestureZoom, size)
@@ -161,7 +236,7 @@ internal fun TerminalZoomFrame(
                     }
                     .pointerInput(zoom) {
                         detectTapGestures(
-                            onTap = { currentOnTap() },
+                            onTap = { if (!fling.stoppedFling) currentOnTap() },
                             onDoubleTap = { zoom.toggleFocus(it, size) },
                         )
                     },

@@ -1,5 +1,6 @@
 const std = @import("std");
 const time = @import("time.zig");
+const scroll_momentum = @import("scroll_momentum.zig");
 const ghostty = @import("ghostty-vt");
 const zignal_png = @import("zignal_png.zig");
 
@@ -178,6 +179,10 @@ const AbysshTerminal = struct {
     // Scrolled rows not yet sent as a wheel event, negative for up. See
     // rows_per_wheel_event.
     wheel_rows: i32 = 0,
+    // When the last scroll that wasn't a fling step arrived, in monotonic
+    // milliseconds. A fling reaches the program only shortly after it; see
+    // scroll_momentum.zig.
+    last_direct_scroll_ms: ?u64 = null,
     snapshot_buffer: std.ArrayListUnmanaged(u8) = .empty,
     snapshot_extras_scratch: std.ArrayListUnmanaged(u32) = .empty,
     // The colors the last text snapshot resolved its cells with. Cells hold
@@ -1669,11 +1674,13 @@ fn takeWheelEvents(terminal: *AbysshTerminal, delta: i32) i32 {
 /// without the mouse, such as less and man, get up and down arrow keys, as
 /// xterm and Ghostty send in alternate scroll mode (1007). Anything else
 /// scrolls the scrollback. A [momentum] step, from a fling after the finger
-/// lifts, only scrolls the scrollback, so a flick never floods a program with
-/// keys. Returns whether anything changed.
+/// lifts, reaches a program capped, as scroll_momentum.zig describes, so a flick
+/// never floods it with keys. Returns whether anything changed.
 export fn abyssh_scroll(handle: c.jlong, delta: c.jint, x: c.jfloat, y: c.jfloat, momentum: bool) callconv(.c) bool {
     const terminal = abysshFromHandle(handle) orelse return false;
     if (delta == 0) return false;
+    const now = time.monotonicMillis();
+    if (!momentum) terminal.last_direct_scroll_ms = now;
 
     // Check if we're in alternate screen mode (used by vim, tmux, less, etc.)
     const alt_screen = terminal.terminal.modes.get(.alt_screen);
@@ -1685,11 +1692,12 @@ export fn abyssh_scroll(handle: c.jlong, delta: c.jint, x: c.jfloat, y: c.jfloat
     const mouse_reporting_enabled = terminal.terminal.flags.mouse_event != .none;
 
     if (in_alt_screen or mouse_reporting_enabled) {
-        if (momentum) return false;
+        const rows = if (momentum) scroll_momentum.rowsForProgram(delta, elapsedSince(terminal.last_direct_scroll_ms, now)) else delta;
+        if (rows == 0) return false;
         const sent = if (mouse_reporting_enabled)
-            sendWheelEvents(terminal, delta, x, y)
+            sendWheelEvents(terminal, rows, x, y)
         else if (terminal.terminal.modes.get(.mouse_alternate_scroll))
-            sendCursorKeys(terminal, delta)
+            sendCursorKeys(terminal, rows)
         else
             false;
         if (!sent) return false;
@@ -1699,6 +1707,12 @@ export fn abyssh_scroll(handle: c.jlong, delta: c.jint, x: c.jfloat, y: c.jfloat
 
     update_render_state(terminal);
     return true;
+}
+
+/// The milliseconds from [since] to [now], or null when [since] is.
+fn elapsedSince(since: ?u64, now: u64) ?u64 {
+    const start = since orelse return null;
+    return now -| start;
 }
 
 /// Wheel events for [delta] rows at ([x], [y]). Returns whether any were queued.
