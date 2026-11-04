@@ -130,7 +130,7 @@ private fun ThemeModePills(
 ) {
     AbyssSegmentedControl(
         options = ThemeMode.entries,
-        labels = ThemeMode.entries.associateWith { it.label },
+        labels = ThemeMode.entries.associateWith { stringResource(it.label) },
         selected = themeMode,
         onSelect = onThemeModeChanged,
     )

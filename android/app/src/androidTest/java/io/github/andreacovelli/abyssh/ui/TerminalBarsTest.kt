@@ -70,7 +70,7 @@ class TerminalBarsTest {
                 TerminalSearchBar(TerminalSearchState("zzz").withMatches(emptyList()), {}, {}, {}, {})
             }
         }
-        compose.onNodeWithTag("terminal_search_counter").assertTextEquals("no matches")
+        compose.onNodeWithTag("terminal_search_counter").assertTextEquals("No matches")
     }
 
     @Test
