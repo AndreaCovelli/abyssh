@@ -175,6 +175,8 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
     ): Int {
         val row = cells.cells
         val end = cells.textRunEnd(start) { fonts.choiceAt(row, it) }
+        // A run has one text style, so blinking text is its own run.
+        if (cells.isBlinkHidden(start)) return end
         val choice = fonts.choiceAt(row, start)
         if (choice == PAINT_SPRITE) {
             drawSpriteRun(canvas, cells, start, end, cell)
@@ -262,7 +264,7 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
 
     private fun drawCursor(canvas: Canvas, frame: TerminalFrame, paints: TerminalTextPaints) {
         val snapshot = frame.snapshot
-        if (!snapshot.cursorVisible || snapshot.cursorX !in 0 until snapshot.cols || snapshot.cursorY !in 0 until snapshot.rows) {
+        if (frame.cursorHidden || !snapshot.cursorVisible || snapshot.cursorX !in 0 until snapshot.cols || snapshot.cursorY !in 0 until snapshot.rows) {
             return
         }
         val left = snapshot.cursorX * frame.cell.width
@@ -316,6 +318,7 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         val col = snapshot.cursorX
         val codepoint = row.codepoints[col]
         if (codepoint == 0 || codepoint == ' '.code) return
+        if (frame.blinkTextHidden && (row.flags[col].toInt() and TerminalSnapshot.CELL_FLAG_BLINK) != 0) return
         val choice = fonts.choiceAt(row, col)
         if (choice == PAINT_SPRITE) {
             sprites.draw(canvas, codepoint, left, top, frame.cell, color)

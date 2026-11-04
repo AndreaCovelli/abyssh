@@ -44,6 +44,7 @@ internal data class TerminalUiSettings(
     val showCustomActionsFab: Boolean,
     val wordSeparators: String,
     val ligatures: Boolean,
+    val cursorBlink: Boolean,
 )
 
 @Composable
@@ -70,6 +71,7 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
     val showCustomActionsFab by repo.showCustomActionsFab.collectAsStateWithLifecycle()
     val wordSeparators by repo.text.wordSeparators.collectAsStateWithLifecycle()
     val ligatures by repo.text.ligatures.collectAsStateWithLifecycle()
+    val cursorBlink by repo.text.cursorBlink.collectAsStateWithLifecycle()
     return TerminalUiSettings(
         ghosttyTheme = ghosttyTheme,
         tabMode = tabMode,
@@ -84,6 +86,7 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
         showCustomActionsFab = showCustomActionsFab,
         wordSeparators = wordSeparators,
         ligatures = ligatures,
+        cursorBlink = cursorBlink,
     )
 }
 

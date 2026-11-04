@@ -35,7 +35,10 @@ const verbose_snapshot_perf_logs = false;
 //      0 = block, 1 = bar, 2 = underline, 3 = block_hollow)
 //  15  app_tracks_mouse (1 when the app has enabled any mouse mode, so taps
 //      go to it as clicks instead of opening links)
-//  16  row_count (how many rows follow; rows when the snapshot is full)
+//  16  cursor_blink (0 = steady and 1 = blinking, as the app asked through
+//      DECSCUSR or DECSET 12; 2 = the app asked for neither, so the host's
+//      setting decides)
+//  17  row_count (how many rows follow; rows when the snapshot is full)
 //
 // After the header come row_count LE i32 row indices, in increasing order,
 // then row_count * cols cells of SNAPSHOT_CELL_SIZE_BYTES each, one row after
@@ -51,7 +54,7 @@ const verbose_snapshot_perf_logs = false;
 //          3 curly, 4 dotted, 5 dashed), bit 3 strikethrough, bit 4
 //          overline, bit 5 set when bytes 12..14 hold an underline color
 //  12..14  underline r, g, b (SGR 58); 0 when the cell has none
-const SNAPSHOT_HEADER_I32_COUNT = 17;
+const SNAPSHOT_HEADER_I32_COUNT = 18;
 const SNAPSHOT_CELL_SIZE_BYTES = 15;
 const DECORATION_STRIKETHROUGH: u8 = 1 << 3;
 const DECORATION_OVERLINE: u8 = 1 << 4;
@@ -1093,7 +1096,16 @@ export fn abyssh_build_text_snapshot(handle: c.jlong, full_requested: bool, out_
     writeIntLe(i32, buffer[0..base_total_size], 56, cursor_style);
     const app_tracks_mouse: i32 = if (terminal.terminal.flags.mouse_event != .none) 1 else 0;
     writeIntLe(i32, buffer[0..base_total_size], 60, app_tracks_mouse);
-    writeIntLe(i32, buffer[0..base_total_size], 64, @intCast(row_count));
+    // Ghostty's default blink is off, so the mode is on only when the app asked
+    // for a blinking cursor.
+    const cursor_blink: i32 = if (terminal.terminal.modes.get(.cursor_blinking))
+        1
+    else if (terminal.terminal.cursor.is_default)
+        2
+    else
+        0;
+    writeIntLe(i32, buffer[0..base_total_size], 64, cursor_blink);
+    writeIntLe(i32, buffer[0..base_total_size], 68, @intCast(row_count));
 
     // The dirty flags are consumed from here on: a failure below returns
     // null, and the host then asks for a full snapshot.

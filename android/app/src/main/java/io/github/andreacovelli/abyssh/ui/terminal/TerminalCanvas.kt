@@ -88,6 +88,8 @@ fun TerminalCanvas(
     wordSeparators: String = DEFAULT_WORD_SEPARATORS,
     // Lets the primary font join characters into its ligatures where they fit the cells.
     ligatures: Boolean = false,
+    // Whether the cursor blinks for an app that doesn't choose with DECSCUSR.
+    cursorBlinkDefault: Boolean = false,
     // Rows to scroll at a point. Momentum steps come from a fling after the finger lifts.
     onScroll: (delta: Int, x: Float, y: Float, momentum: Boolean) -> Unit = { _, _, _, _ -> },
     minFontSizeSp: Float = 1f,
@@ -109,6 +111,7 @@ fun TerminalCanvas(
     val screenReaderOn = rememberScreenReaderOn()
     val currentSnapshot by rememberUpdatedState(snapshot)
     val snapshotSource = remember { { currentSnapshot() } }
+    val blink = rememberTerminalBlinkPhase(snapshotSource, cursorBlinkDefault)
 
     val callbacks = TerminalCanvasCallbacks(
         onSelectionChange = onSelectionChange,
@@ -190,6 +193,8 @@ fun TerminalCanvas(
             selection = selection?.normalized(shown.cellCount),
             selectionColumns = selection?.columns(shown.cols),
             searchSpans = searchSpans.get(searchMatches, currentSearchMatch, shown),
+            blinkTextHidden = blink.off,
+            cursorHidden = blink.off && shown.cursorBlinks(cursorBlinkDefault),
         )
         drawIntoCanvas { renderer.draw(it.nativeCanvas, frame, paints, placement) }
     }

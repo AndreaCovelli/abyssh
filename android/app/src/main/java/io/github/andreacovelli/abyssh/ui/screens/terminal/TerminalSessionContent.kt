@@ -275,6 +275,7 @@ private fun TerminalPane(
                     onRectangleSelectionStart = input::spendStickyAlt,
                     wordSeparators = host.settings.wordSeparators,
                     ligatures = host.settings.ligatures,
+                    cursorBlinkDefault = host.settings.cursorBlink,
                     onScroll = vm.input::onScroll,
                     onFontSizeChange = { sizeSp ->
                         host.fontSize.floatValue = sizeSp

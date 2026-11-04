@@ -30,6 +30,12 @@ internal fun TerminalTextSettingsCards(state: TerminalTextState, actions: Termin
         checked = state.ligatures,
         onCheckedChange = actions::setLigatures,
     )
+    SettingSwitchCard(
+        title = stringResource(R.string.settings_cursor_blink),
+        hint = stringResource(R.string.settings_cursor_blink_hint),
+        checked = state.cursorBlink,
+        onCheckedChange = actions::setCursorBlink,
+    )
     WordSeparatorsCard(value = state.wordSeparators, onValueChange = actions::setWordSeparators)
 }
 

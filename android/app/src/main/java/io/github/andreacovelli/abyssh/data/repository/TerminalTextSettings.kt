@@ -32,8 +32,19 @@ class TerminalTextSettings internal constructor(private val prefs: SharedPrefere
         _ligatures.value = enabled
     }
 
+    private val _cursorBlink = MutableStateFlow(prefs.getBoolean(KEY_CURSOR_BLINK, false))
+
+    /** Whether the cursor blinks for an app that doesn't choose itself. */
+    val cursorBlink: StateFlow<Boolean> = _cursorBlink.asStateFlow()
+
+    fun setCursorBlink(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_CURSOR_BLINK, enabled) }
+        _cursorBlink.value = enabled
+    }
+
     private companion object {
         const val KEY_WORD_SEPARATORS = "terminal_word_separators"
         const val KEY_LIGATURES = "terminal_ligatures"
+        const val KEY_CURSOR_BLINK = "terminal_cursor_blink"
     }
 }

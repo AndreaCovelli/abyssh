@@ -18,13 +18,14 @@ class TerminalSnapshotRowsTest {
         extras: Map<Int, IntArray> = emptyMap(),
         cursorX: Int = 0,
         decorations: Map<Int, Pair<Int, Int>> = emptyMap(),
+        cursorBlink: Int = TerminalSnapshot.CURSOR_BLINK_DEFAULT,
     ): ByteBuffer {
         val cols = lines.first().length
-        val cellsStart = 17 * 4 + rows.size * 4
+        val cellsStart = 18 * 4 + rows.size * 4
         val extrasOffset = cellsStart + rows.size * cols * 15
         val extrasSize = 4 + extras.values.sumOf { 8 + it.size * 4 }
         val raw = ByteBuffer.allocate(extrasOffset + extrasSize).order(ByteOrder.LITTLE_ENDIAN)
-        val header = intArrayOf(cols, lines.size, cursorX, 0, 1, 0, 0, 0, 255, 255, 255, extrasOffset, 0, 0, 0, 0)
+        val header = intArrayOf(cols, lines.size, cursorX, 0, 1, 0, 0, 0, 255, 255, 255, extrasOffset, 0, 0, 0, 0, cursorBlink)
         header.forEach { raw.putInt(it) }
         raw.putInt(rows.size)
         rows.forEach { raw.putInt(it) }
@@ -153,5 +154,17 @@ class TerminalSnapshotRowsTest {
 
         assertEquals(a, b)
         assertEquals(a.hashCode(), b.hashCode())
+    }
+
+    @Test
+    fun `the cursor blinks as the app asked, else as the setting says`() {
+        val asked = TerminalSnapshot.fromByteBuffer(encode(listOf("ab"), cursorBlink = TerminalSnapshot.CURSOR_BLINK_BLINKING))
+        val steady = TerminalSnapshot.fromByteBuffer(encode(listOf("ab"), cursorBlink = TerminalSnapshot.CURSOR_BLINK_STEADY))
+        val unset = TerminalSnapshot.fromByteBuffer(encode(listOf("ab")))
+
+        assertEquals(TerminalSnapshot.CURSOR_BLINK_BLINKING, asked.cursorBlink)
+        assertEquals(listOf(true, true), listOf(asked.cursorBlinks(false), asked.cursorBlinks(true)))
+        assertEquals(listOf(false, false), listOf(steady.cursorBlinks(false), steady.cursorBlinks(true)))
+        assertEquals(listOf(false, true), listOf(unset.cursorBlinks(false), unset.cursorBlinks(true)))
     }
 }
