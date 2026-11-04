@@ -225,6 +225,18 @@ class TerminalSessionEngine internal constructor(
         }
     }
 
+    /**
+     * Scrolls the focused terminal [delta] shell prompts up (negative) or down, by the
+     * OSC 133 marks its shell writes. Nothing happens when the shell sends none.
+     */
+    fun scrollToPrompt(delta: Int) {
+        if (delta == 0) return
+        scope.launch(dispatcher) {
+            val target = terminals.focused() ?: return@launch
+            if (bridge.nativeScrollToPrompt(target.emulator.handle, delta)) target.emulator.requestSnapshot(force = true)
+        }
+    }
+
     fun scrollToScreenRow(screenRow: Int) = onFocused { target ->
         bridge.nativeScrollToScreenRow(target.emulator.handle, screenRow - target.row)
     }

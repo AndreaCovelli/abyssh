@@ -1996,6 +1996,28 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     update_render_state(terminal);
 }
 
+/// Scrolls the viewport `delta` shell prompts up (negative) or down (positive), using
+/// the OSC 133 marks the shell wrote. Returns whether the viewport moved; it stays put
+/// when the shell sends no marks or no prompt lies in that direction.
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeScrollToPrompt(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+    delta: c.jint,
+) callconv(.c) c.jboolean {
+    _ = env;
+    _ = thiz;
+    const terminal = abysshFromHandle(handle) orelse return c.JNI_FALSE;
+    if (delta == 0) return c.JNI_FALSE;
+    const pages = &terminal.terminal.screens.active.pages;
+    const before = pages.pointFromPin(.screen, pages.getTopLeft(.viewport)) orelse return c.JNI_FALSE;
+    terminal.terminal.scrollViewport(.{ .delta_prompt = delta });
+    const after = pages.pointFromPin(.screen, pages.getTopLeft(.viewport)) orelse return c.JNI_FALSE;
+    if (after.screen.y == before.screen.y) return c.JNI_FALSE;
+    update_render_state(terminal);
+    return c.JNI_TRUE;
+}
+
 fn jniIntArray(env: *c.JNIEnv, values: []const c.jint) c.jintArray {
     const array = env.*.*.NewIntArray.?(env, @intCast(values.len)) orelse return null;
     if (values.len > 0) env.*.*.SetIntArrayRegion.?(env, array, 0, @intCast(values.len), values.ptr);

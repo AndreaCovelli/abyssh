@@ -24,6 +24,7 @@ import io.github.andreacovelli.abyssh.ui.terminal.TerminalSpecialKey
 import io.github.andreacovelli.abyssh.ui.terminal.isCopyShortcut
 import io.github.andreacovelli.abyssh.ui.terminal.isPasteShortcut
 import io.github.andreacovelli.abyssh.ui.terminal.isSearchShortcut
+import io.github.andreacovelli.abyssh.ui.terminal.promptJumpShortcut
 import kotlinx.coroutines.awaitCancellation
 
 /**
@@ -174,6 +175,7 @@ internal class TerminalInputController(
         }
         // Paste applies the sticky modifiers but leaves them held.
         if (result.shouldPaste) pasteClipboard()
+        if (result.promptJump != 0) input.scrollToPrompt(result.promptJump)
     }
 
     private fun onText(text: String) {
@@ -266,8 +268,10 @@ internal class TerminalInputController(
 
     private fun forwardKey(key: Int, codepoint: Int, mods: Int, action: Int, charCode: Int) {
         val press = action == GhosttyKeyAction.Press
+        val promptJump = promptJumpShortcut(key, mods)
         when {
             isSearchShortcut(key, mods) -> if (press) vm.search.open()
+            promptJump != 0 -> if (action != GhosttyKeyAction.Release) input.scrollToPrompt(promptJump)
             isCopyShortcut(key, mods, hasSelectedText || (!press && copyShortcutHeld)) -> {
                 copyShortcutHeld = action != GhosttyKeyAction.Release
                 if (press) copySelection()

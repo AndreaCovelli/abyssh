@@ -156,6 +156,8 @@ internal fun rememberAbysshKeys(
                 vm.files.selectPane(ConnectionTab.Terminal)
                 overlay.zoom.toggle()
             },
+            BuiltinCommand.PreviousPrompt to { vm.input.scrollToPrompt(-1) },
+            BuiltinCommand.NextPrompt to { vm.input.scrollToPrompt(1) },
         )
         AbysshKeyBindings.build(
             builtinShortcuts = settings.builtinShortcuts,

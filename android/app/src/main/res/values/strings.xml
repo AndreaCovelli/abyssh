@@ -200,6 +200,10 @@
     <string name="command_search_description">Search the terminal output</string>
     <string name="command_zoom">Zoom</string>
     <string name="command_zoom_description">Toggle zoom mode</string>
+    <string name="command_previous_prompt">Previous prompt</string>
+    <string name="command_previous_prompt_description">Scroll to the previous shell prompt</string>
+    <string name="command_next_prompt">Next prompt</string>
+    <string name="command_next_prompt_description">Scroll to the next shell prompt</string>
     <string name="action_reset">Reset</string>
     <string name="settings_tab_mode_palette">Palette</string>
     <string name="settings_tab_mode_strip">Tab strip</string>
