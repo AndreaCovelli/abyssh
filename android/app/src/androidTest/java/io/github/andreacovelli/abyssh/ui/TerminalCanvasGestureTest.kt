@@ -25,6 +25,7 @@ import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalZoomIndicator
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCanvas
+import io.github.andreacovelli.abyssh.ui.terminal.TerminalSelection
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTheme
 import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
@@ -43,6 +44,7 @@ class TerminalCanvasGestureTest {
     private val clicks = mutableListOf<Offset>()
     private val scrolls = mutableListOf<Int>()
     private val momentumScrolls = mutableListOf<Int>()
+    private val selections = mutableListOf<TerminalSelection?>()
 
     private fun snapshot(appTracksMouse: Boolean, vararg rows: String): TerminalSnapshot {
         val cols = 40
@@ -72,6 +74,7 @@ class TerminalCanvasGestureTest {
                 onLinkTap = { _, _, url, noLink -> if (url == null) noLink() else linkTaps += url },
                 onPrimaryClick = { _, x, y -> clicks += Offset(x, y) },
                 onScroll = { delta, _, _, momentum -> if (momentum) momentumScrolls += delta else scrolls += delta },
+                onSelectionChange = { selections += it },
             )
         }
         compose.waitUntil { cellWidth > 0 && cellHeight > 0 }
@@ -103,6 +106,23 @@ class TerminalCanvasGestureTest {
         compose.onNodeWithTag("canvas").performTouchInput { click(cell(3, 0)) }
         compose.runOnIdle {
             assertTrue(linkTaps.isEmpty())
+            assertEquals(1, clicks.size)
+        }
+    }
+
+    @Test
+    fun doubleTapSelectsAWordAndTripleTapItsLine() {
+        show(snapshot(appTracksMouse = false, "  git log --oneline", "next"))
+        compose.onNodeWithTag("canvas").performTouchInput {
+            click(cell(7, 0))
+            advanceEventTime(100)
+            click(cell(7, 0))
+            advanceEventTime(100)
+            click(cell(7, 0))
+        }
+        compose.runOnIdle {
+            assertEquals(listOf(TerminalSelection(6, 8), TerminalSelection(2, 18)), selections)
+            // Only the first tap clicks; the others select.
             assertEquals(1, clicks.size)
         }
     }

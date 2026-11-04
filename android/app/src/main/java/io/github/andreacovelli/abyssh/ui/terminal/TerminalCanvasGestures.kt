@@ -56,6 +56,9 @@ private const val LONG_PRESS_SLOP_FACTOR = 1.5f
 /** A drag counts as vertical when it moves this much more vertically than sideways. */
 private const val VERTICAL_INTENT_RATIO = 1.2f
 
+/** The longest run of taps that means something: a triple tap selects a line. */
+private const val MAX_TAPS_IN_A_ROW = 3
+
 /** A two-finger tap must lift within this many long-press timeouts. */
 private const val TWO_FINGER_TAP_TIMEOUTS = 2
 
@@ -153,18 +156,25 @@ internal fun rememberTerminalGestureConfig(): TerminalGestureConfig {
     }
 }
 
-/** Tracks double-tap timing and position without triggering recomposition. */
-internal class DoubleTapState {
+/** Counts taps in a row, close in time and place, without triggering recomposition. */
+internal class TapCounter {
     // Far in the past, so the first tap is never taken for the second of a double tap.
     private var lastTime: Long = Long.MIN_VALUE / 2
     private var lastPosition: Offset = Offset.Zero
+    private var count = 0
 
-    /** Records a tap, and returns whether it completes a double tap. */
-    fun register(position: Offset, time: Long, timeoutMs: Long, slopPx: Float): Boolean {
-        val isDouble = time - lastTime < timeoutMs && (position - lastPosition).getDistance() < slopPx
+    /**
+     * Records a tap, and returns how many taps in a row it makes: 2 for a double tap, 3
+     * for a triple tap. The tap after a triple tap starts again at 1.
+     */
+    fun register(position: Offset, time: Long, timeoutMs: Long, slopPx: Float): Int {
+        val follows = count < MAX_TAPS_IN_A_ROW &&
+            time - lastTime < timeoutMs &&
+            (position - lastPosition).getDistance() < slopPx
+        count = if (follows) count + 1 else 1
         lastTime = time
         lastPosition = position
-        return isDouble
+        return count
     }
 }
 
@@ -176,10 +186,11 @@ private enum class DragMode {
 
 /**
  * Turns pointer input on the terminal canvas into selections, clicks, scrolling, and
- * font size changes. Touch: tap, double-tap for a word, long-press to select or to
- * hand the drag to the app, one-finger scroll that flings on when lifted, pinch to
- * zoom, two-finger tap for a right click. Mouse: the wheel scrolls, the left button selects or clicks, and the
- * right and middle buttons go to the app.
+ * font size changes. Touch: tap, double-tap for a word, triple-tap for a line,
+ * long-press to select or to hand the drag to the app, one-finger scroll that flings on
+ * when lifted, pinch to zoom, two-finger tap for a right click. Mouse: the wheel
+ * scrolls, the left button selects or clicks, and the right and middle buttons go to
+ * the app.
  */
 internal class TerminalCanvasGestures(
     private val env: State<TerminalGestureEnv>,
@@ -193,7 +204,7 @@ internal class TerminalCanvasGestures(
     var autoScrollingSelection = false
         private set
 
-    private val doubleTap = DoubleTapState()
+    private val taps = TapCounter()
 
     /** The fling running after a one-finger scroll lifted, until it slows to a stop or a touch stops it. */
     private var fling: Job? = null
@@ -352,22 +363,27 @@ internal class TerminalCanvasGestures(
         }
     }
 
-    /** A tap or click that didn't move: double-tap selects a word, else clear the selection or click. */
+    /**
+     * A tap or click that didn't move: a double tap selects a word and a triple tap its
+     * line; otherwise it clears the selection or clicks.
+     */
     private fun tap(position: Offset, time: Long, held: HeldModifiers) {
         val current = env.value
         val tapPos = current.toSnapshot(position)
+        val count = taps.register(tapPos, time, config.doubleTapTimeoutMs, config.doubleTapSlopPx)
         when {
-            doubleTap.register(tapPos, time, config.doubleTapTimeoutMs, config.doubleTapSlopPx) ->
-                selectWordAt(current, tapPos)
+            count == 2 -> select(current, tapPos) { current.snapshot.wordAt(it, current.wordSeparators) }
+            count == MAX_TAPS_IN_A_ROW -> select(current, tapPos) { current.snapshot.lineAt(it) }
             current.selection != null -> current.callbacks.onSelectionChange(null)
             else -> click(current, tapPos, held)
         }
     }
 
-    private fun selectWordAt(current: TerminalGestureEnv, position: Offset) {
+    /** Selects the cells [range] finds around the cell at [position], if it finds any. */
+    private fun select(current: TerminalGestureEnv, position: Offset, range: (cell: Int) -> IntRange?) {
         val cell = current.cellAt(position) ?: return
-        val word = current.snapshot.wordAt(cell, current.wordSeparators) ?: return
-        current.callbacks.onSelectionChange(TerminalSelection(word.first, word.last))
+        val cells = range(cell) ?: return
+        current.callbacks.onSelectionChange(TerminalSelection(cells.first, cells.last))
         current.longPressHaptic()
     }
 

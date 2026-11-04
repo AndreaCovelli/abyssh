@@ -132,6 +132,26 @@ internal fun TerminalSnapshot.wordAt(cellIndex: Int, separators: String = DEFAUL
     return start..end
 }
 
+/**
+ * The line at [cellIndex]: its row from the first to the last cell that isn't blank,
+ * as a triple tap selects it. In a tab that shows several terminals, such as a split
+ * tmux window, it stays inside [TerminalSnapshot.activeArea] when the cell is there.
+ * Null on a blank row.
+ */
+internal fun TerminalSnapshot.lineAt(cellIndex: Int): IntRange? {
+    if (cols <= 0 || cellIndex !in 0 until cellCount) return null
+    val row = cellIndex / cols
+    val col = cellIndex % cols
+    val area = activeArea?.takeIf { col in it.col until it.col + it.cols && row in it.row until it.row + it.rows }
+    val firstCol = area?.col?.coerceIn(0, cols - 1) ?: 0
+    val lastCol = area?.let { it.col + it.cols - 1 }?.coerceIn(firstCol, cols - 1) ?: (cols - 1)
+    val rowStart = row * cols
+    val cells = (rowStart + firstCol)..(rowStart + lastCol)
+    val start = cells.firstOrNull { !isBlankCell(it) } ?: return null
+    val end = cells.reversed().first { !isBlankCell(it) }
+    return start..end
+}
+
 private fun TerminalSnapshot.isBlankCell(index: Int): Boolean {
     if (isSpacerContinuation(index)) return false
     val cp = codepointAt(index)
