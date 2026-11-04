@@ -245,6 +245,7 @@
     <string name="terminal_verify_title">Verify to connect</string>
     <string name="terminal_verify_subtitle">Authenticate to open this server session</string>
     <string name="terminal_current_host">Current host</string>
+    <string name="terminal_input_label">Terminal input</string>
     <string name="terminal_key_passphrase_title">Key passphrase</string>
     <string name="action_connect">Connect</string>
     <string name="terminal_files_unsupported_local">Files are not supported for local shell</string>

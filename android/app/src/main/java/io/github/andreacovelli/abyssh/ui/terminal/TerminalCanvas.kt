@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.DisposableEffect
+import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -12,6 +15,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
@@ -94,6 +100,7 @@ fun TerminalCanvas(
     val cell = remember(paints) { paints.cellMetrics() }
     val renderer = remember(fonts) { TerminalRenderer(fonts) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    val screenReaderOn = rememberScreenReaderOn()
     val currentSnapshot by rememberUpdatedState(snapshot)
     val snapshotSource = remember { { currentSnapshot() } }
 
@@ -153,6 +160,16 @@ fun TerminalCanvas(
         modifier = modifier
             .fillMaxSize()
             .onSizeChanged { canvasSize = it }
+            // Screen readers read the visible screen. Reading the snapshot here makes the
+            // text follow it as output arrives. Only while one is on, since content capture
+            // services read semantics too.
+            .then(
+                if (screenReaderOn) {
+                    Modifier.semantics { text = AnnotatedString(visibleScreenText(snapshotSource())) }
+                } else {
+                    Modifier
+                },
+            )
             .then(if (enableGestures) gestures.modifier else Modifier),
     ) {
         val shown = snapshotSource()
@@ -168,6 +185,25 @@ fun TerminalCanvas(
         drawIntoCanvas { renderer.draw(it.nativeCanvas, frame, paints, placement) }
     }
 }
+
+/** Whether a screen reader such as TalkBack is on, following changes. */
+@Composable
+private fun rememberScreenReaderOn(): Boolean {
+    val context = LocalContext.current
+    val manager = remember(context) { context.getSystemService(AccessibilityManager::class.java) }
+    var on by remember(manager) { mutableStateOf(manager?.isTouchExplorationEnabled == true) }
+    DisposableEffect(manager) {
+        val listener = AccessibilityManager.TouchExplorationStateChangeListener { on = it }
+        manager?.addTouchExplorationStateChangeListener(listener)
+        on = manager?.isTouchExplorationEnabled == true
+        onDispose { manager?.removeTouchExplorationStateChangeListener(listener) }
+    }
+    return on
+}
+
+/** The text on screen, without the blank rows below the last line of output. */
+internal fun visibleScreenText(snapshot: TerminalSnapshot): String =
+    extractSelectionText(snapshot, 0 until snapshot.cellCount)?.trimEnd('\n').orEmpty()
 
 /**
  * Scroll requests, merged so the app gets at most one per frame. The merged step counts

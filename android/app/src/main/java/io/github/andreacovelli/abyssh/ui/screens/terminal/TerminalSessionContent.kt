@@ -295,10 +295,12 @@ private fun TerminalPane(
             )
             // Its handles and menu sit at unzoomed positions, which zoom mode moves away from.
             if (!host.overlay.zoom.active) TerminalSelectionOverlay(input)
+            val inputLabel = stringResource(R.string.terminal_input_label)
             AndroidView(
                 modifier = Modifier.align(Alignment.BottomStart).size(1.dp).alpha(0f),
                 factory = input::createInputView,
                 update = { view ->
+                    view.contentDescription = inputLabel
                     view.disableAutocorrect = host.settings.disableAutocorrect
                     view.volumeKeysAsArrows = host.settings.volumeKeysAsArrows
                 },
