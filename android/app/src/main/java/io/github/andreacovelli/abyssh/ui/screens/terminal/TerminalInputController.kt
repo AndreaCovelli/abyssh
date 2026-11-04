@@ -108,7 +108,7 @@ internal class TerminalInputController(
     // Backspace with nowhere to go, so copying takes it back.
     fun copySelection() {
         val text = selectionState?.text ?: return
-        copyToClipboard(context, "terminal selection", text, R.string.terminal_copied_selection)
+        copyToClipboard(context, "terminal selection", text, R.string.terminal_copied_selection, sensitive = true)
         clearSelection()
         requestFocus()
     }

@@ -39,6 +39,9 @@ data class BackupSshKey(
         createdAtEpochMs = createdAtEpochMs,
     )
 
+    /** Leaves out the private key, so logging a backup can't leak it. */
+    override fun toString(): String = "BackupSshKey(id=$id, name=$name, algorithm=$algorithm)"
+
     companion object {
         fun fromEntity(key: SshKey): BackupSshKey = BackupSshKey(
             id = key.id,
@@ -90,6 +93,11 @@ data class BackupHostProfile(
         chooseSessionOnConnect = chooseSessionOnConnect,
         keepaliveIntervalSeconds = keepaliveIntervalSeconds,
     )
+
+    /** Leaves out the password and passphrase, so logging a backup can't leak them. */
+    override fun toString(): String =
+        "BackupHostProfile(id=$id, name=$name, host=$host, port=$port, username=$username, " +
+            "keyId=$keyId, transport=$transport, authMethod=$authMethod)"
 
     companion object {
         fun fromEntity(host: HostProfile): BackupHostProfile = BackupHostProfile(

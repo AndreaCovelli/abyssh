@@ -20,6 +20,24 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
+/** Says once that saved hosts and keys were deleted because their encryption key was lost. */
+@Composable
+internal fun DataResetDialog(onDismiss: () -> Unit) {
+    AbyssDialog(
+        title = stringResource(R.string.data_reset_title),
+        confirmLabel = stringResource(R.string.action_ok),
+        dismissLabel = null,
+        onConfirm = onDismiss,
+        onDismiss = onDismiss,
+    ) {
+        AbyssText(
+            stringResource(R.string.data_reset_body),
+            style = AbyssTypography.current.body,
+            color = AbyssColors.current.textSecondary,
+        )
+    }
+}
+
 /** Asks before closing every session on [name]; [body] says how many that is. */
 @Composable
 internal fun DisconnectDialog(name: String, body: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {

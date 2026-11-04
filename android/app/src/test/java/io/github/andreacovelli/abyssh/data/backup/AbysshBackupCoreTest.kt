@@ -167,6 +167,69 @@ class AbysshBackupCoreTest {
         assertEquals(0, plan.hostActions.single().keyActionIndex)
     }
 
+    @Test
+    fun importPlanSkipsHostsAlreadySaved() {
+        val localKey = sampleKey(id = 77L, name = "main")
+        val saved = sampleHost(id = 9L, keyId = 77L)
+        val payload = BackupPayload(
+            keys = listOf(BackupSshKey.fromEntity(localKey.copy(id = 1L))),
+            hosts = listOf(
+                BackupHostProfile.fromEntity(sampleHost(id = 2L, keyId = 1L)),
+                BackupHostProfile.fromEntity(sampleHost(id = 3L, keyId = 1L).copy(port = 22)),
+            ),
+        )
+
+        val plan = AbysshBackupImportPlanner.planImport(
+            payload = payload,
+            existingKeys = listOf(localKey),
+            existingHosts = listOf(saved),
+        )
+
+        assertEquals(1, plan.skippedHostCount)
+        val added = plan.hostActions.single()
+        assertEquals(22, added.host.port)
+        assertEquals("server-2", added.host.name)
+    }
+
+    @Test
+    fun importPlanKeepsHostsWhoseKeyIsNew() {
+        val payload = BackupPayload(
+            keys = listOf(BackupSshKey.fromEntity(sampleKey(id = 1L, name = "other"))),
+            hosts = listOf(BackupHostProfile.fromEntity(sampleHost(id = 2L, keyId = 1L))),
+        )
+
+        val plan = AbysshBackupImportPlanner.planImport(
+            payload = payload,
+            existingKeys = emptyList(),
+            existingHosts = listOf(sampleHost(id = 9L, keyId = null)),
+        )
+
+        assertEquals(0, plan.skippedHostCount)
+        assertEquals(1, plan.hostActions.size)
+    }
+
+    @Test
+    fun backupEntriesLeaveSecretsOutOfToString() {
+        val text = samplePayload().toString()
+        assertFalse(text.contains("PRIVATE KEY"))
+        assertFalse(text.contains("saved-password"))
+        assertFalse(text.contains("key-passphrase"))
+        assertFalse(sampleHost().toString().contains("saved-password"))
+        assertFalse(sampleKey().toString().contains("PRIVATE KEY"))
+    }
+
+    @Test
+    fun passphraseIsNormalizedToNfc() {
+        val decomposed = "cafe\u0301".toCharArray()
+        assertEquals("caf\u00e9", String(AbysshBackupCodec.nfc(decomposed)))
+    }
+
+    @Test
+    fun containerVersionReadsTheHeader() {
+        assertEquals(2, AbysshBackupCodec.containerVersion(byteArrayOf(0, 0, 0, 0, 0, 0, 0, 2, 9)))
+        assertEquals(-1, AbysshBackupCodec.containerVersion(byteArrayOf(0, 0, 0)))
+    }
+
     @Test(expected = BackupFormatException::class)
     fun importPlanRejectsMissingKeyReferences() {
         val payload = BackupPayload(
@@ -364,7 +427,9 @@ class AbysshBackupCoreTest {
         1 + Int.SIZE_BYTES + value.toByteArray(Charsets.UTF_8).size
 
     private fun ciphertextSizeOffset(bytes: ByteArray): Int {
-        var offset = Int.SIZE_BYTES * 5
+        // Magic, version, the KDF fields (two for v1, four for v2) and the cipher id.
+        val headerInts = if (readIntAt(bytes, Int.SIZE_BYTES) == 1) 5 else 7
+        var offset = Int.SIZE_BYTES * headerInts
         val saltSize = readIntAt(bytes, offset)
         offset += Int.SIZE_BYTES + saltSize
         val ivSize = readIntAt(bytes, offset)

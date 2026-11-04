@@ -1,14 +1,11 @@
 package io.github.andreacovelli.abyssh.ui.security
 
 import android.app.Application
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.core.app.ApplicationProvider
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
@@ -80,12 +77,10 @@ class AppLockGateTest {
         SettingsRepository.getInstance(application).setAppLockEnabled(appLockEnabled)
         results.addAll(verification)
         composeRule.setContent {
-            var unlocked by rememberSaveable { mutableStateOf(false) }
             AbyssTheme(themeName = "Catppuccin Mocha") {
                 AppLockGate(
                     application = application,
-                    unlocked = unlocked,
-                    onUnlockedChange = { unlocked = it },
+                    state = viewModel(),
                     verify = verifier,
                 ) {
                     AbyssText(CONTENT)

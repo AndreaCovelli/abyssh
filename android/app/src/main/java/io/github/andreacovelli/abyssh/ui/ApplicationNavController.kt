@@ -7,9 +7,6 @@ import io.github.andreacovelli.abyssh.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -22,9 +19,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
+import io.github.andreacovelli.abyssh.data.secure.DataResetNotice
 import io.github.andreacovelli.abyssh.ui.screens.addserver.AddServerScreen
 import io.github.andreacovelli.abyssh.ui.screens.addserver.AddServerViewModel
 import io.github.andreacovelli.abyssh.ui.screens.keys.KeysViewModel
+import io.github.andreacovelli.abyssh.ui.screens.serverlist.DataResetDialog
 import io.github.andreacovelli.abyssh.ui.screens.serverlist.ServerListScreen
 import io.github.andreacovelli.abyssh.ui.screens.serverlist.ServerListViewModel
 import io.github.andreacovelli.abyssh.ui.screens.settings.SettingsBackupViewModel
@@ -33,32 +32,24 @@ import io.github.andreacovelli.abyssh.ui.screens.settings.SettingsViewModel
 import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalScreen
 import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalViewModel
 import io.github.andreacovelli.abyssh.ui.security.AppLockGate
-import io.github.andreacovelli.abyssh.ui.security.VerificationResult
-import io.github.andreacovelli.abyssh.ui.security.requireUserVerification
+import io.github.andreacovelli.abyssh.ui.security.AppLockState
+import io.github.andreacovelli.abyssh.ui.security.verifyThen
 
 @Composable
 fun ApplicationNavController() {
     val navController = rememberNavController()
     val application = LocalContext.current.applicationContext as Application
-    // Whether the user has verified since the app last came to the foreground.
-    var appUnlocked by rememberSaveable { mutableStateOf(false) }
+    val lockState: AppLockState = viewModel()
 
-    AppLockGate(application, unlocked = appUnlocked, onUnlockedChange = { appUnlocked = it }) {
+    AppLockGate(application, lockState) {
         NavHost(navController = navController, startDestination = "servers") {
             composable("servers") { ServersRoute(navController, application) }
             composable("settings") {
-                SettingsRoute(navController, application, onAppLockVerified = { appUnlocked = true })
+                SettingsRoute(navController, application, onAppLockVerified = lockState::markUnlocked)
             }
             serverEditorRoutes(navController, application)
             terminalRoutes(navController, application)
         }
-    }
-}
-
-/** Runs [onVerified] after the user passes device verification. */
-private fun verifyThen(context: Context, title: String, subtitle: String, onVerified: () -> Unit) {
-    requireUserVerification(context = context, title = title, subtitle = subtitle) { result ->
-        if (result == VerificationResult.Success) onVerified()
     }
 }
 
@@ -84,6 +75,10 @@ private fun ServersRoute(navController: NavHostController, application: Applicat
     val settingsRepo = SettingsRepository.getInstance(application)
     val requireAuthOnConnect by settingsRepo.requireAuthOnConnect.collectAsStateWithLifecycle()
     val localShellEnabled by settingsRepo.localShellEnabled.collectAsStateWithLifecycle()
+    val resetNotice = DataResetNotice.getInstance(application)
+    val dataWasReset by resetNotice.pending.collectAsStateWithLifecycle()
+
+    if (dataWasReset) DataResetDialog(onDismiss = resetNotice::dismiss)
 
     ServerListScreen(
         vm = vm,
@@ -141,6 +136,7 @@ private fun SettingsRoute(
                 context = context,
                 title = resources.getString(R.string.settings_lock_app_verify_title),
                 subtitle = resources.getString(R.string.settings_lock_app_verify_subtitle),
+                unavailableMessage = R.string.settings_lock_app_unavailable,
             ) {
                 onAppLockVerified()
                 vm.setAppLockEnabled(true)

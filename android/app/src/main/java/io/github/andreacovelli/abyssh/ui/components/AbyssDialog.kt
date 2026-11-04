@@ -21,7 +21,8 @@ fun AbyssDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    dismissLabel: String = stringResource(R.string.action_cancel),
+    /** Null for a notice that has only [confirmLabel]. */
+    dismissLabel: String? = stringResource(R.string.action_cancel),
     properties: DialogProperties = DialogProperties(),
     content: @Composable () -> Unit,
 ) {
@@ -45,9 +46,11 @@ fun AbyssDialog(
                 content()
             }
         },
-        dismissButton = {
-            AbyssButton(onClick = onDismiss, variant = AbyssButtonVariant.Ghost) {
-                AbyssText(dismissLabel, style = typography.label)
+        dismissButton = dismissLabel?.let { label ->
+            {
+                AbyssButton(onClick = onDismiss, variant = AbyssButtonVariant.Ghost) {
+                    AbyssText(label, style = typography.label)
+                }
             }
         },
         confirmButton = {

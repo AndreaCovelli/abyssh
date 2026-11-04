@@ -2,12 +2,21 @@ package io.github.andreacovelli.abyssh.model
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "host_profiles",
-    indices = [Index(value = ["name"])],
+    indices = [Index(value = ["name"]), Index(value = ["keyId"])],
+    foreignKeys = [
+        ForeignKey(
+            entity = SshKey::class,
+            parentColumns = ["id"],
+            childColumns = ["keyId"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
+    ],
 )
 data class HostProfile(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
@@ -36,7 +45,12 @@ data class HostProfile(
     // three in a row is dropped and reconnected.
     @ColumnInfo(defaultValue = "30")
     val keepaliveIntervalSeconds: Int = DEFAULT_KEEPALIVE_INTERVAL_SECONDS,
-)
+) {
+    // Leaves out the password and key passphrase, so logging a host can't leak them.
+    override fun toString(): String =
+        "HostProfile(id=$id, name=$name, host=$host, port=$port, username=$username, keyId=$keyId, " +
+            "transport=$transport, authMethod=$authMethod)"
+}
 
 const val DEFAULT_KEEPALIVE_INTERVAL_SECONDS = 30
 

@@ -71,6 +71,12 @@ data class TabSpec(
     val usesTmuxControlMode: Boolean
         get() = tmuxControlMode && multiplexer == MultiplexerType.Tmux && usesRuntimeMultiplexer
 
+    /** Leaves out the password, private key and passphrase, so logging a spec can't leak them. */
+    override fun toString(): String =
+        "TabSpec(hostId=$hostId, displayName=$displayName, host=$host, port=$port, " +
+            "username=$username, authMethod=$authMethod, transport=$transport, " +
+            "multiplexer=$multiplexer, multiplexerSessionName=$multiplexerSessionName)"
+
     companion object {
         fun fromHostProfile(
             host: HostProfile,
