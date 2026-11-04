@@ -64,7 +64,8 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     env:
-      # Keep in step with ndk_version in mise-tasks/check/native.
+      # Keep in step with ndk_version in mise-tasks/check/native and ndkVersion in
+      # android/app/build.gradle.kts.
       NDK_VERSION: 28.2.13676358
 
     steps:
@@ -177,6 +178,9 @@ jobs:
           mkdir -p dist
           cp "$OUT/apk/release/app-release.apk" "dist/abyssh-${VERSION}-arm64-v8a.apk"
           cp "$OUT/bundle/release/app-release.aab" "dist/abyssh-${VERSION}.aab"
+          # Symbols for the stripped native library, to symbolize crash backtraces.
+          cp "$OUT/native-debug-symbols/release/native-debug-symbols.zip" \
+            "dist/abyssh-${VERSION}-native-debug-symbols.zip"
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
@@ -187,4 +191,5 @@ jobs:
           files: |
             ./dist/abyssh-*.apk
             ./dist/abyssh-*.aab
+            ./dist/abyssh-*-native-debug-symbols.zip
           fail_on_unmatched_files: true

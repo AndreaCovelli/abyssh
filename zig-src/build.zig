@@ -3,6 +3,10 @@ const builtin = @import("builtin");
 const ndk = @import("src/ndk.zig");
 const Translator = @import("translate_c").Translator;
 
+// aarch64 stays on the generic CPU. Zig chooses its AES implementation at compile
+// time, so +aes would make Mosh and backups crash with SIGILL on ARMv8 cores without the
+// optional crypto extension. Their traffic is small enough for software AES.
+//
 // No 32-bit x86: Ghostty 1.4 fails a comptime layout assert there under Zig 0.17
 // (u64 is 4-byte aligned on i386), and x86 devices are not a supported target.
 const default_build_targets: []const std.Target.Query = &.{
@@ -152,8 +156,12 @@ fn buildNativeLibrary(
         .target = target,
         .optimize = optimize,
         .link_libc = true,
-        .strip = true,
-        .unwind_tables = .none,
+        // Built with debug info. AGP strips the copy it packages and keeps the symbols
+        // for crash reports (debugSymbolLevel in android/app/build.gradle.kts).
+        .strip = false,
+        // Unwind tables let Android's crash reports walk the native stack past the
+        // crashing function. Frame pointers stay off; crash reports don't need them.
+        .unwind_tables = .async,
         .omit_frame_pointer = true,
     });
     root_module.addIncludePath(b.path("src/bridge"));
@@ -184,11 +192,11 @@ fn buildNativeLibrary(
     lib.link_function_sections = true;
     lib.link_data_sections = true;
     lib.link_gc_sections = true;
-    lib.link_eh_frame_hdr = false;
+    lib.link_eh_frame_hdr = true;
     lib.lto = .thin;
-    root_module.strip = true;
-    root_module.unwind_tables = .none;
-    root_module.omit_frame_pointer = true;
+    // Align segments to 16 KB, which Android 15 devices with 16 KB pages need. The
+    // linker's default for x86_64 is 4 KB; check:native checks every built library.
+    lib.link_z_max_page_size = 16 * 1024;
 
     root_module.addIncludePath(.{ .cwd_relative = include_dir });
     root_module.addIncludePath(.{ .cwd_relative = target_include_dir });
@@ -254,6 +262,29 @@ pub fn build(b: *std.Build) void {
         openssl_test_step.dependOn(&crypto.step);
         openssl_test_step.dependOn(&ssl.step);
     }
+
+    // Zig tests that need no JNI or NDK, on the host: the backup container format and
+    // the vendored Mosh client, which links zlib built from source.
+    const test_step = b.step("test", "Run the backup and Mosh tests on the host");
+    const host = b.graph.host;
+    const backup_tests = b.addTest(.{
+        .name = "backup-tests",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/bridge/backup_container.zig"),
+            .target = host,
+            // Safety checks stay on; Debug makes the 210,000 PBKDF2 rounds and Argon2 slow.
+            .optimize = .safe,
+            .link_libc = true,
+        }),
+    });
+    test_step.dependOn(&b.addRunArtifact(backup_tests).step);
+    const host_mosh = b.dependency("mosh", .{
+        .target = host,
+        .optimize = .safe,
+        .bundled_zlib = true,
+    });
+    const mosh_tests = b.addTest(.{ .name = "mosh-tests", .root_module = host_mosh.module("mosh") });
+    test_step.dependOn(&b.addRunArtifact(mosh_tests).step);
 
     const fmt_check = b.addFmt(.{ .paths = &.{ b.path("src"), b.path("build.zig"), b.path("build.zig.zon") } });
     const fmt_step = b.step("fmt", "Format Zig files");

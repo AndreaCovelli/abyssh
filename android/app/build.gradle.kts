@@ -11,6 +11,41 @@ kotlin {
     jvmToolchain(21)
 }
 
+data class AppVersion(val name: String, val code: Int)
+
+// versionCode is MMmmpp * 1000 plus the commits since that tag.
+fun versionCode(major: Int, minor: Int, patch: Int, commits: Int = 0): Int =
+    (major * 10_000 + minor * 100 + patch) * 1_000 + commits.coerceAtMost(999)
+
+// Release builds pass VERSION_MAJOR, VERSION_MINOR, and VERSION_PATCH from their tag.
+// Other builds take the version from `git describe`: four commits after v0.8.13 give
+// 0.8.13-4-g10c8b68 with versionCode 813004, above v0.8.13 and below v0.8.14, so a
+// release installs over a local build and the other way round.
+fun appVersion(): AppVersion {
+    val fromEnv = listOf("VERSION_MAJOR", "VERSION_MINOR", "VERSION_PATCH").map { System.getenv(it)?.toIntOrNull() }
+    if (fromEnv.all { it != null }) {
+        val (major, minor, patch) = fromEnv.map { it!! }
+        return AppVersion("$major.$minor.$patch", versionCode(major, minor, patch))
+    }
+    // Without git or a release tag, as in a shallow clone, fall back to a dev version.
+    val output = runCatching {
+        providers.exec {
+            commandLine("git", "describe", "--tags", "--long", "--dirty", "--match", "v[0-9]*.[0-9]*.[0-9]*")
+            isIgnoreExitValue = true
+        }.standardOutput.asText.get().trim()
+    }.getOrDefault("")
+    val match = Regex("""v(\d+)\.(\d+)\.(\d+)-(\d+)-g([0-9a-f]+)(-dirty)?""").matchEntire(output)
+        ?: return AppVersion("0.0.0-dev", 1)
+    val (major, minor, patch, commits) = match.groupValues.drop(1).take(4).map { it.toInt() }
+    val exact = commits == 0 && match.groupValues[6].isEmpty()
+    val name = if (exact) "$major.$minor.$patch" else "$major.$minor.$patch-" + output.substringAfter('-')
+    return AppVersion(name, versionCode(major, minor, patch, commits))
+}
+
+// The build type the instrumented tests run against: debug, or minified with
+// -PtestBuildType=minified.
+val instrumentedBuildType = providers.gradleProperty("testBuildType").getOrElse("debug")
+
 room {
     schemaDirectory("$projectDir/schemas")
 }
@@ -33,18 +68,18 @@ android {
     compileSdk {
         version = release(37)
     }
+    // Strips the native library and extracts its symbols. Keep in step with
+    // NDK_VERSION in .github/workflows/release.yml and mise-tasks/check/native.
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "io.github.andreacovelli.abyssh"
         minSdk = 24
         targetSdk = 37
 
-        val major = (System.getenv("VERSION_MAJOR")?.toIntOrNull() ?: 0)
-        val minor = (System.getenv("VERSION_MINOR")?.toIntOrNull() ?: 2)
-        val patch = (System.getenv("VERSION_PATCH")?.toIntOrNull() ?: 1)
-        val releaseBase = major * 10_000 + minor * 100 + patch
-        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: (releaseBase * 1_000)
-        versionName = System.getenv("VERSION_NAME") ?: "$major.$minor.$patch"
+        val version = appVersion()
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: version.code
+        versionName = System.getenv("VERSION_NAME") ?: version.name
 
         System.getenv("ANDROID_ABI_FILTERS")
             ?.split(',')
@@ -102,6 +137,38 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // The native library is built unstripped. AGP strips the packaged copy and
+            // puts the symbols in the AAB and in native-debug-symbols.zip, which the
+            // release workflow attaches to the GitHub release.
+            ndk {
+                debugSymbolLevel = "FULL"
+            }
+        }
+        // The release build with debug signing, for instrumented tests that check R8
+        // doesn't remove or rename what the native code calls by name. Run with
+        // ./gradlew -PtestBuildType=minified dev34MinifiedAndroidTest, which runs only
+        // src/androidTest/minified, since R8 removes the app code the other tests call.
+        create("minified") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".minified"
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += "release"
+            proguardFiles("proguard-minified-rules.pro")
+            testProguardFiles("proguard-test-rules.pro")
+            ndk {
+                debugSymbolLevel = "NONE"
+            }
+        }
+    }
+    testBuildType = instrumentedBuildType
+    sourceSets {
+        getByName("androidTest") {
+            // The debug run includes the minified smoke tests, so they keep working.
+            if (instrumentedBuildType == "minified") {
+                kotlin.directories.clear()
+                java.directories.clear()
+            }
+            kotlin.directories.add("src/androidTest/minified/java")
         }
     }
     compileOptions {
@@ -117,6 +184,7 @@ android {
         disable += "ChromeOsAbiSupport"
     }
     testOptions {
+        animationsDisabled = true
         // On-device tests run on a Gradle-managed emulator: ./gradlew dev34DebugAndroidTest
         // (needs the x86_64 native library in jniLibs/x86_64).
         managedDevices {
@@ -125,6 +193,7 @@ android {
                     device = "Pixel 6"
                     apiLevel = 34
                     systemImageSource = "aosp-atd"
+                    testedAbi = "x86_64"
                 }
             }
         }
@@ -161,7 +230,7 @@ detekt {
 
 tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
     jvmTarget = "21"
-    setSource(files("src/main/java", "src/test/java", "src/androidTest/java"))
+    setSource(files("src/main/java", "src/test/java", "src/androidTest/java", "src/androidTest/minified/java"))
     include("**/*.kt")
     reports {
         html.required.set(true)
@@ -202,9 +271,13 @@ dependencies {
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.runner)
+    // The minified smoke tests need only JUnit and AndroidX Test.
+    if (instrumentedBuildType != "minified") {
+        androidTestImplementation(libs.room.testing)
+        androidTestImplementation(platform(libs.androidx.compose.bom))
+        androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    }
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-#MISE description="Build the arm64 native library and match its JNI exports to the Kotlin bridges"
-# Build libabyssh_jni.so for arm64 with the pinned NDK, then check that every Kotlin
-# `external fun` has a matching Java_* export. A missing export compiles cleanly and
-# fails only at runtime with UnsatisfiedLinkError.
+#MISE description="Build the arm64 native library, run the Zig tests, and check the libraries' alignment and JNI exports"
+# Build libabyssh_jni.so for arm64 with the pinned NDK and run the Zig tests on the
+# host. Then check that every library in jniLibs is aligned for 16 KB pages, and that
+# every Kotlin `external fun` has a matching Java_* export. A missing export compiles
+# cleanly and fails only at runtime with UnsatisfiedLinkError.
 #
 # Uses ANDROID_NDK_HOME when set; otherwise the pinned NDK under ANDROID_HOME, which it
 # installs with sdkmanager when running in CI.
@@ -10,7 +11,8 @@ set -euo pipefail
 
 cd "${MISE_PROJECT_ROOT:-$(git rev-parse --show-toplevel)}"
 
-# Keep in step with NDK_VERSION in .github/workflows/release.yml.
+# Keep in step with NDK_VERSION in .github/workflows/release.yml and ndkVersion in
+# android/app/build.gradle.kts.
 ndk_version=28.2.13676358
 target=aarch64-linux-android.24
 lib=android/app/src/main/jniLibs/arm64-v8a/libabyssh_jni.so
@@ -34,9 +36,23 @@ if [ -z "${ANDROID_NDK_HOME:-}" ]; then
 fi
 
 mise run native "-Dtarget=$target"
+(cd zig-src && zig build test)
 
 nm_tool=$(compgen -G "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/*/bin/llvm-nm" | head -n1 || true)
 nm_tool="${nm_tool:-nm}"
+readelf_tool=$(compgen -G "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/*/bin/llvm-readelf" | head -n1 || true)
+readelf_tool="${readelf_tool:-readelf}"
+
+# Devices with 16 KB pages can't load a library whose segments are aligned to less.
+# Check every ABI in jniLibs, since Gradle packages whatever is there.
+for so in android/app/src/main/jniLibs/*/libabyssh_jni.so; do
+  while read -r align; do
+    if (($((16#${align#0x})) < 16384)); then
+      echo "error: $so has a LOAD segment aligned to $align, below 16 KB; rebuild it with mise run native" >&2
+      exit 1
+    fi
+  done < <("$readelf_tool" -lW "$so" | awk '$1 == "LOAD" { print $NF }')
+done
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT

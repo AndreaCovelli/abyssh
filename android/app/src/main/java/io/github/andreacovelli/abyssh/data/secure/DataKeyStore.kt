@@ -52,28 +52,31 @@ object DataKeyStore {
         class Lost(val reason: String, val wrappingKeyBroken: Boolean) : Saved
     }
 
-    fun load(context: Context): Loaded {
-        val file = AtomicFile(File(context.noBackupFilesDir, FILE_NAME))
+    fun load(context: Context): Loaded = load(File(context.noBackupFilesDir, FILE_NAME), WRAPPING_ALIAS)
+
+    /** [load] with its own file and Keystore alias, so tests leave the app's key alone. */
+    internal fun load(keyFile: File, wrappingAlias: String): Loaded {
+        val file = AtomicFile(keyFile)
         val hadFile = file.baseFile.exists()
         if (hadFile) {
-            when (val saved = withRetries { openSaved(file) }) {
+            when (val saved = withRetries { openSaved(file, wrappingAlias) }) {
                 is Saved.Opened -> return Loaded(saved.key, created = false)
                 is Saved.Lost -> {
                     Log.w(TAG, "saved data key is lost (${saved.reason}), starting over")
-                    if (saved.wrappingKeyBroken) withRetries { keyStore().deleteEntry(WRAPPING_ALIAS) }
+                    if (saved.wrappingKeyBroken) withRetries { keyStore().deleteEntry(wrappingAlias) }
                 }
             }
         }
-        val key = withRetries { create(file) }
+        val key = withRetries { create(file, wrappingAlias) }
         return Loaded(key, created = true, replaced = hadFile)
     }
 
-    private fun openSaved(file: AtomicFile): Saved {
+    private fun openSaved(file: AtomicFile, alias: String): Saved {
         val keyStore = keyStore()
-        if (!keyStore.containsAlias(WRAPPING_ALIAS)) return Saved.Lost("wrapping key missing", wrappingKeyBroken = false)
+        if (!keyStore.containsAlias(alias)) return Saved.Lost("wrapping key missing", wrappingKeyBroken = false)
         val wrapping =
             try {
-                keyStore.getKey(WRAPPING_ALIAS, null) as? SecretKey
+                keyStore.getKey(alias, null) as? SecretKey
             } catch (_: UnrecoverableKeyException) {
                 null
             } ?: return Saved.Lost("wrapping key unusable", wrappingKeyBroken = true)
@@ -109,9 +112,9 @@ object DataKeyStore {
 
     // Writing can fail with the same many types; the half-written file is discarded.
     @Suppress("TooGenericExceptionCaught")
-    private fun create(file: AtomicFile): SecretKey {
+    private fun create(file: AtomicFile, alias: String): SecretKey {
         val raw = ByteArray(KEY_BYTES).also(SecureRandom()::nextBytes)
-        val wrapped = wrap(wrappingKey(), raw)
+        val wrapped = wrap(wrappingKey(alias), raw)
         val out = file.startWrite()
         try {
             out.write(wrapped)
@@ -125,10 +128,10 @@ object DataKeyStore {
 
     private fun keyStore(): KeyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
 
-    private fun wrappingKey(): SecretKey {
-        (keyStore().getKey(WRAPPING_ALIAS, null) as? SecretKey)?.let { return it }
+    private fun wrappingKey(alias: String): SecretKey {
+        (keyStore().getKey(alias, null) as? SecretKey)?.let { return it }
         val spec = KeyGenParameterSpec.Builder(
-            WRAPPING_ALIAS,
+            alias,
             KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
         )
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)

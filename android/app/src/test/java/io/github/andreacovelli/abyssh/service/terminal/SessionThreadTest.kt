@@ -20,6 +20,7 @@ class SessionThreadTest {
     private class FakeWakeSignal(private val fd: Int = 7) : WakeSignal {
         val wakes = Semaphore(0)
         val closed = CopyOnWriteArrayList<Int>()
+        val firstClose = CountDownLatch(1)
 
         override fun create(): Int = fd
 
@@ -27,6 +28,7 @@ class SessionThreadTest {
 
         override fun close(fd: Int) {
             closed += fd
+            firstClose.countDown()
         }
 
         /** Blocks like the native wait: until signalled, or for [timeoutMs]. */
@@ -114,8 +116,7 @@ class SessionThreadTest {
         val thread = SessionThread(signal)
         thread.close()
         thread.close()
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
-        while (signal.closed.isEmpty() && System.nanoTime() < deadline) Thread.sleep(1)
+        assertTrue(signal.firstClose.await(5, TimeUnit.SECONDS))
         assertEquals(listOf(9), signal.closed)
     }
 }

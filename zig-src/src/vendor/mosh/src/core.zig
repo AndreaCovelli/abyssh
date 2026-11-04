@@ -1451,7 +1451,10 @@ test "maintenance tick retransmit and retry limit failure" {
     const retransmit = try client.pollNetworkDatagram(&dg_buf);
     try std.testing.expect(retransmit != null);
 
-    const retry_result = client.maintenanceTick(100);
+    // The unanswered resend doubles the wait: the next one is due at 50 + 2 * 50.
+    try client.maintenanceTick(149);
+    try std.testing.expectEqual(types.SessionState.running, client.state);
+    const retry_result = client.maintenanceTick(150);
     try std.testing.expectError(error.RetryLimitExceeded, retry_result);
     try std.testing.expectEqual(types.SessionState.failed, client.state);
     try std.testing.expectEqual(types.FailureCode.retry_limit_exceeded, client.last_failure);

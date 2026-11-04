@@ -15,7 +15,7 @@ version catalog pins AGP, Kotlin, and libraries. Run `mise install` once.
 | `mise run native` | Build `libabyssh_jni.so` for every ABI into `android/app/src/main/jniLibs/`. Needs `ANDROID_NDK_HOME` set to one NDK version, such as `$ANDROID_HOME/ndk/28.2.13676358`. Add `-Dtarget=aarch64-linux-android` to build arm64 only |
 | `mise run check` | Formatting, Detekt, Android Lint, unit tests, compiling the instrumented tests, the debug build, actionlint, and the Markdown lint. Run before every commit. When every file changed since the merge base with `origin/main` is Markdown, it runs only `check:docs`; pass `--full` to run everything |
 | `mise run check:docs` | Lint Markdown with rumdl, configured in `.rumdl.toml`. Prose wraps at 90 columns |
-| `mise run check:native` | Build the arm64 native library with the pinned NDK and check that every Kotlin `external fun` has a `Java_*` export. Uses `ANDROID_NDK_HOME`, or NDK 28.2.13676358 under `ANDROID_HOME`. Run it after changing a bridge or Zig code |
+| `mise run check:native` | Build the arm64 native library with the pinned NDK, run `zig build test`, check that every library in `jniLibs/` is aligned for 16 KB pages, and check that every Kotlin `external fun` has a `Java_*` export. Uses `ANDROID_NDK_HOME`, or NDK 28.2.13676358 under `ANDROID_HOME`. Run it after changing a bridge or Zig code |
 | `mise run format` | Format Kotlin sources and Gradle scripts with ktlint through Spotless. `mise run format:check` only reports |
 | `mise run detekt` | Detekt static analysis, configured in `android/config/detekt/detekt.yml`, with no baseline |
 | `mise run test` | Unit tests only. Filter with `cd android && ./gradlew testDebugUnitTest --tests '<pattern>'` |
@@ -23,6 +23,7 @@ version catalog pins AGP, Kotlin, and libraries. Run `mise install` once.
 | `mise run test:device:compile` | Compile the instrumented tests without a device. Part of `mise run check` |
 | `mise run install` | Install the debug APK on a connected device and launch it |
 | `mise run release` | Tag the next version from the commits since the last tag (`mise-tasks/release`). Before 1.0, breaking changes bump minor and everything else bumps patch. Never tag by hand |
+| `cd zig-src && zig build test` | Run the Zig tests (the backup format and the vendored Mosh client) on the host |
 | `cd zig-src && zig build fmt` | Format the Zig sources |
 
 Run one Gradle build at a time. The native build takes several minutes for all ABIs;
@@ -95,8 +96,12 @@ and `NativeWakeBridge`. Zig implements each one as
 - ViewModels expose `StateFlow`; screens collect it with `collectAsStateWithLifecycle`.
 - Declare every dependency in `android/gradle/libs.versions.toml`. Room uses KSP and
   the Room Gradle plugin.
-- SDK levels: compileSdk 37, targetSdk 36, minSdk 24. Change them only in a dedicated
+- SDK levels: compileSdk 37, targetSdk 37, minSdk 24. Change them only in a dedicated
   commit, and ask before raising minSdk.
+- The version comes from git: release builds pass the tag's numbers in
+  `VERSION_MAJOR`, `VERSION_MINOR`, and `VERSION_PATCH`, and other builds use
+  `git describe`, so four commits after v0.8.13 build `0.8.13-4-g<sha>` with versionCode
+  813004. A clone without tags builds `0.0.0-dev`.
 - Kotlin style is ktlint's `android_studio` style, set in the root `.editorconfig`.
   Detekt thresholds come from `detekt.yml`. Only the JNI bridges (`GhosttyBridge`,
   `NativeSshBridge`) suppress `TooManyFunctions`, because each method mirrors a native
@@ -125,9 +130,20 @@ and `NativeWakeBridge`. Zig implements each one as
   (`mise run test:device:compile`), so a changed signature can't leave them broken.
   Without a phone, run them on the Gradle-managed emulator with
   `cd android && ./gradlew dev34DebugAndroidTest`, after building the x86_64 native
-  library (`mise run native -Dtarget=x86_64-linux-android`).
-- `build.zig` has no test step, so the Zig `test` blocks never run. Test bridge logic
-  through its Kotlin callers.
+  library (`mise run native -Dtarget=x86_64-linux-android`). CI runs them there too.
+- The R8-minified `minified` build type runs only the smoke tests in
+  `src/androidTest/minified/`, with
+  `./gradlew -PtestBuildType=minified dev34MinifiedAndroidTest`. They start the app and
+  call the bridges, which catches R8 removing or renaming what the native code reaches
+  over JNI. R8 removes the app code that only tests call, so these tests use only
+  what the app itself uses. The debug run includes them too.
+- `zig build test` runs the Zig `test` blocks on the host, for the code that doesn't
+  need Android: the backup format (`src/bridge/backup_container.zig`) and the vendored
+  Mosh client. Keep such code out of the JNI files so it can be tested; test the rest
+  of the bridge logic through its Kotlin callers.
+- The instrumented `MigrationPathTest` migrates a version 11 database through every
+  version and checks each against the committed schema. Extend it when you add a
+  migration.
 - Changes to the bridge, SSH, Mosh, or the terminal need a check on a device: build the
   native library, run `mise run install`, open a connection, and read
   `adb logcat` for `UnsatisfiedLinkError` or crashes.
@@ -179,14 +195,18 @@ and `NativeWakeBridge`. Zig implements each one as
   three times, each gated by its own path filter: `Docs` runs `mise run check:docs` when
   Markdown changes, `Check` runs `mise run check`, without the native library, when the
   app or tooling changes, and `Native` runs `mise run check:native` when Zig code, a
-  `*Bridge.kt` file, or the tool pins change. CI also scans new commits with
-  Gitleaks (`.gitleaks.toml`). Its `Validate` job is the only check the `main` ruleset
-  requires. Add any new CI job to `Validate`'s `needs`. Release builds signed artifacts
-  from `v*.*.*` tags; Dependency Submission sends the Gradle dependency graph to GitHub
-  when build files change on `main`. The signing secrets live in the `release`
-  environment, which admits only `main` and `v*` tags; a job that signs must declare
-  `environment: release`. Pin actions to a full commit SHA with a version
-  comment, and run `mise run check:actions` after editing workflows.
+  `*Bridge.kt` file, or the tool pins change. `Native x86_64` builds the x86_64 library
+  when Check's paths or Zig code change, and the two `Device` jobs then run the
+  instrumented tests on the managed emulator, against the debug and the minified builds.
+  CI also scans new commits with Gitleaks (`.gitleaks.toml`). Its `Validate` job is the
+  only check the `main` ruleset requires. Add any new CI job to `Validate`'s `needs`.
+  Release builds signed artifacts from `v*.*.*` tags and attaches
+  `native-debug-symbols.zip`, the symbols of the stripped native library, for reading
+  crash backtraces; Dependency Submission sends the Gradle dependency graph to GitHub when
+  build files change on `main`. The signing secrets live in the `release` environment,
+  which admits only `main` and `v*` tags; a job that signs must declare
+  `environment: release`. Pin actions to a full commit SHA with a version comment, and run
+  `mise run check:actions` after editing workflows.
 - Renovate extends AndreaCovelli/renovate-config: one weekly grouped PR that
   automerges non-breaking updates after CI passes. `forkProcessing` is enabled
   because GitHub still lists this repository as a fork. Merge pull requests by
