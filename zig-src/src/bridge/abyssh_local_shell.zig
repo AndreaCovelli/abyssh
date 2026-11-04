@@ -1,5 +1,6 @@
 //! JNI bridge for Abyssh's in-app Android local shell PTY backend.
 const std = @import("std");
+const time = @import("time.zig");
 
 const c = @import("c");
 const jni_string = @import("jni_string.zig");
@@ -8,8 +9,8 @@ const wake = @import("abyssh_wake.zig");
 const allocator = std.heap.c_allocator;
 const LOG_TAG = "AbyssLocalShell";
 const read_wait_timeout_ms = 0;
-const write_stall_attempts = 64;
-const write_stall_us = 2_000;
+/// How long a write waits for the shell to drain the PTY before giving up.
+const write_stall_timeout_ms = 5_000;
 const close_wait_attempts = 20;
 const close_wait_us = 10_000;
 
@@ -147,6 +148,11 @@ fn unblockChildSignals() void {
     var signals_to_unblock: c.sigset_t = undefined;
     if (c.sigfillset(&signals_to_unblock) != 0) return;
     _ = c.sigprocmask(c.SIG_UNBLOCK, &signals_to_unblock, null);
+
+    // The app process ignores SIGPIPE, and exec keeps ignored signals ignored. Restore
+    // the default so `cmd | head` in the shell stops `cmd` as it would elsewhere.
+    var default_action = std.mem.zeroes(c.struct_sigaction);
+    _ = c.sigaction(c.SIGPIPE, &default_action, null);
 }
 
 fn reapChild(session: *NativeLocalShellSession) void {
@@ -482,31 +488,35 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_NativeLocalShellB
     return wake.waitReadable(session.master_fd, wake_fd, timeout_ms);
 }
 
+/// Writes all of `bytes`, waiting for the PTY to accept more when it is full. Gives up
+/// only when the shell takes nothing for `write_stall_timeout_ms`, so a large paste
+/// into a busy shell still goes through.
 fn writeAllToPty(session: *NativeLocalShellSession, fd: c_int, bytes: []const u8) c.jint {
     var offset: usize = 0;
-    var stalled_attempts: usize = 0;
+    var stall_deadline_ms = time.monotonicMillis() + write_stall_timeout_ms;
     while (offset < bytes.len) {
         const rc = c.write(fd, bytes[offset..].ptr, bytes.len - offset);
         if (rc > 0) {
             offset += @intCast(rc);
-            stalled_attempts = 0;
+            stall_deadline_ms = time.monotonicMillis() + write_stall_timeout_ms;
             continue;
         }
-        if (rc == 0) {
-            stalled_attempts += 1;
-        } else {
+        if (rc < 0) {
             const err = errnoValue();
-            if (err != c.EINTR and !isWouldBlock(err)) {
+            if (err == c.EINTR) continue;
+            if (!isWouldBlock(err)) {
                 setErrnoError(session, "local shell write failed");
                 return -1;
             }
-            stalled_attempts += 1;
         }
-        if (stalled_attempts > write_stall_attempts) {
+        const now_ms = time.monotonicMillis();
+        if (now_ms >= stall_deadline_ms) {
             setError(session, "Local shell write stalled", .{});
             return -1;
         }
-        _ = c.usleep(write_stall_us);
+        const remaining_ms = stall_deadline_ms - now_ms;
+        var pfd: c.struct_pollfd = .{ .fd = fd, .events = c.POLLOUT, .revents = 0 };
+        _ = c.poll(&pfd, 1, @intCast(remaining_ms));
     }
     return @intCast(offset);
 }
