@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import io.github.andreacovelli.abyssh.ui.components.hiddenBehindSheet
 import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
@@ -73,7 +74,8 @@ fun SettingsScreen(
                 Modifier.fillMaxSize()
                     .windowInsetsPadding(WindowInsets.safeDrawing)
                     .padding(16.dp)
-                    .imePadding(),
+                    .imePadding()
+                    .hiddenBehindSheet(openSheet != null),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {

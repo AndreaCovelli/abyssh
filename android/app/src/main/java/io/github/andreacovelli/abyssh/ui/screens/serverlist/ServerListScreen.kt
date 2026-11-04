@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -361,7 +362,7 @@ private fun LocalShellCard(
     AbyssCard(
         modifier = Modifier
             .fillMaxWidth()
-            .height(114.dp)
+            .heightIn(min = 114.dp)
             .combinedClickable(onClick = onOpen),
         background = colors.surfaceVariant,
         border = if (isOpen) colors.success else colors.border,
@@ -518,11 +519,11 @@ private fun SwipeToDisconnect(
         if (!enabled) swipeOffsetX.snapTo(0f)
     }
 
-    Box(modifier = Modifier.fillMaxWidth().height(114.dp)) {
+    Box(modifier = Modifier.fillMaxWidth()) {
         if (enabled) {
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .matchParentSize()
                     .clip(CardDefaults.outlinedShape)
                     .background(colors.warning.copy(alpha = 0.82f))
                     .padding(end = 14.dp),
@@ -538,7 +539,8 @@ private fun SwipeToDisconnect(
         Box(
             modifier = Modifier
                 .offset { IntOffset(swipeOffsetX.value.roundToInt(), 0) }
-                .fillMaxSize()
+                .fillMaxWidth()
+                .heightIn(min = 114.dp)
                 .pointerInput(swipeKey, enabled) {
                     if (!enabled) return@pointerInput
                     detectHorizontalDragGestures(
@@ -553,6 +555,8 @@ private fun SwipeToDisconnect(
                         },
                     )
                 },
+            // The card fills the row's minimum height and grows past it with large text.
+            propagateMinConstraints = true,
         ) {
             content()
         }
