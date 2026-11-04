@@ -926,19 +926,115 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     };
     defer allocator.free(password_slice);
     logInfo("Password auth attempt start username_len={} password_len={}", .{ username_slice.len, password_slice.len });
-    const password_deadline_ms = nowMs() + setup_wait_timeout_ms;
+    const deadline_ms = nowMs() + setup_wait_timeout_ms;
+    const methods = switch (queryAuthMethods(session, ssh_session, username_slice, deadline_ms, "Password auth")) {
+        .authenticated => return c.JNI_TRUE,
+        .failed => return c.JNI_FALSE,
+        .methods => |methods| methods,
+    };
+    // Servers that check passwords through PAM often offer only keyboard-interactive,
+    // which asks for the password as a prompt.
+    if (hasAuthMethod(methods, "password")) {
+        return toJBoolean(authenticatePassword(session, ssh_session, username_slice, password_slice, deadline_ms));
+    }
+    if (hasAuthMethod(methods, "keyboard-interactive")) {
+        return toJBoolean(authenticateKeyboardInteractive(session, ssh_session, username_slice, password_slice, deadline_ms));
+    }
+    // NativeSshService.kt matches "Keyboard-interactive auth failed" to explain that the
+    // server may not accept passwords from this address.
+    setError(session, "Keyboard-interactive auth failed: the server accepts only {s}", .{methods});
+    return c.JNI_FALSE;
+}
+
+fn toJBoolean(value: bool) c.jboolean {
+    return if (value) c.JNI_TRUE else c.JNI_FALSE;
+}
+
+fn hasAuthMethod(methods: []const u8, name: []const u8) bool {
+    var it = std.mem.tokenizeScalar(u8, methods, ',');
+    while (it.next()) |method| {
+        if (std.mem.eql(u8, method, name)) return true;
+    }
+    return false;
+}
+
+fn authenticatePassword(session: *NativeSshSession, ssh_session: *c.LIBSSH2_SESSION, username: []const u8, password: []const u8, deadline_ms: i64) bool {
     while (true) {
-        const rc = c.libssh2_userauth_password_ex(ssh_session, username_slice.ptr, @intCast(username_slice.len), password_slice.ptr, @intCast(password_slice.len), null);
+        const rc = c.libssh2_userauth_password_ex(ssh_session, username.ptr, @intCast(username.len), password.ptr, @intCast(password.len), null);
         if (rc == 0) {
             logInfo("Password auth succeeded", .{});
-            return c.JNI_TRUE;
+            return true;
         }
         if (rc != c.LIBSSH2_ERROR_EAGAIN) {
             logError("Password auth failed rc={}", .{rc});
             setLibssh2Error(session, "Password auth failed", rc);
-            return c.JNI_FALSE;
+            return false;
         }
-        if (!awaitAuthSocket(session, password_deadline_ms, "Password auth")) return c.JNI_FALSE;
+        if (!awaitAuthSocket(session, deadline_ms, "Password auth")) return false;
+    }
+}
+
+const KeyboardAuthContext = struct {
+    password: []const u8,
+    answered: bool = false,
+    // The server asked for something other than one hidden answer, such as a 2FA code.
+    unanswerable: bool = false,
+};
+
+/// Answers a keyboard-interactive round with the saved password, but only a round that
+/// asks one hidden question, and only once, so a server that prompts again after a
+/// wrong password isn't sent it repeatedly. Every other prompt gets an empty answer.
+fn keyboardInteractiveCallback(
+    name: [*c]const u8,
+    name_len: c_int,
+    instruction: [*c]const u8,
+    instruction_len: c_int,
+    num_prompts: c_int,
+    prompts: [*c]const c.LIBSSH2_USERAUTH_KBDINT_PROMPT,
+    responses: [*c]c.LIBSSH2_USERAUTH_KBDINT_RESPONSE,
+    abstract: ?*?*anyopaque,
+) callconv(.c) void {
+    _ = name;
+    _ = name_len;
+    _ = instruction;
+    _ = instruction_len;
+    // An informational round with no prompts needs no answer.
+    if (num_prompts <= 0) return;
+    const holder = abstract orelse return;
+    const ctx: *KeyboardAuthContext = @ptrCast(@alignCast(holder.* orelse return));
+    if (num_prompts != 1 or prompts[0].echo != 0 or ctx.answered) {
+        ctx.unanswerable = true;
+        return;
+    }
+    // libssh2 frees each response with its default allocator, free().
+    const text: [*]u8 = @ptrCast(std.c.malloc(@max(ctx.password.len, 1)) orelse return);
+    @memcpy(text[0..ctx.password.len], ctx.password);
+    responses[0].text = @ptrCast(text);
+    responses[0].length = @intCast(ctx.password.len);
+    ctx.answered = true;
+}
+
+fn authenticateKeyboardInteractive(session: *NativeSshSession, ssh_session: *c.LIBSSH2_SESSION, username: []const u8, password: []const u8, deadline_ms: i64) bool {
+    var ctx: KeyboardAuthContext = .{ .password = password };
+    const abstract = c.libssh2_session_abstract(ssh_session);
+    abstract.* = @ptrCast(&ctx);
+    defer abstract.* = null;
+    while (true) {
+        const rc = c.libssh2_userauth_keyboard_interactive_ex(ssh_session, username.ptr, @intCast(username.len), keyboardInteractiveCallback);
+        if (rc == 0) {
+            logInfo("Keyboard-interactive auth succeeded", .{});
+            return true;
+        }
+        if (rc != c.LIBSSH2_ERROR_EAGAIN) {
+            logError("Keyboard-interactive auth failed rc={}", .{rc});
+            if (ctx.unanswerable) {
+                setError(session, "Keyboard-interactive auth failed: the server asked for more than a password (rc={})", .{rc});
+            } else {
+                setLibssh2Error(session, "Keyboard-interactive auth failed", rc);
+            }
+            return false;
+        }
+        if (!awaitAuthSocket(session, deadline_ms, "Keyboard-interactive auth")) return false;
     }
 }
 
