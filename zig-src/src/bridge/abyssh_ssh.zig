@@ -644,6 +644,17 @@ fn jniDupString(env: *c.JNIEnv, s: c.jstring) ?[]u8 {
     return allocator.dupe(u8, std.mem.span(chars)) catch null;
 }
 
+/// Overwrites a buffer that held a secret, then frees it.
+fn freeSecret(buf: []u8) void {
+    std.crypto.secureZero(u8, buf);
+    allocator.free(buf);
+}
+
+fn freeSecretZ(buf: [:0]u8) void {
+    std.crypto.secureZero(u8, buf);
+    allocator.free(buf);
+}
+
 fn dupSentinel(bytes: []const u8) ?[:0]u8 {
     const out = allocator.allocSentinel(u8, bytes.len, 0) catch return null;
     @memcpy(out[0..bytes.len], bytes);
@@ -653,7 +664,8 @@ fn dupSentinel(bytes: []const u8) ?[:0]u8 {
 fn jniNewStringOrNull(env: *c.JNIEnv, bytes: []const u8) c.jstring {
     if (bytes.len == 0) return null;
     var buf = allocator.allocSentinel(u8, bytes.len, 0) catch return null;
-    defer allocator.free(buf);
+    // Callers pass private keys through here too.
+    defer freeSecretZ(buf);
     @memcpy(buf[0..bytes.len], bytes);
     return env.*.*.NewStringUTF.?(env, buf.ptr);
 }
@@ -976,7 +988,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         setError(session, "Missing password", .{});
         return c.JNI_FALSE;
     };
-    defer allocator.free(password_slice);
+    defer freeSecret(password_slice);
     logInfo("Password auth attempt start username_len={} password_len={}", .{ username_slice.len, password_slice.len });
     const deadline_ms = nowMs() + setup_wait_timeout_ms;
     const methods = switch (queryAuthMethods(session, ssh_session, username_slice, deadline_ms, "Password auth")) {
@@ -1105,7 +1117,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         setError(session, "Missing private key", .{});
         return c.JNI_FALSE;
     };
-    defer allocator.free(private_key_slice);
+    defer freeSecret(private_key_slice);
 
     const public_key_slice = jniDupString(env, public_key_open_ssh);
     defer if (public_key_slice) |pk| allocator.free(pk);
@@ -1120,9 +1132,9 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     defer if (compact_public) |pk| allocator.free(pk);
 
     const passphrase_slice = jniDupString(env, passphrase);
-    defer if (passphrase_slice) |ps| allocator.free(ps);
+    defer if (passphrase_slice) |ps| freeSecret(ps);
     const passphrase_z = if (passphrase_slice) |ps| dupSentinel(ps) else null;
-    defer if (passphrase_z) |pz| allocator.free(pz);
+    defer if (passphrase_z) |pz| freeSecretZ(pz);
     const passphrase_ptr: ?[*:0]const u8 = if (passphrase_z) |pz| pz.ptr else null;
 
     const deadline_ms = nowMs() + setup_wait_timeout_ms;
@@ -2157,30 +2169,32 @@ fn buildPublicKeyBlob(pub_key: [32]u8) ![]u8 {
 }
 
 /// Build the unencrypted private section of the OpenSSH key.
+/// Appends the plaintext private section to `section`. The caller reserves enough
+/// capacity for it, so the list never reallocates and leaves a copy behind, and wipes
+/// it after use.
 fn buildPrivateSection(
+    section: *std.ArrayListUnmanaged(u8),
     seed: [32]u8,
     pub_key: [32]u8,
     comment: []const u8,
     check: u32,
-) ![]u8 {
-    var section: std.ArrayListUnmanaged(u8) = .empty;
-    errdefer section.deinit(allocator);
-
+) !void {
     // Two identical check integers
-    try sshPutU32(&section, check);
-    try sshPutU32(&section, check);
+    try sshPutU32(section, check);
+    try sshPutU32(section, check);
 
     // keytype
-    try sshPutString(&section, "ssh-ed25519");
+    try sshPutString(section, "ssh-ed25519");
     // public key (32 bytes, length-prefixed)
-    try sshPutString(&section, &pub_key);
+    try sshPutString(section, &pub_key);
     // private key: 64 bytes = seed(32) || pubkey(32), length-prefixed
     var priv_blob: [64]u8 = undefined;
+    defer std.crypto.secureZero(u8, &priv_blob);
     @memcpy(priv_blob[0..32], &seed);
     @memcpy(priv_blob[32..64], &pub_key);
-    try sshPutString(&section, &priv_blob);
+    try sshPutString(section, &priv_blob);
     // comment
-    try sshPutString(&section, comment);
+    try sshPutString(section, comment);
 
     // Padding: 1, 2, 3, ... up to block alignment
     const pad_block = aes_block_len;
@@ -2192,8 +2206,17 @@ fn buildPrivateSection(
             try section.append(allocator, i);
         }
     }
+}
 
-    return section.toOwnedSlice(allocator);
+/// An upper bound on the size of the private section built for `comment`.
+fn privateSectionCapacity(comment: []const u8) usize {
+    return 8 + (4 + "ssh-ed25519".len) + (4 + 32) + (4 + 64) + (4 + comment.len) + aes_block_len;
+}
+
+/// Wipes a list that held a secret, including spare capacity, then frees it.
+fn deinitSecretList(list: *std.ArrayListUnmanaged(u8)) void {
+    std.crypto.secureZero(u8, list.allocatedSlice());
+    list.deinit(allocator);
 }
 
 /// Encode a raw blob as a PEM block with the given header/footer.
@@ -2209,14 +2232,14 @@ fn encodePem(
     // Total: header + encoded chars + newlines after each line + footer
     const total = header.len + encoded_len + num_lines + footer.len;
     const buf = try allocator.alloc(u8, total);
-    errdefer allocator.free(buf);
+    errdefer freeSecret(buf);
 
     @memcpy(buf[0..header.len], header);
     var pos: usize = header.len;
 
     // Base64-encode and wrap at 70 characters
     const encoded = try allocator.alloc(u8, encoded_len);
-    defer allocator.free(encoded);
+    defer freeSecret(encoded);
     _ = b64_encoder.encode(encoded, data);
 
     var offset: usize = 0;
@@ -2242,16 +2265,19 @@ fn decodePem(pem: []const u8, begin: []const u8, end: []const u8) ![]u8 {
     const body_start = begin_idx + begin.len;
     const end_idx = std.mem.indexOfPos(u8, pem, body_start, end) orelse return error.NotPem;
 
+    // Reserve the whole body up front so the list never reallocates and leaves a copy
+    // of the key behind.
     var cleaned: std.ArrayListUnmanaged(u8) = .empty;
-    defer cleaned.deinit(allocator);
+    try cleaned.ensureTotalCapacityPrecise(allocator, end_idx - body_start);
+    defer deinitSecretList(&cleaned);
     for (pem[body_start..end_idx]) |ch| {
-        if (!std.ascii.isWhitespace(ch)) try cleaned.append(allocator, ch);
+        if (!std.ascii.isWhitespace(ch)) cleaned.appendAssumeCapacity(ch);
     }
 
     const decoder = std.base64.standard.Decoder;
     const decoded_len = try decoder.calcSizeForSlice(cleaned.items);
     const out = try allocator.alloc(u8, decoded_len);
-    errdefer allocator.free(out);
+    errdefer freeSecret(out);
     try decoder.decode(out, cleaned.items);
     return out;
 }
@@ -2298,25 +2324,36 @@ fn generateEd25519Key(
     out_private_pem: *[]u8,
     out_public_openssh: *[]u8,
 ) !void {
-    const key_pair = generateEd25519KeyPair();
+    var key_pair = generateEd25519KeyPair();
+    defer std.crypto.secureZero(u8, &key_pair.secret_key.bytes);
     const pub_key: [32]u8 = key_pair.public_key.bytes;
-    const seed: [32]u8 = key_pair.secret_key.seed();
+    var seed: [32]u8 = key_pair.secret_key.seed();
+    defer std.crypto.secureZero(u8, &seed);
 
     var check_bytes: [4]u8 = undefined;
     std.c.arc4random_buf(&check_bytes, check_bytes.len);
     const check = std.mem.readInt(u32, &check_bytes, .little);
 
     // Build private section (plaintext)
-    const private_section = try buildPrivateSection(seed, pub_key, comment, check);
-    defer allocator.free(private_section);
+    var private_list: std.ArrayListUnmanaged(u8) = .empty;
+    try private_list.ensureTotalCapacityPrecise(allocator, privateSectionCapacity(comment));
+    defer deinitSecretList(&private_list);
+    try buildPrivateSection(&private_list, seed, pub_key, comment, check);
+    const private_section = private_list.items;
 
     // Build public key blob
     const pub_blob = try buildPublicKeyBlob(pub_key);
     defer allocator.free(pub_blob);
 
-    // Assemble the full openssh-key-v1 binary
+    // Assemble the full openssh-key-v1 binary. Without a passphrase it holds the
+    // private key, so reserve room for every field up front and wipe it afterwards.
     var key_data: std.ArrayListUnmanaged(u8) = .empty;
-    defer key_data.deinit(allocator);
+    try key_data.ensureTotalCapacityPrecise(
+        allocator,
+        openssh_auth_magic.len + (4 + "aes256-ctr".len) + (4 + "bcrypt".len) +
+            (4 + 4 + openssh_salt_len + 4) + 4 + (4 + pub_blob.len) + (4 + private_section.len),
+    );
+    defer deinitSecretList(&key_data);
 
     // Magic
     try key_data.appendSlice(allocator, openssh_auth_magic);
@@ -2344,14 +2381,17 @@ fn generateEd25519Key(
 
         // Derive 48 bytes: 32 for AES key + 16 for IV
         var derived: [48]u8 = undefined;
+        defer std.crypto.secureZero(u8, &derived);
         try bcrypt.opensshKdf(passphrase, &salt, &derived, openssh_kdf_rounds);
-        const aes_key: [32]u8 = derived[0..32].*;
+        var aes_key: [32]u8 = derived[0..32].*;
+        defer std.crypto.secureZero(u8, &aes_key);
         const iv: [aes_block_len]u8 = derived[32..48].*;
 
         // Encrypt private section in-place with AES-256-CTR
         const encrypted_section = try allocator.alloc(u8, private_section.len);
         defer allocator.free(encrypted_section);
-        const ctx = Aes256.initEnc(aes_key);
+        var ctx = Aes256.initEnc(aes_key);
+        defer std.crypto.secureZero(u8, std.mem.asBytes(&ctx));
         std.crypto.core.modes.ctr(
             @TypeOf(ctx),
             ctx,
@@ -2377,6 +2417,7 @@ fn generateEd25519Key(
         openssh_pem_end ++ "\n",
         key_data.items,
     );
+    errdefer freeSecret(out_private_pem.*);
     out_public_openssh.* = try formatPublicKeyLine("ssh-ed25519", pub_blob, comment);
 }
 
@@ -2395,7 +2436,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     const comment_slice: []const u8 = comment_owned orelse "abyssh";
 
     const passphrase_owned = jniDupString(env, j_passphrase);
-    defer if (passphrase_owned) |s| allocator.free(s);
+    defer if (passphrase_owned) |s| freeSecret(s);
     const passphrase_slice: []const u8 = passphrase_owned orelse "";
 
     var private_pem: []u8 = undefined;
@@ -2405,7 +2446,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         logError("Ed25519 keygen failed: {}", .{err});
         return null;
     };
-    defer allocator.free(private_pem);
+    defer freeSecret(private_pem);
     defer allocator.free(public_openssh);
 
     // Build a String[2] to return
@@ -2432,7 +2473,7 @@ fn derivePublicKeyOpenSsh(
     out_public_openssh: *[]u8,
 ) !void {
     const bin = try decodePem(private_pem, openssh_pem_begin, openssh_pem_end);
-    defer allocator.free(bin);
+    defer freeSecret(bin);
 
     if (bin.len < openssh_auth_magic.len or
         !std.mem.eql(u8, bin[0..openssh_auth_magic.len], openssh_auth_magic))
@@ -2466,7 +2507,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     _ = thiz;
 
     const pem_owned = jniDupString(env, j_private_pem) orelse return null;
-    defer allocator.free(pem_owned);
+    defer freeSecret(pem_owned);
 
     var algorithm: []u8 = undefined;
     var public_openssh: []u8 = undefined;
