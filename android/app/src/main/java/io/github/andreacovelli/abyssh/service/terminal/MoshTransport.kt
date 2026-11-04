@@ -31,6 +31,11 @@ private const val BOOTSTRAP_EXTENSION_MS = 15_000L
 private const val SHUTDOWN_WAIT_MS = 1_000L
 private const val SHUTDOWN_POLL_MS = 10L
 
+// The largest grid a server's resize may ask for. The native terminal clamps to the same
+// bounds; past them a resize would allocate gigabytes.
+private const val MAX_REMOTE_COLS = 2048
+private const val MAX_REMOTE_ROWS = 1024
+
 /** How a Mosh read loop ended: [shellExited] when the server ended the session, or [failureCode] when it failed. */
 internal class MoshReadResult(val shellExited: Boolean = false, val failureCode: Int? = null)
 
@@ -191,7 +196,11 @@ internal class MoshTransport(
         MoshEventType.HostBytes.code ->
             event.payload.isNotEmpty().also { drew -> if (drew) events.onHostBytes(event.payload) }
         MoshEventType.Resize.code ->
-            (event.cols > 0 && event.rows > 0).also { resized -> if (resized) events.onResize(event.cols, event.rows) }
+            (event.cols > 0 && event.rows > 0).also { resized ->
+                if (resized) {
+                    events.onResize(event.cols.coerceAtMost(MAX_REMOTE_COLS), event.rows.coerceAtMost(MAX_REMOTE_ROWS))
+                }
+            }
         MoshEventType.EchoAck.code -> false
         MoshEventType.StateChanged.code -> {
             Log.d(TAG, "MOSH: STATE_CHANGED: ${String(event.payload)}")

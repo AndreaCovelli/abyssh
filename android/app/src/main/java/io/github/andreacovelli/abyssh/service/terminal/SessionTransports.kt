@@ -112,13 +112,15 @@ internal class SessionTransports(
         }
     }
 
-    fun resize(geometry: TerminalGeometry) {
+    /** Gives the far end [geometry]; false when an SSH connection is too busy to take it now. */
+    fun resize(geometry: TerminalGeometry): Boolean {
         when (transport) {
             Transport.Mosh -> mosh.resize(geometry.cols, geometry.rows)
             Transport.LocalShell ->
                 localShell.resize(geometry.cols, geometry.rows, geometry.ptyWidthPx, geometry.ptyHeightPx)
-            else -> ssh.resize(geometry.cols, geometry.rows, geometry.ptyWidthPx, geometry.ptyHeightPx)
+            else -> return ssh.resize(geometry.cols, geometry.rows, geometry.ptyWidthPx, geometry.ptyHeightPx)
         }
+        return true
     }
 
     /** Feeds SSH output to [onChunk]; returns true when the remote shell ended on its own (exit, Ctrl+D). */

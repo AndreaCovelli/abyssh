@@ -2,6 +2,7 @@ const std = @import("std");
 const time = @import("time.zig");
 
 const c = @import("c");
+const jni_string = @import("jni_string.zig");
 const wake = @import("abyssh_wake.zig");
 
 const allocator = std.heap.c_allocator;
@@ -23,6 +24,8 @@ fn logError(comptime fmt: []const u8, args: anytype) void {
     androidLog(6, fmt, args); // ANDROID_LOG_ERROR = 6
 }
 const setup_wait_timeout_ms = 10_000;
+// How long a resize waits for room in the send buffer before it is left for later.
+const resize_wait_timeout_ms = 1_000;
 // How long one address may take to accept the TCP connection before the next is tried.
 const tcp_connect_timeout_ms = 15_000;
 const cancelled_message = "Connection cancelled";
@@ -53,6 +56,9 @@ const NativeSshSession = struct {
     cancelled: bool = false,
     // Kept between reads, which the read loop makes for every chunk of output.
     read_buffer: []u8 = &.{},
+    // A window-change libssh2 holds half-sent. The next resize must finish it first,
+    // because libssh2 resends the held packet and ignores the new size until it has.
+    resize_in_flight: bool = false,
 };
 
 fn sessionFromHandle(handle: c.jlong) ?*NativeSshSession {
@@ -78,20 +84,29 @@ fn setError(session: *NativeSshSession, comptime fmt: []const u8, args: anytype)
 }
 
 /// Polls `fd` for `events` and the session's cancel eventfd together. Returns the poll
-/// result for `fd`, or null once the cancel eventfd has been signalled.
+/// result for `fd`, or null once the cancel eventfd has been signalled. A signal that
+/// interrupts the wait restarts it for the time that is left.
 fn pollCancellable(session: *NativeSshSession, fd: c_int, events: c_short, timeout_ms: c_int) ?struct { rc: c_int, revents: c_short } {
-    if (session.cancelled) return null;
-    var poll_fds: [2]c.struct_pollfd = .{
-        .{ .fd = fd, .events = events, .revents = 0 },
-        .{ .fd = session.cancel_fd, .events = c.POLLIN, .revents = 0 },
-    };
-    const count: c.nfds_t = if (session.cancel_fd >= 0) 2 else 1;
-    const rc = c.poll(&poll_fds, count, timeout_ms);
-    if (count == 2 and poll_fds[1].revents != 0) {
-        session.cancelled = true;
-        return null;
+    const deadline_ms: ?i64 = if (timeout_ms < 0) null else nowMs() + timeout_ms;
+    var wait_ms = timeout_ms;
+    while (true) {
+        if (session.cancelled) return null;
+        var poll_fds: [2]c.struct_pollfd = .{
+            .{ .fd = fd, .events = events, .revents = 0 },
+            .{ .fd = session.cancel_fd, .events = c.POLLIN, .revents = 0 },
+        };
+        const count: c.nfds_t = if (session.cancel_fd >= 0) 2 else 1;
+        const rc = c.poll(&poll_fds, count, wait_ms);
+        if (rc < 0 and c.__errno().* == c.EINTR) {
+            if (deadline_ms) |deadline| wait_ms = @intCast(@max(0, deadline - nowMs()));
+            continue;
+        }
+        if (count == 2 and poll_fds[1].revents != 0) {
+            session.cancelled = true;
+            return null;
+        }
+        return .{ .rc = rc, .revents = poll_fds[0].revents };
     }
-    return .{ .rc = rc, .revents = poll_fds[0].revents };
 }
 
 fn setLibssh2Error(session: *NativeSshSession, prefix: []const u8, rc: c_int) void {
@@ -202,6 +217,48 @@ fn waitSocket(session: *NativeSshSession, timeout_ms: c_int) bool {
     return pollSocket(session, timeout_ms) == .ready;
 }
 
+/// Waits for the socket while authenticating. Auth runs in non-blocking mode so that a
+/// server that stalls can't hold the session thread past `deadline_ms`, and a cancel
+/// ends the wait at once. Returns false, with the error set, when the wait ends.
+fn awaitAuthSocket(session: *NativeSshSession, deadline_ms: i64, what: []const u8) bool {
+    const left_ms = deadline_ms - nowMs();
+    if (left_ms > 0) {
+        switch (pollSocket(session, @intCast(left_ms))) {
+            .ready => return true,
+            .timeout => {},
+            .failed => {
+                setError(session, "{s} failed: connection lost", .{what});
+                return false;
+            },
+        }
+    }
+    setError(session, "{s} timed out", .{what});
+    return false;
+}
+
+const AuthMethods = union(enum) {
+    /// The comma-separated methods the server accepts, owned by libssh2 until its next call.
+    methods: []const u8,
+    /// The server accepted the "none" request that asking for the list sends.
+    authenticated,
+    failed,
+};
+
+/// Asks the server which auth methods it accepts, which also tries "none" auth.
+fn queryAuthMethods(session: *NativeSshSession, ssh_session: *c.LIBSSH2_SESSION, username: []const u8, deadline_ms: i64, what: []const u8) AuthMethods {
+    while (true) {
+        const list = c.libssh2_userauth_list(ssh_session, username.ptr, @intCast(username.len));
+        if (list != null) return .{ .methods = std.mem.span(list) };
+        if (c.libssh2_userauth_authenticated(ssh_session) != 0) return .authenticated;
+        const rc = c.libssh2_session_last_errno(ssh_session);
+        if (rc != c.LIBSSH2_ERROR_EAGAIN) {
+            setLibssh2Error(session, what, rc);
+            return .failed;
+        }
+        if (!awaitAuthSocket(session, deadline_ms, what)) return .failed;
+    }
+}
+
 fn trySetChannelEnv(session: *NativeSshSession, channel: *c.LIBSSH2_CHANNEL, name: []const u8, value: []const u8) void {
     while (true) {
         const rc = c.libssh2_channel_setenv_ex(
@@ -227,7 +284,47 @@ fn nowMs() i64 {
     return time.milliTimestamp();
 }
 
+// How long closing a channel or session waits for the socket to take its last packets.
+const teardown_wait_ms = 2_000;
+
+/// Repeats a libssh2 teardown call while it returns EAGAIN, until `deadline_ms`.
+fn retryTeardown(session: *NativeSshSession, deadline_ms: i64, call: anytype, args: anytype) c_int {
+    while (true) {
+        const rc: c_int = @call(.auto, call, args);
+        if (rc != c.LIBSSH2_ERROR_EAGAIN) return rc;
+        const left_ms = deadline_ms - nowMs();
+        if (left_ms <= 0) return rc;
+        if (pollSocket(session, @intCast(left_ms)) == .failed) return rc;
+    }
+}
+
+/// Closes and frees `channel`. libssh2 returns EAGAIN while the socket is busy and
+/// frees nothing, so wait for it; if it still can't, the session free reclaims it.
+fn freeChannel(session: *NativeSshSession, channel: *c.LIBSSH2_CHANNEL, deadline_ms: i64) void {
+    _ = retryTeardown(session, deadline_ms, c.libssh2_channel_close, .{channel});
+    const rc = retryTeardown(session, deadline_ms, c.libssh2_channel_free, .{channel});
+    if (rc != 0) logInfo("SSH channel free rc={}", .{rc});
+}
+
+/// Says goodbye and frees `ssh_session`. When the socket is still too busy at
+/// `deadline_ms`, shutting it down makes libssh2's sends fail, so the free completes
+/// instead of leaking the session.
+fn freeSession(session: *NativeSshSession, ssh_session: *c.LIBSSH2_SESSION, deadline_ms: i64) void {
+    _ = retryTeardown(session, deadline_ms, c.libssh2_session_disconnect_ex, .{ ssh_session, c.SSH_DISCONNECT_BY_APPLICATION, "bye", "en" });
+    if (retryTeardown(session, deadline_ms, c.libssh2_session_free, .{ssh_session}) != c.LIBSSH2_ERROR_EAGAIN) return;
+    if (session.socket_fd >= 0) _ = c.shutdown(session.socket_fd, c.SHUT_RDWR);
+    var attempts: usize = 0;
+    while (c.libssh2_session_free(ssh_session) == c.LIBSSH2_ERROR_EAGAIN) {
+        attempts += 1;
+        if (attempts >= 8) {
+            logError("SSH session free kept returning EAGAIN; leaking it", .{});
+            return;
+        }
+    }
+}
+
 fn destroyNativeSshSession(session: *NativeSshSession) void {
+    const deadline_ms = nowMs() + teardown_wait_ms;
     if (session.upload_handle) |uh| {
         _ = closeSftpHandle(session, uh, "destroy upload handle");
         session.upload_handle = null;
@@ -237,12 +334,10 @@ fn destroyNativeSshSession(session: *NativeSshSession) void {
         session.sftp = null;
     }
     if (session.channel) |channel| {
-        _ = c.libssh2_channel_close(channel);
-        _ = c.libssh2_channel_free(channel);
+        freeChannel(session, channel, deadline_ms);
     }
     if (session.session) |ssh_session| {
-        _ = c.libssh2_session_disconnect_ex(ssh_session, c.SSH_DISCONNECT_BY_APPLICATION, "bye", "en");
-        _ = c.libssh2_session_free(ssh_session);
+        freeSession(session, ssh_session, deadline_ms);
     }
     closeSocket(session.socket_fd);
     if (session.username) |username| allocator.free(username);
@@ -415,7 +510,8 @@ fn connectSocket(session: *NativeSshSession, host: [:0]const u8, port: u16) !c_i
     var cur = addr_list;
     while (cur) |info| : (cur = info.ai_next) {
         if (session.cancelled) return error.Cancelled;
-        const fd = c.socket(info.ai_family, info.ai_socktype, info.ai_protocol);
+        // CLOEXEC keeps the socket out of local shells, which would hold the session open.
+        const fd = c.socket(info.ai_family, info.ai_socktype | c.SOCK_CLOEXEC, info.ai_protocol);
         if (fd < 0) continue;
         if (connectWithin(session, fd, info)) {
             disableNagle(fd);
@@ -463,12 +559,105 @@ fn disableNagle(fd: c_int) void {
     }
 }
 
+// The algorithms offered to the server, most preferred first. libssh2's defaults also
+// offer broken ones (DH group1, ssh-dss, RC4, 3DES, CAST, Blowfish, MD5, RIPEMD), which
+// these drop. SHA-1 kex, hmac-sha1, AES-CBC, and ssh-rsa stay last so that old routers
+// and NAS boxes still connect. libssh2 adds the ext-info and strict-kex markers itself.
+const kex_prefs = "curve25519-sha256,curve25519-sha256@libssh.org," ++
+    "ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521," ++
+    "diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512," ++
+    "diffie-hellman-group18-sha512,diffie-hellman-group14-sha256," ++
+    "diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1";
+// Each host key algorithm with its key type, as hostkeyAlgorithmName names it.
+const hostkey_methods = [_]struct { name: []const u8, kind: []const u8 }{
+    .{ .name = "ecdsa-sha2-nistp256", .kind = "ECDSA" },
+    .{ .name = "ecdsa-sha2-nistp384", .kind = "ECDSA" },
+    .{ .name = "ecdsa-sha2-nistp521", .kind = "ECDSA" },
+    .{ .name = "ssh-ed25519", .kind = "ED25519" },
+    .{ .name = "rsa-sha2-512", .kind = "RSA" },
+    .{ .name = "rsa-sha2-256", .kind = "RSA" },
+    .{ .name = "ssh-rsa", .kind = "RSA" },
+};
+const hostkey_prefs_max_len = len: {
+    var total: usize = 0;
+    for (hostkey_methods) |method| total += method.name.len + 1;
+    break :len total;
+};
+const cipher_prefs = "chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com," ++
+    "aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc";
+const mac_prefs = "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com," ++
+    "hmac-sha2-256,hmac-sha2-512,hmac-sha1-etm@openssh.com,hmac-sha1";
+
+/// The host key algorithms to offer, those of `preferred_types` first, as OpenSSH does
+/// for the types in known_hosts. Without that, a server with several keys could show one
+/// the user never verified, which the app reports as a changed key.
+fn hostkeyPrefs(preferred_types: []const u8, buf: *[hostkey_prefs_max_len]u8) [:0]const u8 {
+    var used: [hostkey_methods.len]bool = @splat(false);
+    var len: usize = 0;
+    var types = std.mem.tokenizeScalar(u8, preferred_types, ',');
+    while (true) {
+        // After the preferred types, one last pass adds every algorithm not yet listed.
+        const kind = types.next();
+        for (hostkey_methods, 0..) |method, i| {
+            if (used[i]) continue;
+            if (kind) |k| if (!std.mem.eql(u8, method.kind, k)) continue;
+            used[i] = true;
+            if (len > 0) {
+                buf[len] = ',';
+                len += 1;
+            }
+            @memcpy(buf[len..][0..method.name.len], method.name);
+            len += method.name.len;
+        }
+        if (kind == null) break;
+    }
+    buf[len] = 0;
+    return buf[0..len :0];
+}
+
+/// Sets the algorithms the handshake offers. Returns false, with the error set, when
+/// libssh2 rejects a list.
+fn applyMethodPrefs(session: *NativeSshSession, ssh_session: *c.LIBSSH2_SESSION, preferred_hostkey_types: []const u8) bool {
+    var hostkey_buf: [hostkey_prefs_max_len]u8 = undefined;
+    const prefs = [_]struct { method: c_int, list: [:0]const u8 }{
+        .{ .method = c.LIBSSH2_METHOD_KEX, .list = kex_prefs },
+        .{ .method = c.LIBSSH2_METHOD_HOSTKEY, .list = hostkeyPrefs(preferred_hostkey_types, &hostkey_buf) },
+        .{ .method = c.LIBSSH2_METHOD_CRYPT_CS, .list = cipher_prefs },
+        .{ .method = c.LIBSSH2_METHOD_CRYPT_SC, .list = cipher_prefs },
+        .{ .method = c.LIBSSH2_METHOD_MAC_CS, .list = mac_prefs },
+        .{ .method = c.LIBSSH2_METHOD_MAC_SC, .list = mac_prefs },
+    };
+    for (prefs) |pref| {
+        const rc = c.libssh2_session_method_pref(ssh_session, pref.method, pref.list.ptr);
+        if (rc != 0) {
+            setLibssh2Error(session, "SSH algorithm setup failed", rc);
+            return false;
+        }
+    }
+    return true;
+}
+
+/// The UTF-8 form of `s`, owned by the caller. Null when `s` is null, on failure, or
+/// when it holds a NUL, which would cut the string short once it reaches C.
 fn jniDupString(env: *c.JNIEnv, s: c.jstring) ?[]u8 {
-    if (s == null) return null;
-    const chars = env.*.*.GetStringUTFChars.?(env, s, null);
-    if (chars == null) return null;
-    defer env.*.*.ReleaseStringUTFChars.?(env, s, chars);
-    return allocator.dupe(u8, std.mem.span(chars)) catch null;
+    const bytes = jni_string.dupUtf8(env, allocator, s) orelse return null;
+    if (std.mem.indexOfScalar(u8, bytes, 0) != null) {
+        std.crypto.secureZero(u8, bytes);
+        allocator.free(bytes);
+        return null;
+    }
+    return bytes;
+}
+
+/// Overwrites a buffer that held a secret, then frees it.
+fn freeSecret(buf: []u8) void {
+    std.crypto.secureZero(u8, buf);
+    allocator.free(buf);
+}
+
+fn freeSecretZ(buf: [:0]u8) void {
+    std.crypto.secureZero(u8, buf);
+    allocator.free(buf);
 }
 
 fn dupSentinel(bytes: []const u8) ?[:0]u8 {
@@ -479,10 +668,7 @@ fn dupSentinel(bytes: []const u8) ?[:0]u8 {
 
 fn jniNewStringOrNull(env: *c.JNIEnv, bytes: []const u8) c.jstring {
     if (bytes.len == 0) return null;
-    var buf = allocator.allocSentinel(u8, bytes.len, 0) catch return null;
-    defer allocator.free(buf);
-    @memcpy(buf[0..bytes.len], bytes);
-    return env.*.*.NewStringUTF.?(env, buf.ptr);
+    return jni_string.newString(env, allocator, bytes);
 }
 
 fn jniNewByteArrayOrNull(env: *c.JNIEnv, bytes: []const u8) c.jbyteArray {
@@ -598,7 +784,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     session.cancel_fd = if (fd >= 0) fd else -1;
 }
 
-export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeConnect(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, host: c.jstring, port: c.jint, username: c.jstring) callconv(.c) c.jboolean {
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeConnect(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, host: c.jstring, port: c.jint, username: c.jstring, preferred_hostkey_types: c.jstring) callconv(.c) c.jboolean {
     _ = thiz;
     const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
     const host_slice = jniDupString(env, host) orelse {
@@ -616,6 +802,11 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         return c.JNI_FALSE;
     };
     defer allocator.free(username_slice);
+    const preferred_types = jniDupString(env, preferred_hostkey_types) orelse allocator.dupe(u8, "") catch {
+        setError(session, "Host key type alloc failed", .{});
+        return c.JNI_FALSE;
+    };
+    defer allocator.free(preferred_types);
 
     logInfo("nativeConnect host={s} port={} user={s}", .{ host_slice, port, username_slice });
 
@@ -628,7 +819,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     };
 
     const fd = connectSocket(session, host_z, @intCast(@max(port, 0))) catch {
-        logError("Socket connect failed host={s} port={}", .{ host_slice, port });
+        logInfo("Socket connect failed host={s} port={}", .{ host_slice, port });
         setError(session, "Socket connect failed host={s} port={}", .{ host_slice, port });
         return c.JNI_FALSE;
     };
@@ -643,6 +834,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     };
     session.session = ssh_session;
     c.libssh2_session_set_blocking(ssh_session, 0);
+    if (!applyMethodPrefs(session, ssh_session, preferred_types)) return c.JNI_FALSE;
     logInfo("Starting SSH handshake...", .{});
     while (true) {
         const handshake_rc = c.libssh2_session_handshake(ssh_session, fd);
@@ -689,8 +881,6 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         setError(session, "Missing username", .{});
         return c.JNI_FALSE;
     };
-    c.libssh2_session_set_blocking(ssh_session, 1);
-    defer c.libssh2_session_set_blocking(ssh_session, 0);
     logInfo("nativeAuthenticateNone user={s}", .{username_slice});
     if (c.libssh2_userauth_authenticated(ssh_session) != 0) {
         logInfo("None auth already authenticated after handshake", .{});
@@ -698,39 +888,17 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     }
 
     const deadline_ms = nowMs() + setup_wait_timeout_ms;
-    var attempts: u32 = 0;
-    while (true) {
-        attempts += 1;
-        logInfo("None auth probe methods attempt={}", .{attempts});
-        const userauth_list = c.libssh2_userauth_list(ssh_session, username_slice.ptr, @intCast(username_slice.len));
-        logInfo("None auth probe returned attempt={}", .{attempts});
-        if (userauth_list == null) {
-            const rc = c.libssh2_session_last_errno(ssh_session);
-            if (rc == c.LIBSSH2_ERROR_EAGAIN) {
-                if ((attempts % 32) == 0) {
-                    logInfo("None auth waiting (EAGAIN) attempts={}", .{attempts});
-                }
-                if (nowMs() >= deadline_ms) {
-                    setError(session, "None auth timed out after {} attempts", .{attempts});
-                    return c.JNI_FALSE;
-                }
-                if (!waitSocket(session, setup_wait_timeout_ms)) {
-                    setError(session, "None auth timed out", .{});
-                    return c.JNI_FALSE;
-                }
-                continue;
-            }
-            if (c.libssh2_userauth_authenticated(ssh_session) != 0) {
-                logInfo("None auth succeeded - session authenticated", .{});
-                return c.JNI_TRUE;
-            }
-            logError("None auth failed: no methods and not authenticated rc={}", .{rc});
-            setError(session, "None auth failed: server returned no methods and session not authenticated", .{});
+    switch (queryAuthMethods(session, ssh_session, username_slice, deadline_ms, "None auth")) {
+        .authenticated => {
+            logInfo("None auth succeeded - session authenticated", .{});
+            return c.JNI_TRUE;
+        },
+        .failed => return c.JNI_FALSE,
+        .methods => |methods| {
+            logError("None auth rejected, server requires: {s}", .{methods});
+            setError(session, "None auth rejected, server requires: {s}", .{methods});
             return c.JNI_FALSE;
-        }
-        logError("None auth rejected, server requires: {s}", .{std.mem.span(userauth_list)});
-        setError(session, "None auth rejected, server requires: {s}", .{std.mem.span(userauth_list)});
-        return c.JNI_FALSE;
+        },
     }
 }
 
@@ -821,28 +989,117 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         setError(session, "Missing password", .{});
         return c.JNI_FALSE;
     };
-    defer allocator.free(password_slice);
-    c.libssh2_session_set_blocking(ssh_session, 1);
-    defer c.libssh2_session_set_blocking(ssh_session, 0);
+    defer freeSecret(password_slice);
     logInfo("Password auth attempt start username_len={} password_len={}", .{ username_slice.len, password_slice.len });
-    const password_deadline_ms = nowMs() + setup_wait_timeout_ms;
+    const deadline_ms = nowMs() + setup_wait_timeout_ms;
+    const methods = switch (queryAuthMethods(session, ssh_session, username_slice, deadline_ms, "Password auth")) {
+        .authenticated => return c.JNI_TRUE,
+        .failed => return c.JNI_FALSE,
+        .methods => |methods| methods,
+    };
+    // Servers that check passwords through PAM often offer only keyboard-interactive,
+    // which asks for the password as a prompt.
+    if (hasAuthMethod(methods, "password")) {
+        return toJBoolean(authenticatePassword(session, ssh_session, username_slice, password_slice, deadline_ms));
+    }
+    if (hasAuthMethod(methods, "keyboard-interactive")) {
+        return toJBoolean(authenticateKeyboardInteractive(session, ssh_session, username_slice, password_slice, deadline_ms));
+    }
+    // NativeSshService.kt matches "Keyboard-interactive auth failed" to explain that the
+    // server may not accept passwords from this address.
+    setError(session, "Keyboard-interactive auth failed: the server accepts only {s}", .{methods});
+    return c.JNI_FALSE;
+}
+
+fn toJBoolean(value: bool) c.jboolean {
+    return if (value) c.JNI_TRUE else c.JNI_FALSE;
+}
+
+fn hasAuthMethod(methods: []const u8, name: []const u8) bool {
+    var it = std.mem.tokenizeScalar(u8, methods, ',');
+    while (it.next()) |method| {
+        if (std.mem.eql(u8, method, name)) return true;
+    }
+    return false;
+}
+
+fn authenticatePassword(session: *NativeSshSession, ssh_session: *c.LIBSSH2_SESSION, username: []const u8, password: []const u8, deadline_ms: i64) bool {
     while (true) {
-        const rc = c.libssh2_userauth_password_ex(ssh_session, username_slice.ptr, @intCast(username_slice.len), password_slice.ptr, @intCast(password_slice.len), null);
+        const rc = c.libssh2_userauth_password_ex(ssh_session, username.ptr, @intCast(username.len), password.ptr, @intCast(password.len), null);
         if (rc == 0) {
             logInfo("Password auth succeeded", .{});
-            return c.JNI_TRUE;
+            return true;
         }
         if (rc != c.LIBSSH2_ERROR_EAGAIN) {
-            logError("Password auth failed rc={} (keyboard-interactive fallback disabled for diagnostics)", .{rc});
+            logError("Password auth failed rc={}", .{rc});
             setLibssh2Error(session, "Password auth failed", rc);
-            return c.JNI_FALSE;
+            return false;
         }
-        if (nowMs() >= password_deadline_ms) {
-            logError("Password auth timed out (keyboard-interactive fallback disabled for diagnostics)", .{});
-            setError(session, "Password auth timed out", .{});
-            return c.JNI_FALSE;
+        if (!awaitAuthSocket(session, deadline_ms, "Password auth")) return false;
+    }
+}
+
+const KeyboardAuthContext = struct {
+    password: []const u8,
+    answered: bool = false,
+    // The server asked for something other than one hidden answer, such as a 2FA code.
+    unanswerable: bool = false,
+};
+
+/// Answers a keyboard-interactive round with the saved password, but only a round that
+/// asks one hidden question, and only once, so a server that prompts again after a
+/// wrong password isn't sent it repeatedly. Every other prompt gets an empty answer.
+fn keyboardInteractiveCallback(
+    name: [*c]const u8,
+    name_len: c_int,
+    instruction: [*c]const u8,
+    instruction_len: c_int,
+    num_prompts: c_int,
+    prompts: [*c]const c.LIBSSH2_USERAUTH_KBDINT_PROMPT,
+    responses: [*c]c.LIBSSH2_USERAUTH_KBDINT_RESPONSE,
+    abstract: ?*?*anyopaque,
+) callconv(.c) void {
+    _ = name;
+    _ = name_len;
+    _ = instruction;
+    _ = instruction_len;
+    // An informational round with no prompts needs no answer.
+    if (num_prompts <= 0) return;
+    const holder = abstract orelse return;
+    const ctx: *KeyboardAuthContext = @ptrCast(@alignCast(holder.* orelse return));
+    if (num_prompts != 1 or prompts[0].echo != 0 or ctx.answered) {
+        ctx.unanswerable = true;
+        return;
+    }
+    // libssh2 frees each response with its default allocator, free().
+    const text: [*]u8 = @ptrCast(std.c.malloc(@max(ctx.password.len, 1)) orelse return);
+    @memcpy(text[0..ctx.password.len], ctx.password);
+    responses[0].text = @ptrCast(text);
+    responses[0].length = @intCast(ctx.password.len);
+    ctx.answered = true;
+}
+
+fn authenticateKeyboardInteractive(session: *NativeSshSession, ssh_session: *c.LIBSSH2_SESSION, username: []const u8, password: []const u8, deadline_ms: i64) bool {
+    var ctx: KeyboardAuthContext = .{ .password = password };
+    const abstract = c.libssh2_session_abstract(ssh_session);
+    abstract.* = @ptrCast(&ctx);
+    defer abstract.* = null;
+    while (true) {
+        const rc = c.libssh2_userauth_keyboard_interactive_ex(ssh_session, username.ptr, @intCast(username.len), keyboardInteractiveCallback);
+        if (rc == 0) {
+            logInfo("Keyboard-interactive auth succeeded", .{});
+            return true;
         }
-        _ = waitSocket(session, io_wait_timeout_ms);
+        if (rc != c.LIBSSH2_ERROR_EAGAIN) {
+            logError("Keyboard-interactive auth failed rc={}", .{rc});
+            if (ctx.unanswerable) {
+                setError(session, "Keyboard-interactive auth failed: the server asked for more than a password (rc={})", .{rc});
+            } else {
+                setLibssh2Error(session, "Keyboard-interactive auth failed", rc);
+            }
+            return false;
+        }
+        if (!awaitAuthSocket(session, deadline_ms, "Keyboard-interactive auth")) return false;
     }
 }
 
@@ -861,7 +1118,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         setError(session, "Missing private key", .{});
         return c.JNI_FALSE;
     };
-    defer allocator.free(private_key_slice);
+    defer freeSecret(private_key_slice);
 
     const public_key_slice = jniDupString(env, public_key_open_ssh);
     defer if (public_key_slice) |pk| allocator.free(pk);
@@ -876,19 +1133,16 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     defer if (compact_public) |pk| allocator.free(pk);
 
     const passphrase_slice = jniDupString(env, passphrase);
-    defer if (passphrase_slice) |ps| allocator.free(ps);
+    defer if (passphrase_slice) |ps| freeSecret(ps);
     const passphrase_z = if (passphrase_slice) |ps| dupSentinel(ps) else null;
-    defer if (passphrase_z) |pz| allocator.free(pz);
+    defer if (passphrase_z) |pz| freeSecretZ(pz);
     const passphrase_ptr: ?[*:0]const u8 = if (passphrase_z) |pz| pz.ptr else null;
 
-    c.libssh2_session_set_blocking(ssh_session, 1);
-    defer c.libssh2_session_set_blocking(ssh_session, 0);
-
-    const auth_list_ptr = c.libssh2_userauth_list(ssh_session, username_slice.ptr, @intCast(username_slice.len));
-    if (auth_list_ptr != null) {
-        logInfo("Public key memory auth methods user={s} methods={s}", .{ username_slice, std.mem.span(auth_list_ptr) });
-    } else {
-        logInfo("Public key memory auth methods user={s} methods=<none>", .{username_slice});
+    const deadline_ms = nowMs() + setup_wait_timeout_ms;
+    switch (queryAuthMethods(session, ssh_session, username_slice, deadline_ms, "Public key memory auth")) {
+        .authenticated => return c.JNI_TRUE,
+        .failed => return c.JNI_FALSE,
+        .methods => |methods| logInfo("Public key memory auth methods user={s} methods={s}", .{ username_slice, methods }),
     }
 
     logInfo(
@@ -896,7 +1150,6 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         .{ username_slice, if (compact_public) |pk| pk.len else @as(usize, 0), private_key_slice.len, if (passphrase_slice) |ps| ps.len else @as(usize, 0) },
     );
 
-    const deadline_ms = nowMs() + setup_wait_timeout_ms;
     while (true) {
         const rc = c.libssh2_userauth_publickey_frommemory(
             ssh_session,
@@ -924,14 +1177,8 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
             }
             return c.JNI_FALSE;
         }
-        if (nowMs() >= deadline_ms) {
-            setError(session, "Public key memory auth timed out", .{});
-            return c.JNI_FALSE;
-        }
-        _ = waitSocket(session, io_wait_timeout_ms);
+        if (!awaitAuthSocket(session, deadline_ms, "Public key memory auth")) return c.JNI_FALSE;
     }
-
-    return c.JNI_FALSE;
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeOpenShell(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, cols: c.jint, rows: c.jint, width_px: c.jint, height_px: c.jint, term: c.jstring) callconv(.c) c.jboolean {
@@ -958,10 +1205,10 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         }
     }
     if (session.channel) |old_ch| {
-        _ = c.libssh2_channel_close(old_ch);
-        _ = c.libssh2_channel_free(old_ch);
+        freeChannel(session, old_ch, nowMs() + teardown_wait_ms);
     }
     session.channel = channel;
+    session.resize_in_flight = false;
     c.libssh2_channel_set_blocking(channel.?, 0);
     var term_buf = allocator.allocSentinel(u8, term_slice.len, 0) catch {
         setError(session, "TERM alloc failed", .{});
@@ -1044,22 +1291,20 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         if (startup_rc == 0) break;
         if (startup_rc != c.LIBSSH2_ERROR_EAGAIN) {
             setLibssh2Error(session, "Exec start failed", startup_rc);
-            _ = c.libssh2_channel_close(channel.?);
-            _ = c.libssh2_channel_free(channel.?);
+            freeChannel(session, channel.?, nowMs() + teardown_wait_ms);
             return c.JNI_FALSE;
         }
         if (!waitSocket(session, setup_wait_timeout_ms)) {
             setError(session, "Exec start timed out", .{});
-            _ = c.libssh2_channel_close(channel.?);
-            _ = c.libssh2_channel_free(channel.?);
+            freeChannel(session, channel.?, nowMs() + teardown_wait_ms);
             return c.JNI_FALSE;
         }
     }
     if (session.channel) |old_ch| {
-        _ = c.libssh2_channel_close(old_ch);
-        _ = c.libssh2_channel_free(old_ch);
+        freeChannel(session, old_ch, nowMs() + teardown_wait_ms);
     }
     session.channel = channel;
+    session.resize_in_flight = false;
     setSocketNonBlocking(session.socket_fd);
     c.libssh2_session_set_blocking(ssh_session, 0);
     c.libssh2_channel_set_blocking(channel.?, 0);
@@ -1099,10 +1344,10 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         }
     }
     if (session.channel) |old_ch| {
-        _ = c.libssh2_channel_close(old_ch);
-        _ = c.libssh2_channel_free(old_ch);
+        freeChannel(session, old_ch, nowMs() + teardown_wait_ms);
     }
     session.channel = channel;
+    session.resize_in_flight = false;
     c.libssh2_channel_set_blocking(channel.?, 0);
 
     var term_buf = allocator.allocSentinel(u8, term_slice.len, 0) catch {
@@ -1158,23 +1403,40 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     return if (c.libssh2_channel_eof(channel) == 1) c.JNI_TRUE else c.JNI_FALSE;
 }
 
-export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeResize(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, cols: c.jint, rows: c.jint, width_px: c.jint, height_px: c.jint) callconv(.c) c.jboolean {
+/// Sends the PTY size: 1 once it is sent, 0 when the send buffer stays full and the
+/// caller should try again later, -1 with the last error set when it fails.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeResize(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, cols: c.jint, rows: c.jint, width_px: c.jint, height_px: c.jint) callconv(.c) c.jint {
     _ = env;
     _ = thiz;
-    const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
-    const channel = session.channel orelse return c.JNI_FALSE;
-    while (true) {
-        const rc = c.libssh2_channel_request_pty_size_ex(channel, cols, rows, width_px, height_px);
-        if (rc == 0) return c.JNI_TRUE;
-        if (rc != c.LIBSSH2_ERROR_EAGAIN) {
-            setLibssh2Error(session, "PTY resize failed", rc);
-            return c.JNI_FALSE;
-        }
-        if (!waitSocket(session, setup_wait_timeout_ms)) {
-            setError(session, "PTY resize timed out", .{});
-            return c.JNI_FALSE;
+    const session = sessionFromHandle(handle) orelse return -1;
+    const channel = session.channel orelse return -1;
+    // The first pass finishes a held window-change, whatever size it carries.
+    const passes: usize = if (session.resize_in_flight) 2 else 1;
+    for (0..passes) |_| {
+        while (true) {
+            const rc = c.libssh2_channel_request_pty_size_ex(channel, cols, rows, width_px, height_px);
+            if (rc == 0) {
+                session.resize_in_flight = false;
+                break;
+            }
+            if (rc != c.LIBSSH2_ERROR_EAGAIN) {
+                session.resize_in_flight = false;
+                setLibssh2Error(session, "PTY resize failed", rc);
+                return -1;
+            }
+            session.resize_in_flight = true;
+            switch (pollSocket(session, resize_wait_timeout_ms)) {
+                .ready => {},
+                // A busy connection is no reason to end the session.
+                .timeout => return 0,
+                .failed => {
+                    setError(session, "PTY resize failed: connection lost", .{});
+                    return -1;
+                },
+            }
         }
     }
+    return 1;
 }
 
 /// Reads what stdout and stderr hold now, without waiting: an empty array when there is
@@ -1238,6 +1500,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     _ = env;
     _ = thiz;
     const session = sessionFromHandle(handle) orelse return;
+    const deadline_ms = nowMs() + teardown_wait_ms;
     // Best-effort SFTP teardown: even if it stalls (e.g. the peer is gone), we
     // must still free the channel, session, and socket below. libssh2_session_free
     // releases any remaining SFTP state, so a stalled shutdown is not fatal here.
@@ -1250,13 +1513,11 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         session.sftp = null;
     }
     if (session.channel) |channel| {
-        _ = c.libssh2_channel_close(channel);
-        _ = c.libssh2_channel_free(channel);
+        freeChannel(session, channel, deadline_ms);
         session.channel = null;
     }
     if (session.session) |ssh_session| {
-        _ = c.libssh2_session_disconnect_ex(ssh_session, c.SSH_DISCONNECT_BY_APPLICATION, "bye", "en");
-        _ = c.libssh2_session_free(ssh_session);
+        freeSession(session, ssh_session, deadline_ms);
         session.session = null;
     }
     closeSocket(session.socket_fd);
@@ -1301,6 +1562,12 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         if (rc > 0) {
             const name = entry_buf[0..@intCast(rc)];
             if (std.mem.eql(u8, name, ".") or std.mem.eql(u8, name, "..")) continue;
+            // A name is one path segment. The browser joins it onto the directory to
+            // open or delete it, so a name with a slash could point anywhere.
+            if (std.mem.indexOfAny(u8, name, "/\x00") != null) {
+                logInfo("SFTP list skipped an entry whose name holds a slash or NUL", .{});
+                continue;
+            }
             const kind: []const u8 = blk: {
                 const has_perms = (attrs.flags & c.LIBSSH2_SFTP_ATTR_PERMISSIONS) != 0;
                 if (!has_perms) break :blk "other";
@@ -1313,8 +1580,9 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
             };
             const size: u64 = if ((attrs.flags & c.LIBSSH2_SFTP_ATTR_SIZE) != 0) @intCast(attrs.filesize) else 0;
             const mtime: u64 = if ((attrs.flags & c.LIBSSH2_SFTP_ATTR_ACMODTIME) != 0) @intCast(attrs.mtime) else 0;
-            const perms: u64 = if ((attrs.flags & c.LIBSSH2_SFTP_ATTR_PERMISSIONS) != 0) @intCast(attrs.permissions) else 0;
-            const line = std.fmt.allocPrint(allocator, "{s}\t{s}\t{}\t{}\t{}", .{ name, kind, size, mtime, perms }) catch {
+            // The name goes last: it may hold tabs and newlines, and the reader splits
+            // only the first three tabs.
+            const line = std.fmt.allocPrint(allocator, "{s}\t{}\t{}\t{s}", .{ kind, size, mtime, name }) catch {
                 setError(session, "SFTP list allocation failed after {} entries", .{names.items.len});
                 read_failed = true;
                 break;
@@ -1369,8 +1637,14 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     const string_class = env.*.*.FindClass.?(env, "java/lang/String") orelse return null;
     const result = env.*.*.NewObjectArray.?(env, @intCast(names.items.len), string_class, null) orelse return null;
     for (names.items, 0..) |name, idx| {
-        const j_name = jniNewStringOrNull(env, name) orelse continue;
+        const j_name = jniNewStringOrNull(env, name) orelse {
+            setError(session, "SFTP list failed: cannot pass entry {d} to Java", .{idx});
+            return null;
+        };
         env.*.*.SetObjectArrayElement.?(env, result, @intCast(idx), j_name);
+        // The array holds its own reference. Without this, a large directory fills
+        // the JNI local reference table and aborts the app.
+        env.*.*.DeleteLocalRef.?(env, j_name);
     }
     return result;
 }
@@ -1418,7 +1692,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     }
 }
 
-export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpOpenWrite(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, path: c.jstring) callconv(.c) c.jboolean {
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpOpenWrite(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, path: c.jstring, mode: c.jint) callconv(.c) c.jboolean {
     _ = thiz;
     const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
     const sftp = ensureSftp(session) orelse return c.JNI_FALSE;
@@ -1450,11 +1724,94 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         session.upload_handle = null;
     }
 
-    const flags: c_ulong = c.LIBSSH2_FXF_WRITE | c.LIBSSH2_FXF_CREAT | c.LIBSSH2_FXF_TRUNC;
-    const mode: c_long = c.LIBSSH2_SFTP_S_IRUSR | c.LIBSSH2_SFTP_S_IWUSR | c.LIBSSH2_SFTP_S_IRGRP | c.LIBSSH2_SFTP_S_IROTH;
-    const file = sftpOpenFile(session, sftp, path_z, flags, mode) orelse return c.JNI_FALSE;
+    // Uploads write a fresh temporary file, so refuse to open one that already exists.
+    const flags: c_ulong = c.LIBSSH2_FXF_WRITE | c.LIBSSH2_FXF_CREAT | c.LIBSSH2_FXF_EXCL;
+    const permissions: c_ulong = @as(c_ulong, @intCast(mode & 0o7777));
+    const file = sftpOpenFile(session, sftp, path_z, flags, @intCast(permissions)) orelse return c.JNI_FALSE;
     session.upload_handle = file;
+    // The server's umask can only narrow the mode given at open; set it exactly so a
+    // replaced file keeps its permissions. When that fails the file stays narrower.
+    var attrs = std.mem.zeroes(c.LIBSSH2_SFTP_ATTRIBUTES);
+    attrs.flags = c.LIBSSH2_SFTP_ATTR_PERMISSIONS;
+    attrs.permissions = permissions;
+    const rc = sftpRetry(session, "SFTP setstat", c.libssh2_sftp_fstat_ex, .{ file, &attrs, 1 });
+    if (rc != 0) logInfo("SFTP setstat on upload failed rc={}", .{rc});
     return c.JNI_TRUE;
+}
+
+/// The mode of `path` (following links), 0 when the server leaves it out, -1 when
+/// nothing is there, and -2 on any other failure.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpStat(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, path: c.jstring) callconv(.c) c.jint {
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return -2;
+    const sftp = ensureSftp(session) orelse return -2;
+    const path_bytes = jniDupString(env, path) orelse return -2;
+    defer allocator.free(path_bytes);
+    const path_z = dupSentinel(path_bytes) orelse return -2;
+    defer allocator.free(path_z);
+    var attrs = std.mem.zeroes(c.LIBSSH2_SFTP_ATTRIBUTES);
+    const rc = sftpRetry(session, "SFTP stat", c.libssh2_sftp_stat_ex, .{ sftp, path_z.ptr, @as(c_uint, @intCast(path_z.len)), c.LIBSSH2_SFTP_STAT, &attrs });
+    if (rc == 0) {
+        if (attrs.flags & c.LIBSSH2_SFTP_ATTR_PERMISSIONS == 0) return 0;
+        return @intCast(attrs.permissions & 0o177777);
+    }
+    if (rc == c.LIBSSH2_ERROR_EAGAIN) return -2;
+    if (rc == c.LIBSSH2_ERROR_SFTP_PROTOCOL) {
+        const status = c.libssh2_sftp_last_error(sftp);
+        if (status == c.LIBSSH2_FX_NO_SUCH_FILE or status == c.LIBSSH2_FX_NO_SUCH_PATH) return -1;
+    }
+    setSftpError(session, sftp, "SFTP stat failed", rc);
+    return -2;
+}
+
+/// Moves `from` onto `to`, replacing any file there.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpRename(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, from: c.jstring, to: c.jstring) callconv(.c) c.jboolean {
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
+    const sftp = ensureSftp(session) orelse return c.JNI_FALSE;
+    const from_bytes = jniDupString(env, from) orelse return c.JNI_FALSE;
+    defer allocator.free(from_bytes);
+    const to_bytes = jniDupString(env, to) orelse return c.JNI_FALSE;
+    defer allocator.free(to_bytes);
+    if (from_bytes.len > std.math.maxInt(c_uint) or to_bytes.len > std.math.maxInt(c_uint)) {
+        setError(session, "SFTP rename failed: path too long", .{});
+        return c.JNI_FALSE;
+    }
+    const from_len: c_uint = @intCast(from_bytes.len);
+    const to_len: c_uint = @intCast(to_bytes.len);
+
+    // posix-rename@openssh.com replaces the target in one step. libssh2 returns
+    // LIBSSH2_FX_OP_UNSUPPORTED itself when the server doesn't offer it.
+    var rc = sftpRetry(session, "SFTP rename", c.libssh2_sftp_posix_rename_ex, .{ sftp, from_bytes.ptr, from_bytes.len, to_bytes.ptr, to_bytes.len });
+    if (rc == 0) return c.JNI_TRUE;
+    if (rc == c.LIBSSH2_ERROR_EAGAIN) return c.JNI_FALSE;
+    if (rc != c.LIBSSH2_FX_OP_UNSUPPORTED) {
+        setSftpError(session, sftp, "SFTP rename failed", rc);
+        return c.JNI_FALSE;
+    }
+
+    const rename_flags: c_long = c.LIBSSH2_SFTP_RENAME_OVERWRITE | c.LIBSSH2_SFTP_RENAME_ATOMIC | c.LIBSSH2_SFTP_RENAME_NATIVE;
+    rc = sftpRetry(session, "SFTP rename", c.libssh2_sftp_rename_ex, .{ sftp, from_bytes.ptr, from_len, to_bytes.ptr, to_len, rename_flags });
+    if (rc == 0) return c.JNI_TRUE;
+    if (rc == c.LIBSSH2_ERROR_EAGAIN) return c.JNI_FALSE;
+    const status = c.libssh2_sftp_last_error(sftp);
+    const target_exists = rc == c.LIBSSH2_ERROR_SFTP_PROTOCOL and
+        (status == c.LIBSSH2_FX_FAILURE or status == c.LIBSSH2_FX_FILE_ALREADY_EXISTS);
+    if (!target_exists) {
+        setSftpError(session, sftp, "SFTP rename failed", rc);
+        return c.JNI_FALSE;
+    }
+    // SFTP v3 servers refuse to rename over an existing file and ignore the overwrite
+    // flag, so remove the target first.
+    rc = sftpRetry(session, "SFTP rename", c.libssh2_sftp_unlink_ex, .{ sftp, to_bytes.ptr, to_len });
+    if (rc != 0) {
+        if (rc != c.LIBSSH2_ERROR_EAGAIN) setSftpError(session, sftp, "SFTP rename failed: cannot remove the old file", rc);
+        return c.JNI_FALSE;
+    }
+    rc = sftpRetry(session, "SFTP rename", c.libssh2_sftp_rename_ex, .{ sftp, from_bytes.ptr, from_len, to_bytes.ptr, to_len, rename_flags });
+    if (rc == 0) return c.JNI_TRUE;
+    if (rc != c.LIBSSH2_ERROR_EAGAIN) setSftpError(session, sftp, "SFTP rename failed", rc);
+    return c.JNI_FALSE;
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpWriteChunk(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, data: c.jbyteArray) callconv(.c) c.jint {
@@ -1709,6 +2066,24 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     }
 }
 
+/// Repeats an SFTP call while it returns EAGAIN. When the peer stops making progress it
+/// records "`what` timed out" and returns EAGAIN.
+fn sftpRetry(session: *NativeSshSession, what: []const u8, call: anytype, args: anytype) c_int {
+    const started_ms = nowMs();
+    var idle_since_ms = started_ms;
+    while (true) {
+        const rc: c_int = @call(.auto, call, args);
+        if (rc != c.LIBSSH2_ERROR_EAGAIN) return rc;
+        switch (awaitSftpProgress(session, &idle_since_ms)) {
+            .retry => {},
+            .no_socket, .stalled => {
+                setError(session, "{s} timed out after {d}ms", .{ what, nowMs() - started_ms });
+                return c.LIBSSH2_ERROR_EAGAIN;
+            },
+        }
+    }
+}
+
 fn sftpOpenFile(session: *NativeSshSession, sftp: *c.LIBSSH2_SFTP, path_z: [:0]u8, flags: c_ulong, mode: c_long) ?*c.LIBSSH2_SFTP_HANDLE {
     const started_ms = nowMs();
     var idle_since_ms = started_ms;
@@ -1770,7 +2145,8 @@ fn sshPutString(list: *std.ArrayListUnmanaged(u8), data: []const u8) !void {
 }
 
 fn sshGetU32(data: []const u8, pos: *usize) !u32 {
-    if (pos.* + 4 > data.len) return error.Truncated;
+    // Subtract rather than add: pos + 4 can wrap a 32-bit usize.
+    if (pos.* > data.len or data.len - pos.* < 4) return error.Truncated;
     const value = std.mem.readInt(u32, data[pos.*..][0..4], .big);
     pos.* += 4;
     return value;
@@ -1778,7 +2154,7 @@ fn sshGetU32(data: []const u8, pos: *usize) !u32 {
 
 fn sshGetString(data: []const u8, pos: *usize) ![]const u8 {
     const len = try sshGetU32(data, pos);
-    if (pos.* + len > data.len) return error.Truncated;
+    if (len > data.len - pos.*) return error.Truncated;
     const s = data[pos.*..][0..len];
     pos.* += len;
     return s;
@@ -1794,30 +2170,32 @@ fn buildPublicKeyBlob(pub_key: [32]u8) ![]u8 {
 }
 
 /// Build the unencrypted private section of the OpenSSH key.
+/// Appends the plaintext private section to `section`. The caller reserves enough
+/// capacity for it, so the list never reallocates and leaves a copy behind, and wipes
+/// it after use.
 fn buildPrivateSection(
+    section: *std.ArrayListUnmanaged(u8),
     seed: [32]u8,
     pub_key: [32]u8,
     comment: []const u8,
     check: u32,
-) ![]u8 {
-    var section: std.ArrayListUnmanaged(u8) = .empty;
-    errdefer section.deinit(allocator);
-
+) !void {
     // Two identical check integers
-    try sshPutU32(&section, check);
-    try sshPutU32(&section, check);
+    try sshPutU32(section, check);
+    try sshPutU32(section, check);
 
     // keytype
-    try sshPutString(&section, "ssh-ed25519");
+    try sshPutString(section, "ssh-ed25519");
     // public key (32 bytes, length-prefixed)
-    try sshPutString(&section, &pub_key);
+    try sshPutString(section, &pub_key);
     // private key: 64 bytes = seed(32) || pubkey(32), length-prefixed
     var priv_blob: [64]u8 = undefined;
+    defer std.crypto.secureZero(u8, &priv_blob);
     @memcpy(priv_blob[0..32], &seed);
     @memcpy(priv_blob[32..64], &pub_key);
-    try sshPutString(&section, &priv_blob);
+    try sshPutString(section, &priv_blob);
     // comment
-    try sshPutString(&section, comment);
+    try sshPutString(section, comment);
 
     // Padding: 1, 2, 3, ... up to block alignment
     const pad_block = aes_block_len;
@@ -1829,8 +2207,17 @@ fn buildPrivateSection(
             try section.append(allocator, i);
         }
     }
+}
 
-    return section.toOwnedSlice(allocator);
+/// An upper bound on the size of the private section built for `comment`.
+fn privateSectionCapacity(comment: []const u8) usize {
+    return 8 + (4 + "ssh-ed25519".len) + (4 + 32) + (4 + 64) + (4 + comment.len) + aes_block_len;
+}
+
+/// Wipes a list that held a secret, including spare capacity, then frees it.
+fn deinitSecretList(list: *std.ArrayListUnmanaged(u8)) void {
+    std.crypto.secureZero(u8, list.allocatedSlice());
+    list.deinit(allocator);
 }
 
 /// Encode a raw blob as a PEM block with the given header/footer.
@@ -1846,14 +2233,14 @@ fn encodePem(
     // Total: header + encoded chars + newlines after each line + footer
     const total = header.len + encoded_len + num_lines + footer.len;
     const buf = try allocator.alloc(u8, total);
-    errdefer allocator.free(buf);
+    errdefer freeSecret(buf);
 
     @memcpy(buf[0..header.len], header);
     var pos: usize = header.len;
 
     // Base64-encode and wrap at 70 characters
     const encoded = try allocator.alloc(u8, encoded_len);
-    defer allocator.free(encoded);
+    defer freeSecret(encoded);
     _ = b64_encoder.encode(encoded, data);
 
     var offset: usize = 0;
@@ -1879,16 +2266,19 @@ fn decodePem(pem: []const u8, begin: []const u8, end: []const u8) ![]u8 {
     const body_start = begin_idx + begin.len;
     const end_idx = std.mem.indexOfPos(u8, pem, body_start, end) orelse return error.NotPem;
 
+    // Reserve the whole body up front so the list never reallocates and leaves a copy
+    // of the key behind.
     var cleaned: std.ArrayListUnmanaged(u8) = .empty;
-    defer cleaned.deinit(allocator);
+    try cleaned.ensureTotalCapacityPrecise(allocator, end_idx - body_start);
+    defer deinitSecretList(&cleaned);
     for (pem[body_start..end_idx]) |ch| {
-        if (!std.ascii.isWhitespace(ch)) try cleaned.append(allocator, ch);
+        if (!std.ascii.isWhitespace(ch)) cleaned.appendAssumeCapacity(ch);
     }
 
     const decoder = std.base64.standard.Decoder;
     const decoded_len = try decoder.calcSizeForSlice(cleaned.items);
     const out = try allocator.alloc(u8, decoded_len);
-    errdefer allocator.free(out);
+    errdefer freeSecret(out);
     try decoder.decode(out, cleaned.items);
     return out;
 }
@@ -1935,25 +2325,36 @@ fn generateEd25519Key(
     out_private_pem: *[]u8,
     out_public_openssh: *[]u8,
 ) !void {
-    const key_pair = generateEd25519KeyPair();
+    var key_pair = generateEd25519KeyPair();
+    defer std.crypto.secureZero(u8, &key_pair.secret_key.bytes);
     const pub_key: [32]u8 = key_pair.public_key.bytes;
-    const seed: [32]u8 = key_pair.secret_key.seed();
+    var seed: [32]u8 = key_pair.secret_key.seed();
+    defer std.crypto.secureZero(u8, &seed);
 
     var check_bytes: [4]u8 = undefined;
     std.c.arc4random_buf(&check_bytes, check_bytes.len);
     const check = std.mem.readInt(u32, &check_bytes, .little);
 
     // Build private section (plaintext)
-    const private_section = try buildPrivateSection(seed, pub_key, comment, check);
-    defer allocator.free(private_section);
+    var private_list: std.ArrayListUnmanaged(u8) = .empty;
+    try private_list.ensureTotalCapacityPrecise(allocator, privateSectionCapacity(comment));
+    defer deinitSecretList(&private_list);
+    try buildPrivateSection(&private_list, seed, pub_key, comment, check);
+    const private_section = private_list.items;
 
     // Build public key blob
     const pub_blob = try buildPublicKeyBlob(pub_key);
     defer allocator.free(pub_blob);
 
-    // Assemble the full openssh-key-v1 binary
+    // Assemble the full openssh-key-v1 binary. Without a passphrase it holds the
+    // private key, so reserve room for every field up front and wipe it afterwards.
     var key_data: std.ArrayListUnmanaged(u8) = .empty;
-    defer key_data.deinit(allocator);
+    try key_data.ensureTotalCapacityPrecise(
+        allocator,
+        openssh_auth_magic.len + (4 + "aes256-ctr".len) + (4 + "bcrypt".len) +
+            (4 + 4 + openssh_salt_len + 4) + 4 + (4 + pub_blob.len) + (4 + private_section.len),
+    );
+    defer deinitSecretList(&key_data);
 
     // Magic
     try key_data.appendSlice(allocator, openssh_auth_magic);
@@ -1981,14 +2382,17 @@ fn generateEd25519Key(
 
         // Derive 48 bytes: 32 for AES key + 16 for IV
         var derived: [48]u8 = undefined;
+        defer std.crypto.secureZero(u8, &derived);
         try bcrypt.opensshKdf(passphrase, &salt, &derived, openssh_kdf_rounds);
-        const aes_key: [32]u8 = derived[0..32].*;
+        var aes_key: [32]u8 = derived[0..32].*;
+        defer std.crypto.secureZero(u8, &aes_key);
         const iv: [aes_block_len]u8 = derived[32..48].*;
 
         // Encrypt private section in-place with AES-256-CTR
         const encrypted_section = try allocator.alloc(u8, private_section.len);
         defer allocator.free(encrypted_section);
-        const ctx = Aes256.initEnc(aes_key);
+        var ctx = Aes256.initEnc(aes_key);
+        defer std.crypto.secureZero(u8, std.mem.asBytes(&ctx));
         std.crypto.core.modes.ctr(
             @TypeOf(ctx),
             ctx,
@@ -2014,6 +2418,7 @@ fn generateEd25519Key(
         openssh_pem_end ++ "\n",
         key_data.items,
     );
+    errdefer freeSecret(out_private_pem.*);
     out_public_openssh.* = try formatPublicKeyLine("ssh-ed25519", pub_blob, comment);
 }
 
@@ -2032,7 +2437,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     const comment_slice: []const u8 = comment_owned orelse "abyssh";
 
     const passphrase_owned = jniDupString(env, j_passphrase);
-    defer if (passphrase_owned) |s| allocator.free(s);
+    defer if (passphrase_owned) |s| freeSecret(s);
     const passphrase_slice: []const u8 = passphrase_owned orelse "";
 
     var private_pem: []u8 = undefined;
@@ -2042,7 +2447,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         logError("Ed25519 keygen failed: {}", .{err});
         return null;
     };
-    defer allocator.free(private_pem);
+    defer freeSecret(private_pem);
     defer allocator.free(public_openssh);
 
     // Build a String[2] to return
@@ -2069,7 +2474,7 @@ fn derivePublicKeyOpenSsh(
     out_public_openssh: *[]u8,
 ) !void {
     const bin = try decodePem(private_pem, openssh_pem_begin, openssh_pem_end);
-    defer allocator.free(bin);
+    defer freeSecret(bin);
 
     if (bin.len < openssh_auth_magic.len or
         !std.mem.eql(u8, bin[0..openssh_auth_magic.len], openssh_auth_magic))
@@ -2103,7 +2508,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     _ = thiz;
 
     const pem_owned = jniDupString(env, j_private_pem) orelse return null;
-    defer allocator.free(pem_owned);
+    defer freeSecret(pem_owned);
 
     var algorithm: []u8 = undefined;
     var public_openssh: []u8 = undefined;

@@ -24,7 +24,12 @@ class NativeSshBridge {
     /** Sets the eventfd that cancels the connection when signalled; the caller closes it after the session. */
     external fun nativeSetCancelFd(handle: Long, fd: Int)
 
-    external fun nativeConnect(handle: Long, host: String, port: Int, username: String): Boolean
+    /**
+     * Opens the TCP connection and runs the SSH handshake. [preferredHostKeyTypes] lists
+     * the key types to ask for first, comma-separated, as [nativeGetHostKeyAlgorithm]
+     * names them (`ED25519,RSA`); empty keeps the default order.
+     */
+    external fun nativeConnect(handle: Long, host: String, port: Int, username: String, preferredHostKeyTypes: String): Boolean
 
     external fun nativeGetLastError(handle: Long): String?
 
@@ -71,13 +76,14 @@ class NativeSshBridge {
 
     external fun nativeChannelEof(handle: Long): Boolean
 
+    /** Sends the PTY size: 1 once sent, 0 when the send buffer stays full, -1 on failure. */
     external fun nativeResize(
         handle: Long,
         cols: Int,
         rows: Int,
         widthPx: Int,
         heightPx: Int,
-    ): Boolean
+    ): Int
 
     /** What stdout and stderr hold now, empty when nothing has arrived, or null when the read fails. */
     external fun nativeRead(handle: Long, maxBytes: Int): ByteArray?
@@ -94,13 +100,20 @@ class NativeSshBridge {
 
     external fun nativeSftpRealpath(handle: Long, path: String): String?
 
-    external fun nativeSftpOpenWrite(handle: Long, path: String): Boolean
+    /** Creates `path`, which must not exist yet, with permission bits `mode`, and opens it for writing. */
+    external fun nativeSftpOpenWrite(handle: Long, path: String, mode: Int): Boolean
 
     external fun nativeSftpWriteChunk(handle: Long, data: ByteArray): Int
 
     external fun nativeSftpCloseWrite(handle: Long): Boolean
 
     external fun nativeSftpReadFile(handle: Long, path: String, maxBytes: Int): ByteArray?
+
+    /** The mode of `path`, 0 when the server leaves it out, -1 when nothing is there, -2 on failure. */
+    external fun nativeSftpStat(handle: Long, path: String): Int
+
+    /** Moves `from` onto `to`, replacing any file there. */
+    external fun nativeSftpRename(handle: Long, from: String, to: String): Boolean
 
     external fun nativeSftpDeleteFile(handle: Long, path: String): Boolean
 

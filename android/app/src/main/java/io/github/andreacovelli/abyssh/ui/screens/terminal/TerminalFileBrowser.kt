@@ -3,6 +3,7 @@ package io.github.andreacovelli.abyssh.ui.screens.terminal
 import io.github.andreacovelli.abyssh.model.toUiText
 
 import io.github.andreacovelli.abyssh.model.UiText
+import io.github.andreacovelli.abyssh.model.UiTextException
 
 import io.github.andreacovelli.abyssh.R
 
@@ -17,10 +18,12 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -106,21 +109,43 @@ class TerminalFileBrowser internal constructor(
         refresh()
     }
 
-    suspend fun beginUpload(fileName: String) {
-        val tabId = activeTabId.value ?: return
-        val current = stateByTab.value[tabId] ?: return
-        val targetPath = current.currentPath.trimEnd('/') + "/" + fileName
-        sessionRepository.withSftp(tabId) { it.openWrite(targetPath) }
+    /** Where [fileName] lands in the active tab's directory, and the mode of any file already there. */
+    suspend fun uploadTarget(fileName: String): UploadTarget? {
+        val tabId = activeTabId.value ?: return null
+        val current = stateByTab.value[tabId] ?: return null
+        val name = uploadFileName(fileName)
+        val path = current.currentPath.trimEnd('/') + "/" + name
+        val mode = sessionRepository.withSftp(tabId) { it.stat(path) ?: MISSING_MODE } ?: return null
+        return UploadTarget(tabId, path, name, existingMode = mode.takeIf { it != MISSING_MODE })
     }
 
-    suspend fun writeUploadChunk(data: ByteArray) {
-        val tabId = activeTabId.value ?: return
-        sessionRepository.sftpFor(tabId)?.writeChunk(data)
-    }
-
-    suspend fun finishUpload() {
-        val tabId = activeTabId.value ?: return
-        sessionRepository.sftpFor(tabId)?.closeWrite()
+    /**
+     * Writes [target] through a hidden temporary file beside it, renamed into place once
+     * every byte has arrived, so a failed upload never leaves a partial file. [copy]
+     * sends the content through the sink it is given.
+     */
+    suspend fun upload(target: UploadTarget, copy: suspend (write: suspend (ByteArray) -> Unit) -> Unit) {
+        if (target.existingMode?.let(::isDirectoryMode) == true) {
+            throw UiTextException(
+                UiText.Resource(R.string.files_upload_target_is_directory, target.name),
+                "Upload target is a directory",
+            )
+        }
+        val sftp = sessionRepository.withSftp(target.tabId) { it }
+            ?: throw UiTextException(UiText.Resource(R.string.error_session_not_connected), "Session closed")
+        val tempPath = uploadTempPath(target.path)
+        sftp.openWrite(tempPath, uploadMode(target.existingMode))
+        try {
+            copy { chunk -> sftp.writeChunk(chunk) }
+            sftp.closeWrite()
+            sftp.rename(tempPath, target.path)
+        } catch (e: Exception) {
+            withContext(NonCancellable) {
+                runCatching { sftp.closeWrite() }
+                runCatching { sftp.delete(tempPath, isDirectory = false) }
+            }
+            throw e
+        }
         withContext(Dispatchers.Main) { refresh() }
     }
 
@@ -220,16 +245,45 @@ class TerminalFileBrowser internal constructor(
 
     private companion object {
         const val MILLIS_PER_SECOND = 1000L
+        const val MISSING_MODE = -1
     }
+}
+
+/** A file an upload writes, and the mode of the file it replaces, if there is one. */
+data class UploadTarget(val tabId: String, val path: String, val name: String, val existingMode: Int?)
+
+private const val LISTING_FIELDS = 4
+private const val S_IFMT = 0xF000
+private const val S_IFDIR = 0x4000
+private const val PERMISSION_BITS = 0xFFF
+private const val OWNER_READ_WRITE = 0x180
+private const val TEMP_NAME_MAX = 200
+
+internal fun isDirectoryMode(mode: Int): Boolean = mode and S_IFMT == S_IFDIR
+
+/** The permission bits for an upload: the replaced file's, or owner-only for a new one. */
+internal fun uploadMode(existingMode: Int?): Int =
+    existingMode?.and(PERMISSION_BITS)?.takeIf { it != 0 } ?: OWNER_READ_WRITE
+
+/** The last path segment of a picked file's display name, which a provider may fill with anything. */
+internal fun uploadFileName(displayName: String): String =
+    displayName.substringAfterLast('/').takeUnless { it.isBlank() || it == "." || it == ".." } ?: "upload"
+
+/** A hidden name beside [path] that no other upload picks. */
+internal fun uploadTempPath(path: String, random: Random = Random.Default): String {
+    val directory = path.substringBeforeLast('/', "")
+    val name = path.substringAfterLast('/').take(TEMP_NAME_MAX)
+    val suffix = random.nextLong().toULong().toString(radix = 16)
+    return "$directory/.$name.$suffix.abyssh-upload"
 }
 
 /** The parent of [path], or `/` at the top. */
 internal fun parentPath(path: String): String = path.substringBeforeLast('/', "").ifBlank { "/" }
 
 /**
- * Parses the native SFTP listing of [directory]: one row per entry with the name, kind
- * (`dir`, `file`, `link`, or other), size in bytes, and modification time in epoch
- * seconds, separated by tabs.
+ * Parses the native SFTP listing of [directory]: one row per entry with the kind (`dir`,
+ * `file`, `link`, or other), size in bytes, modification time in epoch seconds, and
+ * name, separated by tabs. The name comes last because it may hold tabs itself.
  */
 internal fun parseDirectoryListing(
     rows: List<String>,
@@ -237,15 +291,16 @@ internal fun parseDirectoryListing(
     formatMtime: (Long) -> String,
 ): List<FileBrowserEntry> {
     val base = directory.trimEnd('/')
-    return rows.map { row ->
-        val parts = row.split('\t')
-        val name = parts.getOrNull(0).orEmpty()
-        val size = parts.getOrNull(2)?.toLongOrNull()
-        val mtime = parts.getOrNull(3)?.toLongOrNull()
+    return rows.mapNotNull { row ->
+        val parts = row.split('\t', limit = LISTING_FIELDS)
+        if (parts.size < LISTING_FIELDS) return@mapNotNull null
+        val name = parts[3]
+        val size = parts[1].toLongOrNull()
+        val mtime = parts[2].toLongOrNull()
         FileBrowserEntry(
             name = name,
             path = "$base/$name",
-            type = when (parts.getOrNull(1)) {
+            type = when (parts[0]) {
                 "dir" -> FileEntryType.Directory
                 "file" -> FileEntryType.File
                 "link" -> FileEntryType.Symlink

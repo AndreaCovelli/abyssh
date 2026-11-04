@@ -2,6 +2,7 @@ package io.github.andreacovelli.abyssh.service.terminal
 
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyPolicy
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
+import io.github.andreacovelli.abyssh.service.ssh.policy
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -61,11 +62,13 @@ internal class MultiplexerPreflight(
         while (true) {
             var untrusted: UntrustedKey? = null
             val probe =
-                newProbe { host, port, algorithm, keyBytes ->
-                    val prompt = hostKeyStore.promptFor(host, port, algorithm, keyBytes)
-                    if (prompt != null) untrusted = UntrustedKey(prompt, keyBytes.copyOf())
-                    prompt == null
-                }
+                newProbe(
+                    hostKeyStore.policy { host, port, algorithm, keyBytes ->
+                        val prompt = hostKeyStore.promptFor(host, port, algorithm, keyBytes)
+                        if (prompt != null) untrusted = UntrustedKey(prompt, keyBytes.copyOf())
+                        prompt == null
+                    },
+                )
             val key =
                 try {
                     return withContext(Dispatchers.IO) { block(probe) }

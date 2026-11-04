@@ -42,7 +42,10 @@ export fn Java_io_github_andreacovelli_abyssh_service_backup_NativeBackupBridge_
     const plaintext_bytes = readJByteArray(env, plaintext) catch {
         return statusResult(env, STATUS_FORMAT_ERROR, "Invalid plaintext");
     };
-    defer allocator.free(plaintext_bytes);
+    defer {
+        std.crypto.secureZero(u8, plaintext_bytes);
+        allocator.free(plaintext_bytes);
+    }
 
     const passphrase_bytes = readJCharArrayAsBigEndianBytes(env, passphrase) catch {
         return statusResult(env, STATUS_FORMAT_ERROR, "Invalid passphrase");
@@ -179,7 +182,10 @@ fn decryptPayload(ciphertext_container: []const u8, passphrase: []const u8) Nati
     defer std.crypto.secureZero(u8, &key);
 
     const plaintext = allocator.alloc(u8, cipher_only.len) catch return error.CryptoFailure;
-    errdefer allocator.free(plaintext);
+    errdefer {
+        std.crypto.secureZero(u8, plaintext);
+        allocator.free(plaintext);
+    }
 
     Aes256Gcm.decrypt(
         plaintext,
@@ -381,8 +387,16 @@ fn readJCharArrayAsUtf8(env: *c.JNIEnv, array: c.jcharArray) ![]u8 {
     const ptr = env.*.*.GetCharArrayElements.?(env, array, &is_copy) orelse return error.InvalidInput;
     defer env.*.*.ReleaseCharArrayElements.?(env, array, ptr, c.JNI_ABORT);
 
+    // Convert into a worst-case buffer rather than a growing list, which would leave
+    // copies of the passphrase behind each time it reallocated.
     const utf16: [*]u16 = @ptrCast(ptr);
-    return std.unicode.utf16LeToUtf8Alloc(allocator, utf16[0..char_count]) catch error.InvalidInput;
+    const scratch = try allocator.alloc(u8, char_count * 3);
+    defer {
+        std.crypto.secureZero(u8, scratch);
+        allocator.free(scratch);
+    }
+    const len_utf8 = std.unicode.utf16LeToUtf8(scratch, utf16[0..char_count]) catch return error.InvalidInput;
+    return allocator.dupe(u8, scratch[0..len_utf8]);
 }
 
 fn statusFromError(env: *c.JNIEnv, err: anyerror) c.jbyteArray {
@@ -398,18 +412,16 @@ fn statusResult(env: *c.JNIEnv, status: u8, message: []const u8) c.jbyteArray {
     return statusResultBytes(env, status, message);
 }
 
+/// Copies the payload straight into the Java array, so decrypted data leaves no
+/// unwiped copy in native memory.
 fn statusResultBytes(env: *c.JNIEnv, status: u8, payload: []const u8) c.jbyteArray {
     const total = 1 + payload.len;
     const out = env.*.*.NewByteArray.?(env, @intCast(total)) orelse return null;
-    var temp = allocator.alloc(u8, total) catch return null;
-    defer allocator.free(temp);
-
-    temp[0] = status;
+    const status_byte: [1]u8 = .{status};
+    env.*.*.SetByteArrayRegion.?(env, out, 0, 1, @ptrCast(&status_byte));
     if (payload.len > 0) {
-        @memcpy(temp[1..], payload);
+        env.*.*.SetByteArrayRegion.?(env, out, 1, @intCast(payload.len), @ptrCast(payload.ptr));
     }
-
-    env.*.*.SetByteArrayRegion.?(env, out, 0, @intCast(total), @ptrCast(temp.ptr));
     return out;
 }
 

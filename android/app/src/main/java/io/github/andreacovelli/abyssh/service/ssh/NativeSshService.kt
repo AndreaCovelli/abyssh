@@ -10,11 +10,6 @@ class NativeSshService(
     private val bridge: NativeSshBridge = NativeSshBridge(),
     private val hostKeyPolicy: HostKeyPolicy,
 ) : Closeable {
-    private companion object {
-        // Absolute in-memory ceiling; callers request 16/32 MiB, so this is the effective download limit.
-        private const val MAX_SFTP_READ_BYTES = 4 * 1024 * 1024
-    }
-
     private fun passwordAuthFailure(nativeError: String?): Exception = when {
         nativeError.isNullOrBlank() -> IllegalStateException("Native SSH password auth failed")
         nativeError.contains("Keyboard-interactive auth failed", ignoreCase = true) -> UiTextException(
@@ -26,6 +21,9 @@ class NativeSshService(
 
     private var handle: Long = 0L
     private val cancellation = ConnectionCancel()
+
+    /** SFTP over this connection. */
+    val sftp = NativeSftp(bridge) { handle }
 
     fun isAvailable(): Boolean = bridge.isLoaded()
 
@@ -45,7 +43,8 @@ class NativeSshService(
         check(handle != 0L) { "Failed to create native SSH session" }
         bridge.nativeSetCancelFd(handle, cancellation.open())
 
-        if (!bridge.nativeConnect(handle, host, port, username)) {
+        val preferredHostKeyTypes = hostKeyPolicy.trustedAlgorithms(host, port).joinToString(",")
+        if (!bridge.nativeConnect(handle, host, port, username, preferredHostKeyTypes)) {
             bridge.connectFailure(handle, cancellation, "Native SSH connect failed")
         }
 
@@ -163,12 +162,13 @@ class NativeSshService(
         return bridge.nativeChannelEof(handle)
     }
 
-    fun resize(cols: Int, rows: Int, widthPx: Int, heightPx: Int) {
-        if (handle == 0L) return
-        if (!bridge.nativeResize(handle, cols, rows, widthPx, heightPx)) {
-            error(
-                bridge.nativeGetLastError(handle) ?: "Native SSH resize failed"
-            )
+    /** Sends the PTY size; false when the connection is too busy to take it now. */
+    fun resize(cols: Int, rows: Int, widthPx: Int, heightPx: Int): Boolean {
+        if (handle == 0L) return true
+        return when (bridge.nativeResize(handle, cols, rows, widthPx, heightPx)) {
+            1 -> true
+            0 -> false
+            else -> error(bridge.nativeGetLastError(handle) ?: "Native SSH resize failed")
         }
     }
 
@@ -231,83 +231,6 @@ class NativeSshService(
     fun waitReadable(wakeFd: Int, timeoutMs: Int): Int =
         if (handle == 0L) -1 else bridge.nativeWaitReadable(handle, wakeFd, timeoutMs)
 
-    fun sftpListDirectory(path: String): List<String> {
-        check(handle != 0L) { "Not connected" }
-        if (!bridge.nativeSftpInit(handle)) {
-            bridge.sftpFailure(handle, "Native SFTP init failed")
-        }
-        val names =
-            bridge.nativeSftpListDirectory(handle, path)
-                ?: bridge.sftpFailure(handle, "Native SFTP list failed")
-        return names.toList()
-    }
-
-    fun sftpRealpath(path: String): String {
-        check(handle != 0L) { "Not connected" }
-        if (!bridge.nativeSftpInit(handle)) {
-            bridge.sftpFailure(handle, "Native SFTP init failed")
-        }
-        return bridge.nativeSftpRealpath(handle, path)
-            ?: bridge.sftpFailure(handle, "Native SFTP realpath failed")
-    }
-
-    fun sftpOpenWrite(path: String) {
-        check(handle != 0L) { "Not connected" }
-        if (!bridge.nativeSftpInit(handle)) {
-            bridge.sftpFailure(handle, "Native SFTP init failed")
-        }
-        if (!bridge.nativeSftpOpenWrite(handle, path)) {
-            bridge.sftpFailure(handle, "Native SFTP open failed")
-        }
-    }
-
-    fun sftpWriteChunk(data: ByteArray): Int {
-        check(handle != 0L) { "Not connected" }
-        val written = bridge.nativeSftpWriteChunk(handle, data)
-        if (written < 0) {
-            bridge.sftpFailure(handle, "Native SFTP write failed")
-        }
-        return written
-    }
-
-    fun sftpCloseWrite() {
-        check(handle != 0L) { "Not connected" }
-        if (!bridge.nativeSftpCloseWrite(handle)) {
-            bridge.sftpFailure(handle, "Native SFTP close failed")
-        }
-    }
-
-    fun sftpReadFile(path: String, maxBytes: Int = 4 * 1024 * 1024): ByteArray {
-        check(handle != 0L) { "Not connected" }
-        if (!bridge.nativeSftpInit(handle)) {
-            bridge.sftpFailure(handle, "Native SFTP init failed")
-        }
-        require(maxBytes > 0) { "maxBytes must be > 0" }
-        val boundedMaxBytes = minOf(maxBytes, MAX_SFTP_READ_BYTES)
-        return bridge.nativeSftpReadFile(handle, path, boundedMaxBytes)
-            ?: bridge.sftpFailure(handle, "Native SFTP read failed")
-    }
-
-    fun sftpDeleteFile(path: String) {
-        check(handle != 0L) { "Not connected" }
-        if (!bridge.nativeSftpInit(handle)) {
-            bridge.sftpFailure(handle, "Native SFTP init failed")
-        }
-        if (!bridge.nativeSftpDeleteFile(handle, path)) {
-            bridge.sftpFailure(handle, "Native SFTP delete file failed")
-        }
-    }
-
-    fun sftpDeleteDirectory(path: String) {
-        check(handle != 0L) { "Not connected" }
-        if (!bridge.nativeSftpInit(handle)) {
-            bridge.sftpFailure(handle, "Native SFTP init failed")
-        }
-        if (!bridge.nativeSftpDeleteDirectory(handle, path)) {
-            bridge.sftpFailure(handle, "Native SFTP delete directory failed")
-        }
-    }
-
     override fun close() {
         pendingWrites.clear()
         pendingOffset = 0
@@ -327,11 +250,4 @@ private fun NativeSshBridge.connectFailure(handle: Long, cancellation: Connectio
         throw UiTextException(UiText.Resource(R.string.error_connection_cancelled), "Connection cancelled")
     }
     error(nativeGetLastError(handle) ?: fallback)
-}
-
-/** Throws the native SFTP error, as [SftpStatusException] when the server sent it. */
-private fun NativeSshBridge.sftpFailure(handle: Long, fallback: String): Nothing {
-    val message = nativeGetLastError(handle) ?: fallback
-    if (nativeLastErrorIsSftpStatus(handle)) throw SftpStatusException(message)
-    error(message)
 }

@@ -4,6 +4,7 @@ const ghostty = @import("ghostty-vt");
 const zignal_png = @import("zignal_png.zig");
 
 const c = @import("c");
+const jni_string = @import("jni_string.zig");
 
 const allocator = std.heap.c_allocator;
 const LOG_TAG = "AbyssKittyNative";
@@ -282,6 +283,17 @@ fn clampI32(value: c.jint, minimum: i32, fallback: i32) i32 {
     return @intCast(value);
 }
 
+// The largest grid the terminal accepts, so a resize from a server (Mosh sends its own)
+// can't wrap the u16 or ask for gigabytes. MoshTransport.kt uses the same bounds.
+const max_grid_cols: i32 = 2048;
+const max_grid_rows: i32 = 1024;
+
+/// A grid dimension from Kotlin: `fallback` when below 1, at most `maximum`.
+fn gridDimension(value: c.jint, maximum: i32, fallback: u16) u16 {
+    if (value < 1) return fallback;
+    return @intCast(@min(value, maximum));
+}
+
 fn rgbFromBytes(bytes: [*c]const u8) ghostty.color.RGB {
     return .{ .r = bytes[0], .g = bytes[1], .b = bytes[2] };
 }
@@ -368,8 +380,11 @@ fn logKittyState(stage: []const u8, terminal: *AbysshTerminal) void {
     );
 }
 
+/// Sets the list's length to `size_needed`. Capacity grows geometrically, so a buffer
+/// that is appended to a little at a time, like the PTY write buffer, doesn't
+/// reallocate and copy on every append.
 fn ensureListSize(list: *std.ArrayListUnmanaged(u8), size_needed: usize) ?[*]u8 {
-    list.ensureTotalCapacityPrecise(allocator, size_needed) catch return null;
+    list.ensureTotalCapacity(allocator, size_needed) catch return null;
     list.items.len = size_needed;
     return list.items.ptr;
 }
@@ -565,16 +580,23 @@ fn abysshRenderHold(handler: *ghostty.TerminalStream.Handler, held: bool) void {
 const max_scrollback_limit_bytes: i32 = 100_000_000;
 
 export fn abyssh_create_terminal(cols: c.jint, rows: c.jint, max_scrollback_bytes: c.jint) callconv(.c) c.jlong {
+    const terminal = createTerminal(cols, rows, max_scrollback_bytes) catch return 0;
+    return abysshHandleFromPtr(terminal);
+}
+
+// Returns an error union so the errdefers free what was built when a step fails;
+// they don't run in a function that returns a plain handle.
+fn createTerminal(cols: c.jint, rows: c.jint, max_scrollback_bytes: c.jint) !*AbysshTerminal {
     ghostty.sys.decode_png = abysshDecodePng;
 
-    const terminal = allocator.create(AbysshTerminal) catch return 0;
+    const terminal = try allocator.create(AbysshTerminal);
     errdefer allocator.destroy(terminal);
 
-    const init_cols: u16 = @intCast(clampI32(cols, 1, 80));
-    const init_rows: u16 = @intCast(clampI32(rows, 1, 24));
+    const init_cols: u16 = gridDimension(cols, max_grid_cols, 80);
+    const init_rows: u16 = gridDimension(rows, max_grid_rows, 24);
     // TinyIo is Ghostty's small blocking std.Io for embedders; the terminal
     // only needs it for secure random IDs and kitty image storage locking.
-    var inner = ghostty.Terminal.init(ghostty.TinyIo.init.io(), allocator, .{
+    var inner = try ghostty.Terminal.init(ghostty.TinyIo.init.io(), allocator, .{
         .cols = init_cols,
         .rows = init_rows,
         .max_scrollback_bytes = @intCast(std.math.clamp(max_scrollback_bytes, 0, max_scrollback_limit_bytes)),
@@ -586,7 +608,7 @@ export fn abyssh_create_terminal(cols: c.jint, rows: c.jint, max_scrollback_byte
             .temporary_file = .{ .enabled = .{ .directory = "/tmp" } },
             .shared_memory = true,
         },
-    }) catch return 0;
+    });
     errdefer inner.deinit(allocator);
 
     terminal.* = .{
@@ -617,7 +639,7 @@ export fn abyssh_create_terminal(cols: c.jint, rows: c.jint, max_scrollback_byte
     enableGraphemeClusterMode(terminal);
 
     update_render_state(terminal);
-    return abysshHandleFromPtr(terminal);
+    return terminal;
 }
 
 export fn abyssh_destroy_terminal(handle: c.jlong) callconv(.c) void {
@@ -647,13 +669,13 @@ fn jniNewDirectByteBuffer(env: *c.JNIEnv, ptr: ?*anyopaque, len: c.jlong) c.jobj
     return env.*.*.NewDirectByteBuffer.?(env, ptr, len);
 }
 
-fn jniNewStringUTF(env: *c.JNIEnv, s: [*:0]const u8) c.jstring {
-    return env.*.*.NewStringUTF.?(env, s);
+fn jniNewString(env: *c.JNIEnv, bytes: []const u8) c.jstring {
+    return jni_string.newString(env, allocator, bytes);
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeVersion(env: *c.JNIEnv, clazz: c.jclass) callconv(.c) c.jstring {
     _ = clazz;
-    return jniNewStringUTF(env, "1");
+    return jniNewString(env, "1");
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeCreate(env: *c.JNIEnv, thiz: c.jobject, cols: c.jint, rows: c.jint, max_scrollback_bytes: c.jint) callconv(.c) c.jlong {
@@ -755,13 +777,13 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativePollTitle(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jstring {
     _ = thiz;
     const value = abyssh_poll_title_ptr(handle) orelse return null;
-    return jniNewStringUTF(env, value);
+    return jniNewString(env, std.mem.span(value));
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativePollPwd(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jstring {
     _ = thiz;
     const value = abyssh_poll_pwd_ptr(handle) orelse return null;
-    return jniNewStringUTF(env, value);
+    return jniNewString(env, std.mem.span(value));
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativePollClipboard(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jbyteArray {
@@ -804,16 +826,9 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     // For printable characters this allows the legacy encoding path to emit
     // raw text when the remote terminal doesn't support Kitty keyboard protocol.
     // Must outlive the encodeKey call because Ghostty references it.
-    var utf8_buf: [256]u8 = undefined;
-    const utf8_slice: []const u8 = blk: {
-        if (utf8_jstring == null) break :blk "";
-        const chars = env.*.*.GetStringUTFChars.?(env, utf8_jstring, null) orelse break :blk "";
-        defer env.*.*.ReleaseStringUTFChars.?(env, utf8_jstring, chars);
-        const len = std.mem.span(chars).len;
-        if (len > utf8_buf.len) break :blk "";
-        @memcpy(utf8_buf[0..len], chars[0..len]);
-        break :blk utf8_buf[0..len];
-    };
+    const utf8_owned = jni_string.dupUtf8(env, allocator, utf8_jstring);
+    defer if (utf8_owned) |owned| allocator.free(owned);
+    const utf8_slice: []const u8 = if (utf8_owned) |owned| (if (owned.len <= 256) owned else "") else "";
 
     var buf: [128]u8 = undefined;
     var writer: std.Io.Writer = .fixed(&buf);
@@ -836,17 +851,12 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     const terminal = abysshFromHandle(handle) orelse return jniEmptyByteArray(env);
     if (data_jstring == null) return jniEmptyByteArray(env);
 
-    const chars = env.*.*.GetStringUTFChars.?(env, data_jstring, null) orelse return jniEmptyByteArray(env);
-    defer env.*.*.ReleaseStringUTFChars.?(env, data_jstring, chars);
-    const data_len = std.mem.span(chars).len;
-    if (data_len == 0) return jniEmptyByteArray(env);
-
     // encodePaste may need to mutate the data in place (stripping unsafe
     // bytes and, for non-bracketed pastes, converting newlines to \r), so
-    // copy the JNI string into a mutable buffer before encoding.
-    const data_copy = allocator.alloc(u8, data_len) catch return jniEmptyByteArray(env);
+    // it gets its own copy of the string.
+    const data_copy = jni_string.dupUtf8(env, allocator, data_jstring) orelse return jniEmptyByteArray(env);
     defer allocator.free(data_copy);
-    @memcpy(data_copy, chars[0..data_len]);
+    if (data_copy.len == 0) return jniEmptyByteArray(env);
 
     const segments = ghostty.input.encodePaste(data_copy, ghostty.input.PasteOptions.fromTerminal(&terminal.terminal));
     const total = segments[0].len + segments[1].len + segments[2].len;
@@ -1590,8 +1600,8 @@ export fn abyssh_write_remote(handle: c.jlong, data_ptr: [*c]const u8, data_len:
 
 export fn abyssh_resize(handle: c.jlong, cols: c.jint, rows: c.jint, cell_width: c.jint, cell_height: c.jint) callconv(.c) void {
     const terminal = abysshFromHandle(handle) orelse return;
-    const new_cols: u16 = @intCast(clampI32(cols, 1, terminal.cols));
-    const new_rows: u16 = @intCast(clampI32(rows, 1, terminal.rows));
+    const new_cols: u16 = gridDimension(cols, max_grid_cols, terminal.cols);
+    const new_rows: u16 = gridDimension(rows, max_grid_rows, terminal.rows);
     const new_cell_width: u32 = @intCast(clampI32(cell_width, 1, 1));
     const new_cell_height: u32 = @intCast(clampI32(cell_height, 1, 1));
     // resize also sets width_px/height_px and turns off synchronized output.
@@ -1825,7 +1835,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
 
     const text = selectionTextFromPins(terminal, start_pin, end_pin, allocator) catch return null;
     defer allocator.free(text);
-    return jniNewStringUTF(env, text.ptr);
+    return jniNewString(env, text);
 }
 
 /// Like nativeFormatSelectionRange but takes absolute screen-space cell
@@ -1849,7 +1859,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
 
     const text = selectionTextFromPins(terminal, start_pin, end_pin, allocator) catch return null;
     defer allocator.free(text);
-    return jniNewStringUTF(env, text.ptr);
+    return jniNewString(env, text);
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeSelectWordAt(
@@ -1872,7 +1882,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
         .trim = true,
     }) catch return null;
     defer allocator.free(text);
-    return jniNewStringUTF(env, text.ptr);
+    return jniNewString(env, text);
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeSelectLineAt(
@@ -1898,7 +1908,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
         .trim = true,
     }) catch return null;
     defer allocator.free(text);
-    return jniNewStringUTF(env, text.ptr);
+    return jniNewString(env, text);
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeSelectAll(
@@ -1917,7 +1927,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
         .trim = true,
     }) catch return null;
     defer allocator.free(text);
-    return jniNewStringUTF(env, text.ptr);
+    return jniNewString(env, text);
 }
 
 // Cap on matches returned to the host, so a one-letter query over a long
@@ -1937,9 +1947,8 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     _ = thiz;
     const terminal = abysshFromHandle(handle) orelse return jniIntArray(env, &.{});
     if (query_jstring == null) return jniIntArray(env, &.{});
-    const chars = env.*.*.GetStringUTFChars.?(env, query_jstring, null) orelse return jniIntArray(env, &.{});
-    defer env.*.*.ReleaseStringUTFChars.?(env, query_jstring, chars);
-    const query = std.mem.span(chars);
+    const query = jni_string.dupUtf8(env, allocator, query_jstring) orelse return jniIntArray(env, &.{});
+    defer allocator.free(query);
     if (query.len == 0) return jniIntArray(env, &.{});
 
     const screen = terminal.terminal.screens.active;
@@ -2008,7 +2017,5 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     const cell = pin.rowAndCell().cell;
     const link_id = page.lookupHyperlink(cell) orelse return null;
     const uri = page.hyperlink_set.get(page.memory, link_id).uri.slice(page.memory);
-    const uri_z = allocator.dupeSentinel(u8, uri, 0) catch return null;
-    defer allocator.free(uri_z);
-    return jniNewStringUTF(env, uri_z.ptr);
+    return jniNewString(env, uri);
 }

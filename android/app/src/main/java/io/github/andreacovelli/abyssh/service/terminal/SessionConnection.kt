@@ -32,6 +32,7 @@ private const val MAX_PTY_DRAINS = 8
 // The view's size changes on every frame while the keyboard slides in or out, so the far
 // end hears only the size that settles, as tmux control mode does.
 private const val REMOTE_RESIZE_SETTLE_MS = 150L
+private const val REMOTE_RESIZE_RETRY_MS = 500L
 
 /** How long to wait before reconnect [attempt] (1-based): 1 s, doubling up to 32 s. */
 internal fun reconnectDelayMs(attempt: Int): Long =
@@ -158,8 +159,16 @@ internal class SessionConnection(
         val geometry = viewGeometry ?: return
         if (geometry == sent) return
         try {
-            transports.resize(geometry)
-            remoteGeometry = geometry
+            if (transports.resize(geometry)) {
+                remoteGeometry = geometry
+            } else {
+                // The send buffer is full; try again once it has had time to drain.
+                remoteResizeJob?.cancel()
+                remoteResizeJob = scope.launch(dispatcher) {
+                    delay(REMOTE_RESIZE_RETRY_MS)
+                    syncRemoteSize()
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Resize failed", e)
             onResizeFailed(e)

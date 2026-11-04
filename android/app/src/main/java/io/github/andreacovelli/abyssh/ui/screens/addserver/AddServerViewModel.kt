@@ -25,9 +25,9 @@ import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.SshKey
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyCheck
-import io.github.andreacovelli.abyssh.service.ssh.HostKeyPolicy
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
 import io.github.andreacovelli.abyssh.service.ssh.NativeSshService
+import io.github.andreacovelli.abyssh.service.ssh.policy
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
 import io.github.andreacovelli.abyssh.service.terminal.TabSpec
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionRepository
@@ -242,7 +242,7 @@ class AddServerViewModel(
                         if (localNetwork.blocks(host)) {
                             throw UiTextException(UiText.Resource(R.string.error_local_network_denied), "Local network access denied")
                         }
-                        val policy = HostKeyPolicy { host, port, algorithm, keyBytes ->
+                        val policy = hostKeyStore.policy { host, port, algorithm, keyBytes ->
                             when (
                                 val result = hostKeyStore.check(host, port, algorithm, keyBytes)
                             ) {
