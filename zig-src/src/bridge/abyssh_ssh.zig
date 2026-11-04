@@ -59,7 +59,82 @@ const NativeSshSession = struct {
     // A window-change libssh2 holds half-sent. The next resize must finish it first,
     // because libssh2 resends the held packet and ignores the new size until it has.
     resize_in_flight: bool = false,
+    // Seconds between keepalives, or 0 for none, and how many intervals may pass with
+    // nothing received before reads fail, as OpenSSH's ServerAliveInterval and
+    // ServerAliveCountMax do. Set once the shell is open.
+    keepalive_interval_s: c_int = 0,
+    keepalive_max_missed: c_int = 3,
+    // When the socket last delivered bytes, in CLOCK_MONOTONIC ms. That clock stops while
+    // the phone sleeps, so a nap doesn't count as missed replies.
+    last_received_ms: u64 = 0,
+    // The password keyboard-interactive auth answers with, while that auth runs.
+    keyboard_auth: ?*KeyboardAuthContext = null,
 };
+
+/// The session that `nativeConnect` gave libssh2 as the session's abstract pointer.
+fn sessionFromAbstract(abstract: ?*?*anyopaque) ?*NativeSshSession {
+    const holder = abstract orelse return null;
+    return @ptrCast(@alignCast(holder.* orelse return null));
+}
+
+/// libssh2's own socket read, which also notes when bytes arrive, for the keepalive check.
+/// Errors go back as negative errno values, with the retryable ones as EAGAIN.
+fn recvHook(socket: c.libssh2_socket_t, buffer: ?*anyopaque, length: usize, flags: c_int, abstract: ?*?*anyopaque) callconv(.c) isize {
+    const rc = c.recv(socket, buffer, length, flags);
+    if (rc < 0) {
+        const err = c.__errno().*;
+        if (err == c.EINTR or err == c.EAGAIN or err == c.ENOENT) return -c.EAGAIN;
+        return -err;
+    }
+    if (rc > 0) {
+        if (sessionFromAbstract(abstract)) |session| session.last_received_ms = time.monotonicMillis();
+    }
+    return rc;
+}
+
+/// How long the session may go without receiving anything before it counts as lost, or
+/// null when keepalives are off.
+fn keepaliveLimitMs(session: *NativeSshSession) ?u64 {
+    if (session.keepalive_interval_s <= 0) return null;
+    return @as(u64, @intCast(session.keepalive_interval_s)) * std.time.ms_per_s * @as(u64, @intCast(session.keepalive_max_missed));
+}
+
+fn keepaliveLost(session: *NativeSshSession) bool {
+    const limit = keepaliveLimitMs(session) orelse return false;
+    return time.monotonicMillis() -| session.last_received_ms >= limit;
+}
+
+// How soon a keepalive that couldn't go out is tried again.
+const keepalive_retry_ms = 1_000;
+
+/// Sends a keepalive when one is due and caps `timeout_ms` so the wait ends in time for
+/// the next one, or for the moment the session counts as lost.
+///
+/// It sends only when no packet is half-sent and the socket has room. libssh2 finishes a
+/// half-sent packet only for a caller that passes the same buffer again, and the
+/// keepalive's buffer is on libssh2's stack, so a half-sent keepalive would hold back
+/// every channel write until the next keepalive.
+fn keepaliveWaitMs(session: *NativeSshSession, ssh_session: *c.LIBSSH2_SESSION, timeout_ms: c_int) c_int {
+    const limit = keepaliveLimitMs(session) orelse return timeout_ms;
+    var next_ms: u64 = keepalive_retry_ms;
+    const sending = (c.libssh2_session_block_directions(ssh_session) & c.LIBSSH2_SESSION_BLOCK_OUTBOUND) != 0;
+    if (!sending and socketWritable(session.socket_fd)) {
+        var next_s: c_int = 0;
+        // A failed send shows up as a failed read soon after.
+        if (c.libssh2_keepalive_send(ssh_session, &next_s) == 0) {
+            next_ms = @as(u64, @intCast(@max(next_s, 1))) * std.time.ms_per_s;
+        }
+    }
+    const lost_in_ms = limit -| (time.monotonicMillis() -| session.last_received_ms);
+    const cap = @max(@min(next_ms, lost_in_ms), 1);
+    if (timeout_ms < 0) return @intCast(@min(cap, std.math.maxInt(c_int)));
+    return @intCast(@min(@as(u64, @intCast(timeout_ms)), cap));
+}
+
+fn socketWritable(fd: c_int) bool {
+    var poll_fd: c.struct_pollfd = .{ .fd = fd, .events = c.POLLOUT, .revents = 0 };
+    return c.poll(&poll_fd, 1, 0) == 1 and (poll_fd.revents & c.POLLOUT) != 0;
+}
 
 fn sessionFromHandle(handle: c.jlong) ?*NativeSshSession {
     if (handle == 0) return null;
@@ -752,6 +827,10 @@ fn readChannel(session: *NativeSshSession, max_bytes: usize) ?[]const u8 {
             total_read += @intCast(rc);
         }
     }
+    if (total_read == 0 and keepaliveLost(session)) {
+        setError(session, "Connection lost: no reply to keepalives for {} seconds", .{(keepaliveLimitMs(session) orelse 0) / std.time.ms_per_s});
+        return null;
+    }
     return buf[0..total_read];
 }
 
@@ -826,13 +905,15 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     logInfo("Socket connected fd={}", .{fd});
     session.socket_fd = fd;
 
-    const ssh_session = c.libssh2_session_init_ex(null, null, null, null) orelse {
+    const ssh_session = c.libssh2_session_init_ex(null, null, null, session) orelse {
         setError(session, "libssh2_session_init_ex failed", .{});
         closeSocket(fd);
         session.socket_fd = -1;
         return c.JNI_FALSE;
     };
     session.session = ssh_session;
+    session.keepalive_interval_s = 0;
+    _ = c.libssh2_session_callback_set2(ssh_session, c.LIBSSH2_CALLBACK_RECV, @ptrCast(&recvHook));
     c.libssh2_session_set_blocking(ssh_session, 0);
     if (!applyMethodPrefs(session, ssh_session, preferred_types)) return c.JNI_FALSE;
     logInfo("Starting SSH handshake...", .{});
@@ -1065,8 +1146,8 @@ fn keyboardInteractiveCallback(
     _ = instruction_len;
     // An informational round with no prompts needs no answer.
     if (num_prompts <= 0) return;
-    const holder = abstract orelse return;
-    const ctx: *KeyboardAuthContext = @ptrCast(@alignCast(holder.* orelse return));
+    const session = sessionFromAbstract(abstract) orelse return;
+    const ctx = session.keyboard_auth orelse return;
     if (num_prompts != 1 or prompts[0].echo != 0 or ctx.answered) {
         ctx.unanswerable = true;
         return;
@@ -1081,9 +1162,8 @@ fn keyboardInteractiveCallback(
 
 fn authenticateKeyboardInteractive(session: *NativeSshSession, ssh_session: *c.LIBSSH2_SESSION, username: []const u8, password: []const u8, deadline_ms: i64) bool {
     var ctx: KeyboardAuthContext = .{ .password = password };
-    const abstract = c.libssh2_session_abstract(ssh_session);
-    abstract.* = @ptrCast(&ctx);
-    defer abstract.* = null;
+    session.keyboard_auth = &ctx;
+    defer session.keyboard_auth = null;
     while (true) {
         const rc = c.libssh2_userauth_keyboard_interactive_ex(ssh_session, username.ptr, @intCast(username.len), keyboardInteractiveCallback);
         if (rc == 0) {
@@ -1463,8 +1543,28 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     if (c.libssh2_channel_eof(channel) != 0) return wake.wait_ready;
     const sending = (c.libssh2_session_block_directions(ssh_session) & c.LIBSSH2_SESSION_BLOCK_OUTBOUND) != 0;
     const events: c_short = if (sending) c.POLLIN | c.POLLOUT else c.POLLIN;
-    return wake.wait(session.socket_fd, events, wake_fd, timeout_ms);
+    // The read that follows reports the lost connection.
+    if (keepaliveLost(session)) return wake.wait_ready;
+    return wake.wait(session.socket_fd, events, wake_fd, keepaliveWaitMs(session, ssh_session, timeout_ms));
 }
+
+/// Sends a keepalive every `interval_s` seconds, 0 for none, and fails reads once
+/// `max_missed` intervals pass with nothing received. An interval of 1 becomes 2, the
+/// shortest libssh2 sends at.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSetKeepalive(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, interval_s: c.jint, max_missed: c.jint) callconv(.c) void {
+    _ = env;
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return;
+    const ssh_session = session.session orelse return;
+    const interval: c_int = if (interval_s <= 0) 0 else std.math.clamp(interval_s, 2, max_keepalive_interval_s);
+    session.keepalive_interval_s = interval;
+    session.keepalive_max_missed = std.math.clamp(max_missed, 1, max_keepalive_missed);
+    session.last_received_ms = time.monotonicMillis();
+    c.libssh2_keepalive_config(ssh_session, 1, @intCast(interval));
+}
+
+const max_keepalive_interval_s = 24 * 60 * 60;
+const max_keepalive_missed = 100;
 
 // The most one write copies out of the Java array at a time.
 const write_chunk_bytes = 16 * 1024;

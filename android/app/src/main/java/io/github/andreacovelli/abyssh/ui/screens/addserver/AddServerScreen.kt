@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.R
+import io.github.andreacovelli.abyssh.model.DEFAULT_KEEPALIVE_INTERVAL_SECONDS
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import android.widget.Toast
@@ -362,6 +363,41 @@ private fun AdditionalSettingsSection(form: AddServerForm, vm: AddServerViewMode
         onCommandChange = vm::updatePostConnectCommand,
     )
     SectionDivider()
+    if (form.usesKeepalive) {
+        KeepaliveSection(seconds = form.keepaliveInterval, onSecondsChange = vm::updateKeepaliveInterval)
+        SectionDivider()
+    }
+}
+
+@Composable
+private fun KeepaliveSection(seconds: String, onSecondsChange: (String) -> Unit) {
+    val typography = AbyssTypography.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            AbyssText(stringResource(R.string.server_keepalive), style = typography.label)
+            AbyssText(
+                stringResource(R.string.server_keepalive_hint),
+                style = typography.labelSmall,
+                color = AbyssColors.current.textMuted,
+            )
+        }
+        AbyssTextField(
+            value = seconds,
+            onValueChange = onSecondsChange,
+            label = stringResource(R.string.server_keepalive),
+            monospace = true,
+            placeholder = DEFAULT_KEEPALIVE_INTERVAL_SECONDS.toString(),
+            showLabel = false,
+            singleLine = true,
+            keyboardOptions = plainKeyboard(KeyboardType.Number),
+            autoFocus = false,
+            modifier = Modifier.width(96.dp),
+        )
+    }
 }
 
 @Composable

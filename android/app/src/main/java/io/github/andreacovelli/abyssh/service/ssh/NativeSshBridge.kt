@@ -94,6 +94,9 @@ class NativeSshBridge {
     /** Waits for output or for `wakeFd`; returns a `NativeWait` value. */
     external fun nativeWaitReadable(handle: Long, wakeFd: Int, timeoutMs: Int): Int
 
+    /** Sends a keepalive every `intervalSeconds`, 0 for none; reads fail after `maxMissed` silent intervals. */
+    external fun nativeSetKeepalive(handle: Long, intervalSeconds: Int, maxMissed: Int)
+
     external fun nativeSftpInit(handle: Long): Boolean
 
     external fun nativeSftpListDirectory(handle: Long, path: String): Array<String>?

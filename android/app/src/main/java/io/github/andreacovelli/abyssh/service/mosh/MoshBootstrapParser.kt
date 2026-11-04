@@ -23,9 +23,16 @@ object MoshBootstrapParser {
         data class Error(val reason: String) : ParseResult()
     }
 
+    // mosh-server prints this to stderr after the connect line, as it detaches.
+    private val DETACHED_LINE_REGEX = Regex("""\[mosh-server detached, pid = (\d+)]""")
+
     private val CONNECT_LINE_REGEX =
         Regex("""MOSH CONNECT\s+(\d+)\s+([A-Za-z0-9+/_-]{22})""")
     private const val KEY_LENGTH = 22
+
+    /** The pid mosh-server reported in [output], or null before it has. */
+    fun serverPid(output: CharSequence): Int? =
+        DETACHED_LINE_REGEX.find(output)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 }
 
     fun parse(host: String, output: String): ParseResult {
         // Normalize CRLF to LF before scanning

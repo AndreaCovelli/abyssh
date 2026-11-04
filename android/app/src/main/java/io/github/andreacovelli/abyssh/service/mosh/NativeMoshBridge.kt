@@ -44,6 +44,9 @@ class NativeMoshBridge {
     external fun nativeStartShutdown(handle: Long): Int
     external fun nativeIsShutdownAcknowledged(handle: Long): Boolean
 
+    // Resumes a session that failed on its network on a new socket; returns 0 on success.
+    external fun nativeResume(handle: Long): Int
+
     external fun nativeStop(handle: Long): Int
     external fun nativeDestroy(handle: Long): Int
 }

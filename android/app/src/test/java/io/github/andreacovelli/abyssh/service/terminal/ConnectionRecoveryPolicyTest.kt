@@ -9,9 +9,9 @@ import org.junit.Test
 
 class ConnectionRecoveryPolicyTest {
     @Test
-    fun moshFailureRequiresExplicitReconnect() {
+    fun moshFailureReconnects() {
         assertEquals(
-            ReadLoopExitAction.RequireManualReconnect,
+            ReadLoopExitAction.AutomaticReconnect,
             readLoopExitAction(Transport.Mosh),
         )
     }

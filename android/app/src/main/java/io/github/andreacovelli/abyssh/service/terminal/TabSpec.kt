@@ -4,6 +4,7 @@ import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.UiText
 
 import io.github.andreacovelli.abyssh.model.AuthMethod
+import io.github.andreacovelli.abyssh.model.DEFAULT_KEEPALIVE_INTERVAL_SECONDS
 import io.github.andreacovelli.abyssh.model.HostProfile
 import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.Transport
@@ -27,6 +28,8 @@ data class TabSpec(
     val tmuxControlMode: Boolean = false,
     /** Whether opening the host lists its sessions to pick from, rather than picking one itself. */
     val chooseSessionOnConnect: Boolean = false,
+    /** Seconds between SSH keepalives, 0 for none. */
+    val keepaliveIntervalSeconds: Int = DEFAULT_KEEPALIVE_INTERVAL_SECONDS,
 ) {
     /**
      * The same for every tab to one host: a saved host, the local shell, or an unsaved
@@ -94,6 +97,7 @@ data class TabSpec(
             },
             tmuxControlMode = host.tmuxControlMode,
             chooseSessionOnConnect = host.chooseSessionOnConnect,
+            keepaliveIntervalSeconds = host.keepaliveIntervalSeconds,
         )
     }
 }

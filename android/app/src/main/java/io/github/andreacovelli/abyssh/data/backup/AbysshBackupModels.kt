@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.data.backup
 
 import io.github.andreacovelli.abyssh.model.AuthMethod
+import io.github.andreacovelli.abyssh.model.DEFAULT_KEEPALIVE_INTERVAL_SECONDS
 import io.github.andreacovelli.abyssh.model.HostProfile
 import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.SshKey
@@ -66,6 +67,7 @@ data class BackupHostProfile(
     val multiplexer: MultiplexerType?,
     val tmuxControlMode: Boolean = false,
     val chooseSessionOnConnect: Boolean = false,
+    val keepaliveIntervalSeconds: Int = DEFAULT_KEEPALIVE_INTERVAL_SECONDS,
 ) {
     fun toEntity(
         idOverride: Long = id,
@@ -86,6 +88,7 @@ data class BackupHostProfile(
         multiplexer = multiplexer,
         tmuxControlMode = tmuxControlMode,
         chooseSessionOnConnect = chooseSessionOnConnect,
+        keepaliveIntervalSeconds = keepaliveIntervalSeconds,
     )
 
     companion object {
@@ -105,6 +108,7 @@ data class BackupHostProfile(
             multiplexer = host.multiplexer,
             tmuxControlMode = host.tmuxControlMode,
             chooseSessionOnConnect = host.chooseSessionOnConnect,
+            keepaliveIntervalSeconds = host.keepaliveIntervalSeconds,
         )
     }
 }

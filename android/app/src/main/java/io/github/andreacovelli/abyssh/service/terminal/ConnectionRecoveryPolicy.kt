@@ -6,19 +6,19 @@ import io.github.andreacovelli.abyssh.service.mosh.MoshState
 
 internal enum class ReadLoopExitAction {
     Disconnect,
-    RequireManualReconnect,
     AutomaticReconnect,
 }
 
 /**
  * [shellExited] means the shell ended on its own (exit, Ctrl+D) rather than the
- * connection dropping, so reconnecting would just start an unwanted new shell.
+ * connection dropping, so reconnecting would just start an unwanted new shell. A Mosh
+ * session that failed first tries to resume (see `SessionConnection`); a reconnect
+ * bootstraps a new one.
  */
 internal fun readLoopExitAction(transport: Transport?, shellExited: Boolean = false): ReadLoopExitAction =
     when {
         transport == Transport.LocalShell -> ReadLoopExitAction.Disconnect
         shellExited -> ReadLoopExitAction.Disconnect
-        transport == Transport.Mosh -> ReadLoopExitAction.RequireManualReconnect
         else -> ReadLoopExitAction.AutomaticReconnect
     }
 

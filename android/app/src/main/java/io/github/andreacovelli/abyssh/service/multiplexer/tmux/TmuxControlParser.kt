@@ -51,7 +51,7 @@ internal class TmuxControlParser {
     private var discardingLine = false
     private var block: OpenBlock? = null
 
-    private class OpenBlock(val number: String, val fromClient: Boolean) {
+    private class OpenBlock(val begin: Guard) {
         val lines = mutableListOf<String>()
     }
 
@@ -98,9 +98,11 @@ internal class TmuxControlParser {
     private fun onBlockLine(open: OpenBlock, bytes: ByteArray, onEvent: (TmuxControlEvent) -> Unit) {
         val text = String(bytes, Charsets.UTF_8)
         val guard = guardOf(text)
-        if (guard != null && (guard.first == "%end" || guard.first == "%error") && guard.second == open.number) {
+        // A block's output, such as a pane's captured text, can hold lines that look like
+        // its end, so only one that repeats every field of its %begin closes it.
+        if (guard != null && (guard.name == "%end" || guard.name == "%error") && guard.matches(open.begin)) {
             block = null
-            if (open.fromClient) onEvent(TmuxControlEvent.Reply(open.lines, failed = guard.first == "%error"))
+            if (open.begin.fromClient) onEvent(TmuxControlEvent.Reply(open.lines, failed = guard.name == "%error"))
             return
         }
         open.lines += text
@@ -121,7 +123,7 @@ internal class TmuxControlParser {
         val args = text.split(' ')
         return when (name) {
             "%begin" -> {
-                guardOf(text)?.let { block = OpenBlock(it.second, fromClient = it.third) }
+                guardOf(text)?.let { block = OpenBlock(it) }
                 null
             }
             "%pause" -> args.getOrNull(1)?.let(::paneId)?.let(TmuxControlEvent::Pause)
@@ -162,12 +164,18 @@ internal class TmuxControlParser {
     }
 }
 
-/** The `%begin`, `%end`, or `%error` name, the command number, and whether this client sent the command. */
-private fun guardOf(text: String): Triple<String, String, Boolean>? {
+/** A `%begin`, `%end`, or `%error` line: its time, the command number, and its flags. */
+private class Guard(val name: String, val time: String, val number: String, val flags: String) {
+    /** Whether this client sent the command. */
+    val fromClient: Boolean get() = (flags.toIntOrNull() ?: 0) and 1 != 0
+
+    fun matches(begin: Guard): Boolean = time == begin.time && number == begin.number && flags == begin.flags
+}
+
+private fun guardOf(text: String): Guard? {
     val parts = text.split(' ')
     if (parts.size < 3) return null
-    val flags = parts.getOrNull(3)?.toIntOrNull() ?: 0
-    return Triple(parts[0], parts[2], flags and 1 != 0)
+    return Guard(parts[0], parts[1], parts[2], parts.getOrNull(3).orEmpty())
 }
 
 /** Drops the DCS sequence (`ESC P 1000 p`) that starts `tmux -CC` output, and the `ESC \` that ends it. */

@@ -4,7 +4,9 @@ import io.github.andreacovelli.abyssh.model.AuthMethod
 import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.Transport
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AddServerFormTest {
@@ -55,5 +57,20 @@ class AddServerFormTest {
 
         assertEquals(AuthMethod.Password, form.withTransport(Transport.SSH).authMethod)
         assertEquals(AuthMethod.Key, form.copy(authMethod = AuthMethod.Key).withTransport(Transport.SSH).authMethod)
+    }
+
+    @Test
+    fun `the keepalive interval defaults when blank and stops at a day`() {
+        assertEquals(30, AddServerForm(keepaliveInterval = "").keepaliveIntervalSeconds)
+        assertEquals(0, AddServerForm(keepaliveInterval = "0").keepaliveIntervalSeconds)
+        assertEquals(15, AddServerForm(keepaliveInterval = "15").keepaliveIntervalSeconds)
+        assertEquals(86_400, AddServerForm(keepaliveInterval = "99999").keepaliveIntervalSeconds)
+    }
+
+    @Test
+    fun `only ssh transports show the keepalive`() {
+        assertTrue(AddServerForm().withTransport(Transport.SSH).usesKeepalive)
+        assertTrue(AddServerForm().withTransport(Transport.TailscaleSSH).usesKeepalive)
+        assertFalse(AddServerForm().withTransport(Transport.Mosh).usesKeepalive)
     }
 }

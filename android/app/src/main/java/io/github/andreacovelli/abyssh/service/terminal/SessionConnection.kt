@@ -14,9 +14,12 @@ import io.github.andreacovelli.abyssh.service.mosh.MoshRuntimeState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -28,6 +31,9 @@ private const val RECONNECT_BASE_DELAY_MS = 1_000L
 private const val RECONNECT_MAX_DOUBLINGS = 5
 private const val RECONNECT_MAX_DELAY_MS = 60_000L
 private const val MAX_PTY_DRAINS = 8
+
+// A session that stays up this long starts the next reconnect's backoff over.
+internal const val STABLE_SESSION_MS = 30_000L
 
 // The view's size changes on every frame while the keyboard slides in or out, so the far
 // end hears only the size that settles, as tmux control mode does.
@@ -77,11 +83,22 @@ internal class SessionConnection(
     @Volatile private var spec: TabSpec? = null
 
     @Volatile private var disconnectRequested = false
+
+    // The attempt that connect() started, until it opens or fails.
+    @Volatile private var connectJob: Job? = null
     private var readJob: Job? = null
 
     @Volatile private var reconnectJob: Job? = null
 
     private val reconnectWait = ReconnectWait()
+
+    // Reconnect attempts since a session last stayed up for STABLE_SESSION_MS, and when
+    // the current one opened.
+    private var attemptsSinceStable = 0
+    private var openedAtMs = 0L
+
+    // When the Mosh client last resumed after a network failure.
+    private var moshResumedAtMs: Long? = null
 
     // The view's latest size, and the size the far end was given, or null while no
     // transport is open. They differ while a resize settles.
@@ -92,15 +109,24 @@ internal class SessionConnection(
     override fun connect(spec: TabSpec, sessionKey: String) {
         // A Retry shouldn't queue behind an attempt that is still waiting on the network.
         transports.cancelConnect()
+        multiplexers.cancel()
         disconnectRequested = false
         this.spec = spec
-        scope.launch(dispatcher) {
+        val previous = connectJob
+        previous?.cancel()
+        connectJob = scope.launch(dispatcher) {
+            // Two attempts at once would share the transports, so the last one wins.
+            previous?.join()
             reconnectJob?.cancel()
             reconnectJob = null
+            stopReadLoop()
+            attemptsSinceStable = 0
             state.update {
                 it.copy(status = SessionStatus.Connecting, error = null, reconnectAttempt = 0, sessionKey = sessionKey)
             }
             val failure = preconditionFailure(spec) ?: openOrFailure(spec)
+            // A Retry or disconnect while this attempt was failing owns the state now.
+            currentCoroutineContext().ensureActive()
             if (failure == null) {
                 onOpened(spec)
             } else {
@@ -112,12 +138,13 @@ internal class SessionConnection(
     override fun disconnect(onClosed: () -> Unit) {
         disconnectRequested = true
         transports.cancelConnect()
+        multiplexers.cancel()
+        connectJob?.cancel()
         reconnectJob?.cancel()
         reconnectJob = null
         spec = null
         scope.launch(dispatcher) {
-            readJob?.cancel()
-            readJob = null
+            stopReadLoop()
             remoteResizeJob?.cancel()
             remoteResizeJob = null
             remoteGeometry = null
@@ -204,16 +231,17 @@ internal class SessionConnection(
         }
     }
 
-    private fun preconditionFailure(spec: TabSpec): UiText? {
+    private suspend fun preconditionFailure(spec: TabSpec): UiText? {
         val bridge = emulator.bridge
+        val remote = spec.transport != Transport.LocalShell
         return when {
             !bridge.isLoaded() -> UiText.Resource(R.string.error_native_terminal_unavailable, bridge.nativeStatus())
             transports.unavailableReason(spec.transport) != null -> transports.unavailableReason(spec.transport)
-            spec.transport != Transport.LocalShell && spec.username.isBlank() -> UiText.Resource(R.string.error_username_required)
+            remote && spec.username.isBlank() -> UiText.Resource(R.string.error_username_required)
             // Checked before the multiplexer probe, which already connects to the host.
-            spec.transport != Transport.LocalShell && localNetwork?.blocks(spec.host) == true ->
+            remote && localNetwork != null && scope.offSessionThread { localNetwork.blocks(spec.host) } ->
                 UiText.Resource(R.string.error_local_network_denied)
-            else -> multiplexers.availability(spec).errorMessage(spec.multiplexer)
+            else -> scope.offSessionThread { multiplexers.availability(spec) }.errorMessage(spec.multiplexer)
         }
     }
 
@@ -242,6 +270,7 @@ internal class SessionConnection(
     }
 
     private fun onOpened(spec: TabSpec) {
+        openedAtMs = SystemClock.elapsedRealtime()
         state.update { it.copy(status = SessionStatus.Connected, error = null, reconnectAttempt = 0) }
         emulator.requestSnapshot(force = true)
         // The view may have changed size while the transport was opening.
@@ -263,7 +292,19 @@ internal class SessionConnection(
     }
 
     private fun startReadLoop(transport: Transport) {
-        readJob = scope.launch(dispatcher) { onReadLoopEnded(transport, read(transport)) }
+        stopReadLoop()
+        readJob = scope.launch(dispatcher) {
+            val outcome = read(transport)
+            // A cancelled SSH or local shell loop returns instead of throwing; whoever
+            // cancelled it decides what happens next.
+            currentCoroutineContext().ensureActive()
+            onReadLoopEnded(transport, outcome)
+        }
+    }
+
+    private fun stopReadLoop() {
+        readJob?.cancel()
+        readJob = null
     }
 
     private suspend fun read(transport: Transport): ReadOutcome = try {
@@ -290,6 +331,7 @@ internal class SessionConnection(
 
     private fun onReadLoopEnded(transport: Transport, outcome: ReadOutcome) {
         remoteGeometry = null
+        if (transport == Transport.Mosh && outcome.moshFailureCode != null && !disconnectRequested && resumeMosh()) return
         when (readLoopExitAction(transport, outcome.shellExited && !outcome.failed)) {
             ReadLoopExitAction.Disconnect -> {
                 when (transport) {
@@ -302,20 +344,31 @@ internal class SessionConnection(
                     if (outcome.shellExited) onShellExited()
                 }
             }
-            ReadLoopExitAction.RequireManualReconnect -> {
-                transports.mosh.close()
-                if (!disconnectRequested) {
-                    state.update {
-                        it.copy(
-                            status = SessionStatus.Error,
-                            error = outcome.moshFailureCode?.let { UiText.Resource(R.string.error_mosh_session_ended_code, it) }
-                                ?: UiText.Resource(R.string.error_mosh_session_ended),
-                        )
-                    }
-                }
-            }
-            ReadLoopExitAction.AutomaticReconnect -> scheduleReconnect(UiText.Resource(R.string.error_connection_interrupted))
+            ReadLoopExitAction.AutomaticReconnect -> scheduleReconnect(
+                when {
+                    transport != Transport.Mosh -> UiText.Resource(R.string.error_connection_interrupted)
+                    outcome.moshFailureCode != null -> UiText.Resource(R.string.error_mosh_session_lost_code, outcome.moshFailureCode)
+                    else -> UiText.Resource(R.string.error_mosh_session_lost)
+                },
+            )
         }
+    }
+
+    /**
+     * Resumes a Mosh session that failed on its network on a new socket, which keeps its
+     * mosh-server and shell. One that fails again within [STABLE_SESSION_MS] of resuming
+     * isn't resumed again, so the reconnect bootstraps a new session instead.
+     */
+    private fun resumeMosh(): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        val lastResume = moshResumedAtMs
+        if (lastResume != null && now - lastResume < STABLE_SESSION_MS) return false
+        if (!transports.mosh.resume()) return false
+        moshResumedAtMs = now
+        moshStaleness.reset()
+        updateStatus(SessionStatus.Reconnecting)
+        startReadLoop(Transport.Mosh)
+        return true
     }
 
     private fun onResizeFailed(error: Exception) {
@@ -327,11 +380,6 @@ internal class SessionConnection(
         if (reconnects) {
             scheduleReconnect(UiText.Resource(R.string.error_connection_interrupted_reason, error.reason()))
             return
-        }
-        if (transport == Transport.Mosh) {
-            readJob?.cancel()
-            readJob = null
-            transports.mosh.close()
         }
         state.update { it.copy(status = SessionStatus.Error, error = UiText.Resource(R.string.error_resize_failed, error.reason())) }
     }
@@ -347,12 +395,13 @@ internal class SessionConnection(
     }
 
     private suspend fun reconnect(spec: TabSpec, reason: UiText) {
-        readJob?.cancel()
-        readJob = null
-        var attempt = 0
+        stopReadLoop()
+        // A server that drops the session right after login keeps the backoff growing.
+        if (SystemClock.elapsedRealtime() - openedAtMs >= STABLE_SESSION_MS) attemptsSinceStable = 0
         var done = false
         while (!done && currentCoroutineContext().isActive && !disconnectRequested) {
-            attempt += 1
+            attemptsSinceStable += 1
+            val attempt = attemptsSinceStable
             state.update { it.copy(status = SessionStatus.Reconnecting, reconnectAttempt = attempt, error = reason) }
             reconnectWait.awaitAttempt(attempt)
             // An attempt made offline fails at once, so time without a network uses none up.
@@ -405,6 +454,13 @@ internal class SessionConnection(
         state.update { if (it.status == status) it else it.copy(status = status) }
     }
 }
+
+/**
+ * Runs [block], which looks up a host or logs in, on another thread, so the session
+ * thread stays free. A cancelled caller returns at once and leaves [block] to finish.
+ */
+private suspend fun <T> CoroutineScope.offSessionThread(block: () -> T): T =
+    async(Dispatchers.IO) { runCatching(block) }.await().getOrThrow()
 
 /** The cause to show after a failure's prefix, such as "Reconnect failed: …". */
 private fun Throwable.reason(): UiText = toUiText(UiText.Resource(R.string.error_unknown))

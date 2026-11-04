@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import android.os.SystemClock
 import android.util.Log
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.UiText
@@ -106,6 +107,9 @@ internal class TmuxControlSession(
     /** SFTP over the control session's SSH connection. */
     val sftp = SftpSession(link.ssh, dispatcher)
 
+    /** Pane output the tabs haven't written yet; the read loop waits while there is too much. */
+    val paneBacklog = TmuxPaneBacklog()
+
     private val _status = MutableStateFlow(TmuxControlStatus())
     val status: StateFlow<TmuxControlStatus> = _status.asStateFlow()
 
@@ -123,6 +127,10 @@ internal class TmuxControlSession(
     private var resizeJob: Job? = null
     private val reconnectWait = ReconnectWait()
     private var clientGeometry: TerminalGeometry? = null
+
+    // The attempt that opened the current connection, and when tmux attached on it.
+    private var connectAttempt = 0
+    private var attachedAtMs = 0L
     private var sentClientSize: TmuxPaneSize? = null
 
     private val windows =
@@ -143,14 +151,12 @@ internal class TmuxControlSession(
     /** Reconnects now, as when the user taps reconnect. */
     fun reconnect() {
         if (_status.value.status != SessionStatus.Connected) link.ssh.cancelConnect()
-        reconnectNow()
-    }
-
-    private fun reconnectNow() = onThread {
-        if (_status.value.status == SessionStatus.Connected) return@onThread
-        reconnectJob?.cancel()
-        reconnectJob = null
-        connect(reconnectAttempt = 0)
+        onThread {
+            if (_status.value.status == SessionStatus.Connected) return@onThread
+            reconnectJob?.cancel()
+            reconnectJob = null
+            connect(reconnectAttempt = 0)
+        }
     }
 
     /** Binds [view] to window [windowId], or to a window that has no tab yet when null. */
@@ -250,6 +256,7 @@ internal class TmuxControlSession(
         readJob = null
         attached = false
         exited = false
+        connectAttempt = reconnectAttempt
         _status.value = TmuxControlStatus(
             status = if (reconnectAttempt > 0) SessionStatus.Reconnecting else SessionStatus.Connecting,
             reconnectAttempt = reconnectAttempt,
@@ -293,7 +300,7 @@ internal class TmuxControlSession(
 
     private suspend fun read() {
         val failure = try {
-            link.read(::onEvent)
+            link.read(paneBacklog::awaitRoom, ::onEvent)
             null
         } catch (e: CancellationException) {
             throw e
@@ -302,19 +309,32 @@ internal class TmuxControlSession(
             e
         }
         if (disposed || !currentCoroutineContext().isActive) return
+        onConnectionLost(failure)
+    }
+
+    /** The connection dropped, or a command on it failed with [failure]. */
+    private fun onConnectionLost(failure: Exception?) {
+        readJob?.cancel()
+        readJob = null
         link.close()
-        when {
-            exited -> Unit
-            // The channel closed before tmux came up, so trying again would fail the same way.
-            !attached && failure == null -> _status.value =
-                TmuxControlStatus(SessionStatus.Error, UiText.Resource(R.string.tmux_control_not_started))
-            else -> scheduleReconnect(
-                failure?.let { UiText.Resource(R.string.error_connection_interrupted_reason, it.reason()) }
-                    ?: UiText.Resource(R.string.error_connection_interrupted),
-                attempt = 1,
-            )
-        }
+        val wasAttached = attached
         attached = false
+        if (exited) return
+        if (!wasAttached && failure == null) {
+            // The channel closed before tmux came up, so trying again would fail the same way.
+            _status.value = TmuxControlStatus(SessionStatus.Error, UiText.Resource(R.string.tmux_control_not_started))
+            return
+        }
+        val reason = failure?.let { UiText.Resource(R.string.error_connection_interrupted_reason, it.reason()) }
+            ?: UiText.Resource(R.string.error_connection_interrupted)
+        // A server that drops the session right after attaching keeps the backoff growing.
+        val stable = wasAttached && SystemClock.elapsedRealtime() - attachedAtMs >= STABLE_SESSION_MS
+        val attempt = if (stable) 1 else connectAttempt + 1
+        if (attempt > MAX_RECONNECT_ATTEMPTS) {
+            _status.value = TmuxControlStatus(SessionStatus.Error, reason)
+        } else {
+            scheduleReconnect(reason, attempt)
+        }
     }
 
     private fun scheduleReconnect(reason: UiText, attempt: Int) {
@@ -355,6 +375,7 @@ internal class TmuxControlSession(
             post { sessionRenamed(this@TmuxControlSession, name) }
         }
         if (firstAttach) {
+            attachedAtMs = SystemClock.elapsedRealtime()
             _status.value = TmuxControlStatus(SessionStatus.Connected)
             sentClientSize = null
             sendClientSize()
@@ -374,7 +395,18 @@ internal class TmuxControlSession(
 
     private fun onThread(block: () -> Unit) {
         if (disposed) return
-        scope.launch(dispatcher) { if (!disposed) block() }
+        scope.launch(dispatcher) {
+            if (disposed) return@launch
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Commands go out over the SSH channel, whose writes throw once it is dead.
+                Log.e(TAG, "Control session work failed", e)
+                if (!disposed) onConnectionLost(e)
+            }
+        }
     }
 
     private fun post(action: TmuxControlHost.() -> Unit) {
