@@ -81,6 +81,14 @@ internal class MoshTransport(
     override fun close() = service.close()
 
     /**
+     * Resumes a session that failed on its network, keeping its mosh-server; false when
+     * it can't, and a new bootstrap must start one.
+     */
+    fun resume(): Boolean = service.resume().also { resumed ->
+        Log.d(TAG, "MOSH: resume ${if (resumed) "started" else "not possible"}")
+    }
+
+    /**
      * Tells mosh-server to exit and waits up to [SHUTDOWN_WAIT_MS] for its ack, so the
      * server doesn't outlive the tab. This blocks the session thread on purpose:
      * [TerminalSessionEngine.dispose] closes that thread right after queueing the

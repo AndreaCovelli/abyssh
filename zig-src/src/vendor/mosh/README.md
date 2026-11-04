@@ -45,6 +45,10 @@ Changed behavior:
 - `src/ffi.zig`, `src/mosh_ffi.h`: `mosh_client_start_shutdown`,
   `mosh_client_shutdown_acknowledged`, and `mosh_client_wait_params`, which
   returns the UDP socket and `msUntilNextTimer`.
+- `src/core.zig`, `src/ffi.zig`, `src/mosh_ffi.h`: `resumeAfterFailure` and
+  `mosh_client_resume` bring a session that failed on its network (the
+  send and receive failure limit, or a socket that wouldn't open) back on a
+  new UDP socket, keeping its keys, sequence numbers, and states.
 
 Removed: `src/test_live.zig`, a standalone program for testing against a live
 server. Nothing built it, and it did not compile on Zig 0.17.

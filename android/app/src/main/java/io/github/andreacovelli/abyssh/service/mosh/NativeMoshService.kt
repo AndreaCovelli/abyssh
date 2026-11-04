@@ -65,6 +65,7 @@ class NativeMoshService(
 
     fun create(configJson: String): Boolean {
         if (!bridge.isLoaded()) return false
+        close()
         handle = bridge.nativeCreate(configJson)
         return handle != 0L
     }
@@ -160,6 +161,15 @@ class NativeMoshService(
     fun isShutdownAcknowledged(): Boolean {
         if (handle == 0L) return false
         return bridge.nativeIsShutdownAcknowledged(handle)
+    }
+
+    /**
+     * Brings a session that failed on its network back on a new socket, with the same
+     * keys and sequence numbers, so mosh-server keeps it. False when it can't resume.
+     */
+    fun resume(): Boolean {
+        if (handle == 0L) return false
+        return bridge.nativeResume(handle) == 0
     }
 
     fun stop() {

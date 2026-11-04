@@ -254,6 +254,44 @@ pub const Client = struct {
         log.info("start: running", .{});
     }
 
+    /// Brings a session that failed on its network back on a new UDP socket. It keeps
+    /// the keys, sequence numbers, and states, so mosh-server roams to the new socket
+    /// and the session goes on. A new client with the same key would start its
+    /// sequence numbers, which are the cipher's nonces, over at 0. A server that broke
+    /// the protocol or failed authentication can't be resumed.
+    pub fn resumeAfterFailure(self: *Self, now_ms: u64) !void {
+        if (self.state != .failed) return error.NotStarted;
+        switch (self.last_failure) {
+            .circuit_breaker_tripped, .transport_failure => {},
+            else => return error.NotResumable,
+        }
+        self.udp_socket.close();
+        self.consecutive_recv_failures = 0;
+        self.last_received_at_ms = now_ms;
+        self.current_rto_ms = self.config.initial_rto_ms;
+        self.retransmit_doublings = 0;
+        // Resend what the server hasn't acknowledged at the next tick.
+        var pending_iter = self.pending_outbound.valueIterator();
+        while (pending_iter.next()) |pending| pending.next_retry_at_ms = now_ms;
+
+        self.udp_socket.setRemote(self.endpoint_host, self.endpoint_port) catch |err| {
+            log.err("resume: udp_socket.setRemote failed: {s}", .{@errorName(err)});
+            self.failSession(.transport_failure);
+            return err;
+        };
+        self.udp_socket.open(self.config.local_port orelse 0) catch |err| {
+            log.err("resume: udp_socket.open failed: {s}", .{@errorName(err)});
+            self.failSession(.transport_failure);
+            return err;
+        };
+        self.state = .running;
+        self.last_failure = .none;
+        // An ack from the new socket tells the server where the client is now.
+        try self.sendAckOnly(now_ms);
+        try self.enqueueStringEvent(.state_changed, "resumed");
+        log.info("resume: running", .{});
+    }
+
     pub fn stop(self: *Self) !void {
         if (self.state == .stopped or self.state == .idle) {
             self.state = .stopped;

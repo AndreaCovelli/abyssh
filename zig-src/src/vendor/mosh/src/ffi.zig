@@ -212,6 +212,14 @@ pub export fn mosh_client_shutdown_acknowledged(handle: ?*anyopaque, out_acknowl
     return @backingInt(types.ErrorCode.ok);
 }
 
+/// Resumes a session that failed on its network, keeping its keys and sequence numbers;
+/// `not_started` when the session can't be resumed.
+pub export fn mosh_client_resume(handle: ?*anyopaque) callconv(.c) c_int {
+    const client = fromHandle(handle) orelse return @backingInt(types.ErrorCode.bad_handle);
+    client.resumeAfterFailure(nowMs()) catch |err| return @backingInt(mapCoreError(err));
+    return @backingInt(types.ErrorCode.ok);
+}
+
 pub export fn mosh_client_stop(handle: ?*anyopaque) callconv(.c) c_int {
     const client = fromHandle(handle) orelse return @backingInt(types.ErrorCode.bad_handle);
     client.stop() catch |err| return @backingInt(mapCoreError(err));
@@ -246,7 +254,7 @@ fn mapCoreError(err: anyerror) types.ErrorCode {
         error.InvalidPrintableKeyLength,
         error.InvalidPrintableKeyEncoding,
         => .invalid_argument,
-        error.NotStarted, error.ShuttingDown => .not_started,
+        error.NotStarted, error.ShuttingDown, error.NotResumable => .not_started,
         error.AlreadyStarted => .already_started,
         error.OutputBufferTooSmall => .output_buffer_too_small,
         error.OutOfMemory => .alloc_failed,

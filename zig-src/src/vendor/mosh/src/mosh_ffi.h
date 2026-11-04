@@ -59,6 +59,7 @@ int32_t mosh_client_wait_params(void* handle, int* out_fd, uint64_t* out_timeout
 int32_t mosh_client_set_quiet(void* handle, int32_t quiet);
 int32_t mosh_client_start_shutdown(void* handle);
 int32_t mosh_client_shutdown_acknowledged(void* handle, int32_t* out_acknowledged);
+int32_t mosh_client_resume(void* handle);
 int32_t mosh_client_stop(void* handle);
 int32_t mosh_client_destroy(void* handle);
 

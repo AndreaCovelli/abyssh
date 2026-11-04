@@ -97,6 +97,9 @@ internal class SessionConnection(
     private var attemptsSinceStable = 0
     private var openedAtMs = 0L
 
+    // When the Mosh client last resumed after a network failure.
+    private var moshResumedAtMs: Long? = null
+
     // The view's latest size, and the size the far end was given, or null while no
     // transport is open. They differ while a resize settles.
     private var viewGeometry: TerminalGeometry? = null
@@ -328,6 +331,7 @@ internal class SessionConnection(
 
     private fun onReadLoopEnded(transport: Transport, outcome: ReadOutcome) {
         remoteGeometry = null
+        if (transport == Transport.Mosh && outcome.moshFailureCode != null && !disconnectRequested && resumeMosh()) return
         when (readLoopExitAction(transport, outcome.shellExited && !outcome.failed)) {
             ReadLoopExitAction.Disconnect -> {
                 when (transport) {
@@ -340,20 +344,31 @@ internal class SessionConnection(
                     if (outcome.shellExited) onShellExited()
                 }
             }
-            ReadLoopExitAction.RequireManualReconnect -> {
-                transports.mosh.close()
-                if (!disconnectRequested) {
-                    state.update {
-                        it.copy(
-                            status = SessionStatus.Error,
-                            error = outcome.moshFailureCode?.let { UiText.Resource(R.string.error_mosh_session_ended_code, it) }
-                                ?: UiText.Resource(R.string.error_mosh_session_ended),
-                        )
-                    }
-                }
-            }
-            ReadLoopExitAction.AutomaticReconnect -> scheduleReconnect(UiText.Resource(R.string.error_connection_interrupted))
+            ReadLoopExitAction.AutomaticReconnect -> scheduleReconnect(
+                when {
+                    transport != Transport.Mosh -> UiText.Resource(R.string.error_connection_interrupted)
+                    outcome.moshFailureCode != null -> UiText.Resource(R.string.error_mosh_session_lost_code, outcome.moshFailureCode)
+                    else -> UiText.Resource(R.string.error_mosh_session_lost)
+                },
+            )
         }
+    }
+
+    /**
+     * Resumes a Mosh session that failed on its network on a new socket, which keeps its
+     * mosh-server and shell. One that fails again within [STABLE_SESSION_MS] of resuming
+     * isn't resumed again, so the reconnect bootstraps a new session instead.
+     */
+    private fun resumeMosh(): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        val lastResume = moshResumedAtMs
+        if (lastResume != null && now - lastResume < STABLE_SESSION_MS) return false
+        if (!transports.mosh.resume()) return false
+        moshResumedAtMs = now
+        moshStaleness.reset()
+        updateStatus(SessionStatus.Reconnecting)
+        startReadLoop(Transport.Mosh)
+        return true
     }
 
     private fun onResizeFailed(error: Exception) {
@@ -365,11 +380,6 @@ internal class SessionConnection(
         if (reconnects) {
             scheduleReconnect(UiText.Resource(R.string.error_connection_interrupted_reason, error.reason()))
             return
-        }
-        if (transport == Transport.Mosh) {
-            readJob?.cancel()
-            readJob = null
-            transports.mosh.close()
         }
         state.update { it.copy(status = SessionStatus.Error, error = UiText.Resource(R.string.error_resize_failed, error.reason())) }
     }
