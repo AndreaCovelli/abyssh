@@ -21,4 +21,7 @@
 #include <libssh2.h>
 #include <libssh2_sftp.h>
 
+// Built into libssh2 from src/vendor/libssh2/ssh2ext.c.
+int ssh2ext_discard_global_replies(LIBSSH2_SESSION *session);
+
 #include "abyssh_jni_internal.h"

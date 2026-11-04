@@ -1537,9 +1537,16 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     const session = sessionFromHandle(handle) orelse return wake.wait_cannot;
     const ssh_session = session.session orelse return wake.wait_cannot;
     const channel = session.channel orelse return wake.wait_cannot;
+    // libssh2 queues the server's reply to each keepalive and never takes it off. Nothing
+    // here waits for a global request's reply, so drop them before they pile up.
+    _ = c.ssh2ext_discard_global_replies(ssh_session);
     // A read can leave packets in libssh2's queue, such as stderr pulled in while
     // reading stdout, or data beyond what fit in the buffer; the socket won't show them.
-    if (c.libssh2_poll_channel_read(channel, 1) != 0) return wake.wait_ready;
+    // Not libssh2_poll_channel_read: it fails on any queued packet under 5 bytes, as a
+    // global request's reply is, and a failure here would end every wait at once.
+    var queued: c_ulong = 0;
+    _ = c.libssh2_channel_window_read_ex(channel, &queued, null);
+    if (queued > 0) return wake.wait_ready;
     if (c.libssh2_channel_eof(channel) != 0) return wake.wait_ready;
     const sending = (c.libssh2_session_block_directions(ssh_session) & c.LIBSSH2_SESSION_BLOCK_OUTBOUND) != 0;
     const events: c_short = if (sending) c.POLLIN | c.POLLOUT else c.POLLIN;
