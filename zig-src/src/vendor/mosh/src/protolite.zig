@@ -338,7 +338,8 @@ fn readFieldHeader(data: []const u8, cursor: *usize) ProtoLiteError!struct { fie
 }
 
 fn readVarint(data: []const u8, cursor: *usize) ProtoLiteError!u64 {
-    var shift: u6 = 0;
+    // u7, so the step after 63 doesn't wrap back into range.
+    var shift: u7 = 0;
     var result: u64 = 0;
 
     while (shift < 64) : (shift += 7) {
@@ -346,7 +347,7 @@ fn readVarint(data: []const u8, cursor: *usize) ProtoLiteError!u64 {
 
         const byte = data[cursor.*];
         cursor.* += 1;
-        result |= @as(u64, byte & 0x7F) << shift;
+        result |= @as(u64, byte & 0x7F) << @intCast(shift);
 
         if ((byte & 0x80) == 0) return result;
     }
@@ -358,7 +359,8 @@ fn readLengthDelimited(data: []const u8, cursor: *usize) ProtoLiteError![]const 
     const raw_length = try readVarint(data, cursor);
     const length = std.math.cast(usize, raw_length) orelse return ProtoLiteError.InvalidLength;
 
-    if (cursor.* + length > data.len) return ProtoLiteError.Truncated;
+    // Subtract rather than add: cursor + length can wrap a 32-bit usize.
+    if (length > data.len - cursor.*) return ProtoLiteError.Truncated;
     const out = data[cursor.* .. cursor.* + length];
     cursor.* += length;
     return out;
@@ -378,7 +380,7 @@ fn skipByWireType(data: []const u8, cursor: *usize, wire_type: WireType) ProtoLi
 }
 
 fn skipBytes(data: []const u8, cursor: *usize, count: usize) ProtoLiteError!void {
-    if (cursor.* + count > data.len) return ProtoLiteError.Truncated;
+    if (count > data.len - cursor.*) return ProtoLiteError.Truncated;
     cursor.* += count;
 }
 

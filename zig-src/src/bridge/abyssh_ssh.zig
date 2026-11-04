@@ -2066,7 +2066,8 @@ fn sshPutString(list: *std.ArrayListUnmanaged(u8), data: []const u8) !void {
 }
 
 fn sshGetU32(data: []const u8, pos: *usize) !u32 {
-    if (pos.* + 4 > data.len) return error.Truncated;
+    // Subtract rather than add: pos + 4 can wrap a 32-bit usize.
+    if (pos.* > data.len or data.len - pos.* < 4) return error.Truncated;
     const value = std.mem.readInt(u32, data[pos.*..][0..4], .big);
     pos.* += 4;
     return value;
@@ -2074,7 +2075,7 @@ fn sshGetU32(data: []const u8, pos: *usize) !u32 {
 
 fn sshGetString(data: []const u8, pos: *usize) ![]const u8 {
     const len = try sshGetU32(data, pos);
-    if (pos.* + len > data.len) return error.Truncated;
+    if (len > data.len - pos.*) return error.Truncated;
     const s = data[pos.*..][0..len];
     pos.* += len;
     return s;
