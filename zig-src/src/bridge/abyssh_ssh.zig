@@ -819,7 +819,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     };
 
     const fd = connectSocket(session, host_z, @intCast(@max(port, 0))) catch {
-        logError("Socket connect failed host={s} port={}", .{ host_slice, port });
+        logInfo("Socket connect failed host={s} port={}", .{ host_slice, port });
         setError(session, "Socket connect failed host={s} port={}", .{ host_slice, port });
         return c.JNI_FALSE;
     };
