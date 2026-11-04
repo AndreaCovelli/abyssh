@@ -506,6 +506,43 @@ fn disableNagle(fd: c_int) void {
     }
 }
 
+// The algorithms offered to the server, most preferred first. libssh2's defaults also
+// offer broken ones (DH group1, ssh-dss, RC4, 3DES, CAST, Blowfish, MD5, RIPEMD), which
+// these drop. SHA-1 kex, hmac-sha1, AES-CBC, and ssh-rsa stay last so that old routers
+// and NAS boxes still connect. libssh2 adds the ext-info and strict-kex markers itself.
+const kex_prefs = "curve25519-sha256,curve25519-sha256@libssh.org," ++
+    "ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521," ++
+    "diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512," ++
+    "diffie-hellman-group18-sha512,diffie-hellman-group14-sha256," ++
+    "diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1";
+const hostkey_prefs = "ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521," ++
+    "ssh-ed25519,rsa-sha2-512,rsa-sha2-256,ssh-rsa";
+const cipher_prefs = "chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com," ++
+    "aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc";
+const mac_prefs = "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com," ++
+    "hmac-sha2-256,hmac-sha2-512,hmac-sha1-etm@openssh.com,hmac-sha1";
+
+/// Sets the algorithms the handshake offers. Returns false, with the error set, when
+/// libssh2 rejects a list.
+fn applyMethodPrefs(session: *NativeSshSession, ssh_session: *c.LIBSSH2_SESSION) bool {
+    const prefs = [_]struct { method: c_int, list: [:0]const u8 }{
+        .{ .method = c.LIBSSH2_METHOD_KEX, .list = kex_prefs },
+        .{ .method = c.LIBSSH2_METHOD_HOSTKEY, .list = hostkey_prefs },
+        .{ .method = c.LIBSSH2_METHOD_CRYPT_CS, .list = cipher_prefs },
+        .{ .method = c.LIBSSH2_METHOD_CRYPT_SC, .list = cipher_prefs },
+        .{ .method = c.LIBSSH2_METHOD_MAC_CS, .list = mac_prefs },
+        .{ .method = c.LIBSSH2_METHOD_MAC_SC, .list = mac_prefs },
+    };
+    for (prefs) |pref| {
+        const rc = c.libssh2_session_method_pref(ssh_session, pref.method, pref.list.ptr);
+        if (rc != 0) {
+            setLibssh2Error(session, "SSH algorithm setup failed", rc);
+            return false;
+        }
+    }
+    return true;
+}
+
 fn jniDupString(env: *c.JNIEnv, s: c.jstring) ?[]u8 {
     if (s == null) return null;
     const chars = env.*.*.GetStringUTFChars.?(env, s, null);
@@ -686,6 +723,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     };
     session.session = ssh_session;
     c.libssh2_session_set_blocking(ssh_session, 0);
+    if (!applyMethodPrefs(session, ssh_session)) return c.JNI_FALSE;
     logInfo("Starting SSH handshake...", .{});
     while (true) {
         const handshake_rc = c.libssh2_session_handshake(ssh_session, fd);
