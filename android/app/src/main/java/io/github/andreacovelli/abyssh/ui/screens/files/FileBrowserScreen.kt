@@ -11,6 +11,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
 import io.github.andreacovelli.abyssh.ui.components.AbyssIconButton
 import io.github.andreacovelli.abyssh.R
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -58,6 +59,7 @@ fun FileBrowserScreen(
     onBackToTerminal: () -> Unit,
     onCopyPath: (String) -> Unit,
     onImportFile: () -> Unit,
+    // Also takes symlinks, which may point at a folder or a file.
     onOpenFile: (FileBrowserEntry) -> Unit,
     onDownloadFile: (FileBrowserEntry) -> Unit,
     onDeleteFile: (FileBrowserEntry) -> Unit,
@@ -107,8 +109,10 @@ fun FileBrowserScreen(
                                 optionsExpanded = optionsEntryPath == entry.path,
                                 onClick = {
                                     optionsEntryPath = null
-                                    if (entry.type == FileEntryType.Directory || entry.type == FileEntryType.Symlink) {
-                                        onOpenPath(entry.path)
+                                    when (entry.type) {
+                                        FileEntryType.Directory -> onOpenPath(entry.path)
+                                        FileEntryType.Symlink -> onOpenFile(entry)
+                                        else -> Unit
                                     }
                                 },
                                 onLongClick = {
@@ -207,6 +211,7 @@ private fun FileEntryRow(
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
+    val context = LocalContext.current
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier =
@@ -224,7 +229,7 @@ private fun FileEntryRow(
             Column(modifier = Modifier.weight(1f)) {
                 AbyssText(entry.name, style = typography.code)
                 val meta =
-                    listOfNotNull(entry.sizeBytes?.let { formatFileSize(it) }, entry.modifiedAtText)
+                    listOfNotNull(entry.sizeBytes?.let { formatFileSize(context, it) }, entry.modifiedAtText)
                         .joinToString("  ")
                 if (meta.isNotBlank()) {
                     AbyssText(meta, style = typography.labelSmall, color = colors.textMuted)
@@ -322,7 +327,7 @@ private fun SortButton(selected: FileSort, onSelect: (FileSort) -> Unit) {
                 DropdownMenuItem(
                     text = {
                         AbyssText(
-                            sort.name,
+                            stringResource(sort.label),
                             style = AbyssTypography.current.label,
                             color = if (isSelected) colors.accent else colors.textPrimary,
                         )

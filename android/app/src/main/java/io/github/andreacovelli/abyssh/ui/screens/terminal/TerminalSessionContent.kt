@@ -123,7 +123,7 @@ internal fun TerminalSessionContent(
         }
     }
 
-    fileState.uploadProgress?.let { UploadProgressDialog(progress = it) }
+    fileState.uploadProgress?.let { UploadProgressDialog(progress = it, onCancel = vm.files::cancelUpload) }
     if (overlay.showTabSheet) TerminalPaletteSheet(vm, host, input, files)
 }
 

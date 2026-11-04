@@ -278,6 +278,7 @@
     </plurals>
     <string name="files_replace">Replace</string>
     <string name="files_replace_note">The server already has files with these names. Uploading replaces them.</string>
+    <string name="files_link_broken">%1$s points to nothing</string>
     <string name="files_upload_target_is_directory">%1$s is a folder on the server</string>
     <string name="terminal_link_no_app">No app can open this link</string>
     <string name="terminal_copied_link">Copied link</string>
@@ -452,6 +453,9 @@
     <string name="terminal_end_session_body_tmux_detach">This detaches from tmux. The tmux session keeps running.</string>
     <string name="files_go_up">Parent folder</string>
     <string name="files_sort">Sort</string>
+    <string name="files_sort_name">Name</string>
+    <string name="files_sort_size">Size</string>
+    <string name="files_sort_modified">Modified</string>
     <string name="files_upload">Upload file</string>
     <string name="settings_font_size_decrease">Decrease font size</string>
     <string name="settings_font_size_increase">Increase font size</string>

@@ -1,5 +1,9 @@
 package io.github.andreacovelli.abyssh.ui.screens.files
 
+import android.content.Context
+import android.text.format.Formatter
+import androidx.annotation.StringRes
+import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.UiText
 
 enum class ConnectionTab {
@@ -14,10 +18,10 @@ enum class FileEntryType {
     Other,
 }
 
-enum class FileSort {
-    Name,
-    Size,
-    Modified,
+enum class FileSort(@StringRes val label: Int) {
+    Name(R.string.files_sort_name),
+    Size(R.string.files_sort_size),
+    Modified(R.string.files_sort_modified),
 }
 
 data class FileBrowserEntry(
@@ -48,9 +52,5 @@ data class FileBrowserUiState(
     val uploadProgress: UploadProgress? = null,
 )
 
-fun formatFileSize(bytes: Long): String = when {
-        bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> "${"%.1f".format(bytes / 1024.0)} KB"
-        bytes < 1024 * 1024 * 1024 -> "${"%.1f".format(bytes / (1024.0 * 1024.0))} MB"
-        else -> "${"%.1f".format(bytes / (1024.0 * 1024.0 * 1024.0))} GB"
-    }
+/** [bytes] in the device's language and units, such as "1.5 MB". */
+fun formatFileSize(context: Context, bytes: Long): String = Formatter.formatShortFileSize(context, bytes)

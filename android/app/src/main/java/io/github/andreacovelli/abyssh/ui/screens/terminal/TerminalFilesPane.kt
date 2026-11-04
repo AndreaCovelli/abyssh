@@ -36,12 +36,15 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
 import io.github.andreacovelli.abyssh.ui.screens.files.FileBrowserEntry
+import io.github.andreacovelli.abyssh.ui.screens.files.FileEntryType
 import io.github.andreacovelli.abyssh.ui.screens.files.FileBrowserScreen
 import io.github.andreacovelli.abyssh.ui.screens.files.UploadProgress
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -63,9 +66,37 @@ internal fun TerminalFilesPane(vm: TerminalViewModel, modifier: Modifier = Modif
     var pendingReplace by remember { mutableStateOf<List<PlannedUpload>?>(null) }
 
     fun startUpload(plan: List<PlannedUpload>) {
-        scope.launch(Dispatchers.IO) {
+        val tabId = plan.firstOrNull()?.target?.tabId ?: return
+        val job = scope.launch(Dispatchers.IO) {
             val result = uploadFiles(context, vm.files, plan)
             withContext(Dispatchers.Main) { context.toast(result.message(resources), Toast.LENGTH_LONG) }
+        }
+        vm.files.trackUpload(tabId, job)
+    }
+
+    fun openFile(entry: FileBrowserEntry) {
+        val tabId = activeTabId ?: return
+        scope.launch(Dispatchers.IO) {
+            val result = runCatching { cacheRemoteFile(context, entry.name, vm.files.read(tabId, entry, OPEN_MAX_BYTES)) }
+            withContext(Dispatchers.Main) {
+                result.mapCatching { view ->
+                    context.startActivity(Intent.createChooser(view, resources.getString(R.string.terminal_open_with)))
+                }.onFailure { error -> context.toastFailure(resources, R.string.terminal_open_failed, error) }
+            }
+        }
+    }
+
+    // Opens the folder or file a symlink points to.
+    fun openLink(entry: FileBrowserEntry) {
+        val tabId = activeTabId ?: return
+        scope.launch {
+            val mode = runCatching { vm.files.targetMode(tabId, entry.path) }.getOrNull()
+            when {
+                vm.activeTabId.value != tabId -> Unit
+                mode == null -> context.toast(resources.getString(R.string.files_link_broken, entry.name))
+                isDirectoryMode(mode) -> vm.files.openPath(entry.path)
+                else -> openFile(entry)
+            }
         }
     }
 
@@ -115,17 +146,7 @@ internal fun TerminalFilesPane(vm: TerminalViewModel, modifier: Modifier = Modif
         onBackToTerminal = { vm.files.selectPane(ConnectionTab.Terminal) },
         onCopyPath = { path -> copyToClipboard(context, "path", path, R.string.terminal_copied_path) },
         onImportFile = { uploadLauncher.launch("*/*") },
-        onOpenFile = { entry ->
-            val tabId = activeTabId ?: return@FileBrowserScreen
-            scope.launch(Dispatchers.IO) {
-                val result = runCatching { cacheRemoteFile(context, entry.name, vm.files.read(tabId, entry, OPEN_MAX_BYTES)) }
-                withContext(Dispatchers.Main) {
-                    result.mapCatching { view ->
-                        context.startActivity(Intent.createChooser(view, resources.getString(R.string.terminal_open_with)))
-                    }.onFailure { error -> context.toastFailure(resources, R.string.terminal_open_failed, error) }
-                }
-            }
-        },
+        onOpenFile = { entry -> if (entry.type == FileEntryType.Symlink) openLink(entry) else openFile(entry) },
         onDeleteFile = { entry -> pendingDelete = entry },
         onDownloadFile = { entry ->
             val tabId = activeTabId ?: return@FileBrowserScreen
@@ -272,7 +293,7 @@ private suspend fun uploadFiles(context: Context, files: TerminalFileBrowser, pl
             failed++
             lastError = e.toUiText(UiText.Raw(e.javaClass.simpleName))
         } finally {
-            files.setUploadProgress(null)
+            files.setUploadProgress(upload.target.tabId, null)
         }
     }
     return UploadResult(succeeded, failed, lastError)
@@ -282,19 +303,21 @@ private suspend fun uploadFile(context: Context, files: TerminalFileBrowser, upl
     val stream = context.contentResolver.openInputStream(upload.uri)
         ?: throw UiTextException(UiText.Resource(R.string.files_cannot_open_source), "Cannot open file")
     stream.use { input ->
-        files.setUploadProgress(progress)
+        files.setUploadProgress(upload.target.tabId, progress)
         files.upload(upload.target) { write ->
             val buffer = ByteArray(UPLOAD_CHUNK_BYTES)
             var written = 0L
             var reported = 0L
             while (true) {
+                // Reading and writing don't suspend, so Cancel is noticed here.
+                currentCoroutineContext().ensureActive()
                 val read = input.read(buffer)
                 if (read == -1) break
                 write(buffer.copyOf(read))
                 written += read
                 if (written - reported >= UPLOAD_PROGRESS_STEP_BYTES || written == progress.totalBytes) {
                     reported = written
-                    files.setUploadProgress(progress.copy(bytesWritten = written))
+                    files.setUploadProgress(upload.target.tabId, progress.copy(bytesWritten = written))
                 }
             }
         }
