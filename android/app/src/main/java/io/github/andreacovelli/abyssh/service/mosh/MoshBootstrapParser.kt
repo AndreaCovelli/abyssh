@@ -4,11 +4,11 @@ package io.github.andreacovelli.abyssh.service.mosh
  * Parses the output of `mosh-server new` to extract the connection endpoint.
  *
  * Expected line format: `MOSH CONNECT <port> <key>`
- * - `port`: UInt16, must be > 0
+ * - `port`: 1 to 65535
  * - `key`: exactly 22 chars, charset [A-Za-z0-9+/-_]
  *
- * Handles noisy output before/after the connect line. If multiple connect lines
- * exist, the first valid one is accepted.
+ * Handles noisy output before/after the connect line. If several connect lines exist,
+ * the first valid one is accepted; if none is valid, the error is the first line's.
  */
 object MoshBootstrapParser {
 
@@ -26,9 +26,11 @@ object MoshBootstrapParser {
     // mosh-server prints this to stderr after the connect line, as it detaches.
     private val DETACHED_LINE_REGEX = Regex("""\[mosh-server detached, pid = (\d+)]""")
 
-    private val CONNECT_LINE_REGEX =
-        Regex("""MOSH CONNECT\s+(\d+)\s+([A-Za-z0-9+/_-]{22})""")
+    // The key is taken whole and checked afterwards, so a longer token isn't cut to 22.
+    private val CONNECT_LINE_REGEX = Regex("""MOSH CONNECT\s+(\S+)\s+(\S+)""")
+    private val KEY_CHARS_REGEX = Regex("""[A-Za-z0-9+/_-]+""")
     private const val KEY_LENGTH = 22
+    private const val MAX_PORT = 65535
 
     /** The pid mosh-server reported in [output], or null before it has. */
     fun serverPid(output: CharSequence): Int? =
@@ -37,28 +39,16 @@ object MoshBootstrapParser {
     fun parse(host: String, output: String): ParseResult {
         // Normalize CRLF to LF before scanning
         val normalized = output.replace("\r\n", "\n")
-        val lines = normalized.split('\n')
 
-        for (line in lines) {
-            val trimmed = line.trim()
-            val match = CONNECT_LINE_REGEX.find(trimmed)
-            if (match != null) {
-                val portStr = match.groupValues[1]
-                val key = match.groupValues[2]
-
-                val port = portStr.toIntOrNull()
-                    ?: return ParseResult.Error("Invalid port: '$portStr'")
-                if (port <= 0 || port > 65535) {
-                    return ParseResult.Error("Port out of range: $port")
-                }
-                if (key.length != KEY_LENGTH) {
-                    return ParseResult.Error("Key length invalid: ${key.length}")
-                }
-                return ParseResult.Success(
-                    MoshEndpoint(host = host, port = port, key = key)
-                )
+        var firstError: ParseResult.Error? = null
+        for (line in normalized.split('\n')) {
+            val match = CONNECT_LINE_REGEX.find(line.trim()) ?: continue
+            when (val result = endpoint(host, match.groupValues[1], match.groupValues[2])) {
+                is ParseResult.Success -> return result
+                is ParseResult.Error -> firstError = firstError ?: result
             }
         }
+        firstError?.let { return it }
 
         val lower = normalized.lowercase()
         return ParseResult.Error(
@@ -74,5 +64,16 @@ object MoshBootstrapParser {
                 }
             }
         )
+    }
+
+    // The errors never include the key, which is the session secret.
+    private fun endpoint(host: String, portStr: String, key: String): ParseResult {
+        val port = portStr.toIntOrNull() ?: return ParseResult.Error("Invalid port: '$portStr'")
+        return when {
+            port <= 0 || port > MAX_PORT -> ParseResult.Error("Port out of range: $port")
+            key.length != KEY_LENGTH -> ParseResult.Error("Key length invalid: ${key.length}")
+            !KEY_CHARS_REGEX.matches(key) -> ParseResult.Error("Key has invalid characters")
+            else -> ParseResult.Success(MoshEndpoint(host = host, port = port, key = key))
+        }
     }
 }

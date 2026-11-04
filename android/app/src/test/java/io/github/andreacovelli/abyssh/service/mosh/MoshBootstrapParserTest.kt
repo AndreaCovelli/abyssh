@@ -56,8 +56,26 @@ class MoshBootstrapParserTest {
     }
 
     @Test
-    fun rejectsAShortKey() {
-        assertError("Server output missing valid MOSH CONNECT line", "MOSH CONNECT 60001 tooShort")
+    fun skipsAnInvalidConnectLineForALaterValidOne() {
+        val twice = "MOSH CONNECT 0 AAAAAAAAAAAAAAAAAAAAAA\nMOSH CONNECT 60002 BBBBBBBBBBBBBBBBBBBBBB\n"
+        val result = MoshBootstrapParser.parse("h", twice) as MoshBootstrapParser.ParseResult.Success
+        assertEquals(60002, result.endpoint.port)
+    }
+
+    @Test
+    fun reportsTheFirstErrorWhenNoConnectLineIsValid() {
+        assertError("Port out of range: 0", "MOSH CONNECT 0 AAAAAAAAAAAAAAAAAAAAAA\nMOSH CONNECT 60001 short\n")
+    }
+
+    @Test
+    fun rejectsAKeyOfTheWrongLength() {
+        assertError("Key length invalid: 8", "MOSH CONNECT 60001 tooShort")
+        assertError("Key length invalid: 23", "MOSH CONNECT 60001 AAAAAAAAAAAAAAAAAAAAAAB")
+    }
+
+    @Test
+    fun rejectsAKeyWithOtherCharacters() {
+        assertError("Key has invalid characters", "MOSH CONNECT 60001 AAAAAAAAAAAAAAAAAAAAA!")
     }
 
     @Test
