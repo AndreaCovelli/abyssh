@@ -99,13 +99,20 @@ class NativeSshBridge {
 
     external fun nativeSftpRealpath(handle: Long, path: String): String?
 
-    external fun nativeSftpOpenWrite(handle: Long, path: String): Boolean
+    /** Creates `path`, which must not exist yet, with permission bits `mode`, and opens it for writing. */
+    external fun nativeSftpOpenWrite(handle: Long, path: String, mode: Int): Boolean
 
     external fun nativeSftpWriteChunk(handle: Long, data: ByteArray): Int
 
     external fun nativeSftpCloseWrite(handle: Long): Boolean
 
     external fun nativeSftpReadFile(handle: Long, path: String, maxBytes: Int): ByteArray?
+
+    /** The mode of `path`, 0 when the server leaves it out, -1 when nothing is there, -2 on failure. */
+    external fun nativeSftpStat(handle: Long, path: String): Int
+
+    /** Moves `from` onto `to`, replacing any file there. */
+    external fun nativeSftpRename(handle: Long, from: String, to: String): Boolean
 
     external fun nativeSftpDeleteFile(handle: Long, path: String): Boolean
 

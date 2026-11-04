@@ -258,6 +258,13 @@
     <string name="files_deleted">Deleted %1$s</string>
     <string name="files_delete_failed">Delete failed: %1$s</string>
     <string name="files_delete_note">This action cannot be undone.</string>
+    <plurals name="files_replace_title">
+        <item quantity="one">Replace %1$d file?</item>
+        <item quantity="other">Replace %1$d files?</item>
+    </plurals>
+    <string name="files_replace">Replace</string>
+    <string name="files_replace_note">The server already has files with these names. Uploading replaces them.</string>
+    <string name="files_upload_target_is_directory">%1$s is a folder on the server</string>
     <string name="terminal_link_no_app">No app can open this link</string>
     <string name="terminal_copied_link">Copied link</string>
     <string name="terminal_reconnecting">Reconnecting</string>

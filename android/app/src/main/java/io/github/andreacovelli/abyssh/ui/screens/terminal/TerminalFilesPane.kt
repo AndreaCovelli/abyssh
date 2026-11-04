@@ -14,6 +14,8 @@ import android.webkit.MimeTypeMap
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,7 +25,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.andreacovelli.abyssh.R
@@ -56,12 +60,31 @@ internal fun TerminalFilesPane(vm: TerminalViewModel, modifier: Modifier = Modif
     val activeTabId by vm.activeTabId.collectAsStateWithLifecycle()
     var pendingDownload by remember { mutableStateOf<Pair<String, ByteArray>?>(null) }
     var pendingDelete by remember { mutableStateOf<FileBrowserEntry?>(null) }
+    var pendingReplace by remember { mutableStateOf<List<PlannedUpload>?>(null) }
+
+    fun startUpload(plan: List<PlannedUpload>) {
+        scope.launch(Dispatchers.IO) {
+            val result = uploadFiles(context, vm.files, plan)
+            withContext(Dispatchers.Main) { context.toast(result.message(resources), Toast.LENGTH_LONG) }
+        }
+    }
 
     val uploadLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         scope.launch(Dispatchers.IO) {
-            val result = uploadFiles(context, vm.files, uris)
-            withContext(Dispatchers.Main) { context.toast(result.message(resources), Toast.LENGTH_LONG) }
+            val plan = runCatching { planUploads(context, vm.files, uris) }
+            withContext(Dispatchers.Main) {
+                plan.fold(
+                    onSuccess = { uploads ->
+                        if (uploads.any { it.target.existingMode != null }) pendingReplace = uploads else startUpload(uploads)
+                    },
+                    onFailure = { error ->
+                        if (error is CancellationException) throw error
+                        val failure = UploadResult(0, uris.size, error.toUiText(UiText.Raw(error.javaClass.simpleName)))
+                        context.toast(failure.message(resources), Toast.LENGTH_LONG)
+                    },
+                )
+            }
         }
     }
     val downloadLauncher =
@@ -124,6 +147,17 @@ internal fun TerminalFilesPane(vm: TerminalViewModel, modifier: Modifier = Modif
         modifier = modifier,
     )
 
+    pendingReplace?.let { plan ->
+        ReplaceRemoteFilesDialog(
+            names = plan.filter { it.target.existingMode != null }.map { it.target.name },
+            onConfirm = {
+                pendingReplace = null
+                startUpload(plan)
+            },
+            onDismiss = { pendingReplace = null },
+        )
+    }
+
     pendingDelete?.let { entry ->
         DeleteRemoteFileDialog(
             entry = entry,
@@ -160,6 +194,22 @@ private fun DeleteRemoteFileDialog(entry: FileBrowserEntry, onConfirm: () -> Uni
     }
 }
 
+@Composable
+private fun ReplaceRemoteFilesDialog(names: List<String>, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AbyssDialog(
+        title = pluralStringResource(R.plurals.files_replace_title, names.size, names.size),
+        confirmLabel = stringResource(R.string.files_replace),
+        dismissLabel = stringResource(R.string.action_cancel),
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            AbyssText(stringResource(R.string.files_replace_note), style = AbyssTypography.current.body)
+            AbyssText(names.joinToString("\n"), style = AbyssTypography.current.code)
+        }
+    }
+}
+
 private fun Context.toast(message: String, duration: Int = Toast.LENGTH_SHORT) {
     Toast.makeText(this, message, duration).show()
 }
@@ -191,26 +241,36 @@ private data class UploadResult(val succeeded: Int, val failed: Int, val lastErr
     }
 }
 
+/** A picked file and where it goes. */
+private data class PlannedUpload(val uri: Uri, val target: UploadTarget, val size: Long)
+
+/** Names each picked file and checks whether the server already has a file by that name. */
+private suspend fun planUploads(context: Context, files: TerminalFileBrowser, uris: List<Uri>): List<PlannedUpload> =
+    uris.mapIndexed { index, uri ->
+        val meta = queryOpenable(context, uri)
+        val fileName = meta.name ?: uri.lastPathSegment ?: "uploaded_$index"
+        val target = files.uploadTarget(fileName)
+            ?: throw UiTextException(UiText.Resource(R.string.error_session_not_connected), "No active SFTP tab")
+        PlannedUpload(uri, target, meta.size)
+    }
+
 // A failed file is counted and the next one still uploads; SFTP and content providers
 // throw many exception types.
 @Suppress("TooGenericExceptionCaught")
-private suspend fun uploadFiles(context: Context, files: TerminalFileBrowser, uris: List<Uri>): UploadResult {
+private suspend fun uploadFiles(context: Context, files: TerminalFileBrowser, plan: List<PlannedUpload>): UploadResult {
     var succeeded = 0
     var failed = 0
     var lastError: UiText? = null
-    uris.forEachIndexed { index, uri ->
-        val meta = queryOpenable(context, uri)
-        val fileName = meta.name ?: uri.lastPathSegment ?: "uploaded_$index"
-        val progress = UploadProgress(fileName, 0, meta.size, index, uris.size)
+    plan.forEachIndexed { index, upload ->
+        val progress = UploadProgress(upload.target.name, 0, upload.size, index, plan.size)
         try {
-            uploadFile(context, files, uri, progress)
+            uploadFile(context, files, upload, progress)
             succeeded++
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             failed++
             lastError = e.toUiText(UiText.Raw(e.javaClass.simpleName))
-            runCatching { files.finishUpload() }
         } finally {
             files.setUploadProgress(null)
         }
@@ -218,25 +278,26 @@ private suspend fun uploadFiles(context: Context, files: TerminalFileBrowser, ur
     return UploadResult(succeeded, failed, lastError)
 }
 
-private suspend fun uploadFile(context: Context, files: TerminalFileBrowser, uri: Uri, progress: UploadProgress) {
-    val stream = context.contentResolver.openInputStream(uri) ?: throw UiTextException(UiText.Resource(R.string.files_cannot_open_source), "Cannot open file")
+private suspend fun uploadFile(context: Context, files: TerminalFileBrowser, upload: PlannedUpload, progress: UploadProgress) {
+    val stream = context.contentResolver.openInputStream(upload.uri)
+        ?: throw UiTextException(UiText.Resource(R.string.files_cannot_open_source), "Cannot open file")
     stream.use { input ->
-        files.beginUpload(progress.fileName)
         files.setUploadProgress(progress)
-        val buffer = ByteArray(UPLOAD_CHUNK_BYTES)
-        var written = 0L
-        var reported = 0L
-        while (true) {
-            val read = input.read(buffer)
-            if (read == -1) break
-            files.writeUploadChunk(buffer.copyOf(read))
-            written += read
-            if (written - reported >= UPLOAD_PROGRESS_STEP_BYTES || written == progress.totalBytes) {
-                reported = written
-                files.setUploadProgress(progress.copy(bytesWritten = written))
+        files.upload(upload.target) { write ->
+            val buffer = ByteArray(UPLOAD_CHUNK_BYTES)
+            var written = 0L
+            var reported = 0L
+            while (true) {
+                val read = input.read(buffer)
+                if (read == -1) break
+                write(buffer.copyOf(read))
+                written += read
+                if (written - reported >= UPLOAD_PROGRESS_STEP_BYTES || written == progress.totalBytes) {
+                    reported = written
+                    files.setUploadProgress(progress.copy(bytesWritten = written))
+                }
             }
         }
-        files.finishUpload()
     }
 }
 

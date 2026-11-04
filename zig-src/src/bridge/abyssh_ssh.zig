@@ -1603,7 +1603,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     }
 }
 
-export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpOpenWrite(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, path: c.jstring) callconv(.c) c.jboolean {
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpOpenWrite(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, path: c.jstring, mode: c.jint) callconv(.c) c.jboolean {
     _ = thiz;
     const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
     const sftp = ensureSftp(session) orelse return c.JNI_FALSE;
@@ -1635,11 +1635,94 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         session.upload_handle = null;
     }
 
-    const flags: c_ulong = c.LIBSSH2_FXF_WRITE | c.LIBSSH2_FXF_CREAT | c.LIBSSH2_FXF_TRUNC;
-    const mode: c_long = c.LIBSSH2_SFTP_S_IRUSR | c.LIBSSH2_SFTP_S_IWUSR | c.LIBSSH2_SFTP_S_IRGRP | c.LIBSSH2_SFTP_S_IROTH;
-    const file = sftpOpenFile(session, sftp, path_z, flags, mode) orelse return c.JNI_FALSE;
+    // Uploads write a fresh temporary file, so refuse to open one that already exists.
+    const flags: c_ulong = c.LIBSSH2_FXF_WRITE | c.LIBSSH2_FXF_CREAT | c.LIBSSH2_FXF_EXCL;
+    const permissions: c_ulong = @as(c_ulong, @intCast(mode & 0o7777));
+    const file = sftpOpenFile(session, sftp, path_z, flags, @intCast(permissions)) orelse return c.JNI_FALSE;
     session.upload_handle = file;
+    // The server's umask can only narrow the mode given at open; set it exactly so a
+    // replaced file keeps its permissions. When that fails the file stays narrower.
+    var attrs = std.mem.zeroes(c.LIBSSH2_SFTP_ATTRIBUTES);
+    attrs.flags = c.LIBSSH2_SFTP_ATTR_PERMISSIONS;
+    attrs.permissions = permissions;
+    const rc = sftpRetry(session, "SFTP setstat", c.libssh2_sftp_fstat_ex, .{ file, &attrs, 1 });
+    if (rc != 0) logInfo("SFTP setstat on upload failed rc={}", .{rc});
     return c.JNI_TRUE;
+}
+
+/// The mode of `path` (following links), 0 when the server leaves it out, -1 when
+/// nothing is there, and -2 on any other failure.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpStat(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, path: c.jstring) callconv(.c) c.jint {
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return -2;
+    const sftp = ensureSftp(session) orelse return -2;
+    const path_bytes = jniDupString(env, path) orelse return -2;
+    defer allocator.free(path_bytes);
+    const path_z = dupSentinel(path_bytes) orelse return -2;
+    defer allocator.free(path_z);
+    var attrs = std.mem.zeroes(c.LIBSSH2_SFTP_ATTRIBUTES);
+    const rc = sftpRetry(session, "SFTP stat", c.libssh2_sftp_stat_ex, .{ sftp, path_z.ptr, @as(c_uint, @intCast(path_z.len)), c.LIBSSH2_SFTP_STAT, &attrs });
+    if (rc == 0) {
+        if (attrs.flags & c.LIBSSH2_SFTP_ATTR_PERMISSIONS == 0) return 0;
+        return @intCast(attrs.permissions & 0o177777);
+    }
+    if (rc == c.LIBSSH2_ERROR_EAGAIN) return -2;
+    if (rc == c.LIBSSH2_ERROR_SFTP_PROTOCOL) {
+        const status = c.libssh2_sftp_last_error(sftp);
+        if (status == c.LIBSSH2_FX_NO_SUCH_FILE or status == c.LIBSSH2_FX_NO_SUCH_PATH) return -1;
+    }
+    setSftpError(session, sftp, "SFTP stat failed", rc);
+    return -2;
+}
+
+/// Moves `from` onto `to`, replacing any file there.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpRename(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, from: c.jstring, to: c.jstring) callconv(.c) c.jboolean {
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
+    const sftp = ensureSftp(session) orelse return c.JNI_FALSE;
+    const from_bytes = jniDupString(env, from) orelse return c.JNI_FALSE;
+    defer allocator.free(from_bytes);
+    const to_bytes = jniDupString(env, to) orelse return c.JNI_FALSE;
+    defer allocator.free(to_bytes);
+    if (from_bytes.len > std.math.maxInt(c_uint) or to_bytes.len > std.math.maxInt(c_uint)) {
+        setError(session, "SFTP rename failed: path too long", .{});
+        return c.JNI_FALSE;
+    }
+    const from_len: c_uint = @intCast(from_bytes.len);
+    const to_len: c_uint = @intCast(to_bytes.len);
+
+    // posix-rename@openssh.com replaces the target in one step. libssh2 returns
+    // LIBSSH2_FX_OP_UNSUPPORTED itself when the server doesn't offer it.
+    var rc = sftpRetry(session, "SFTP rename", c.libssh2_sftp_posix_rename_ex, .{ sftp, from_bytes.ptr, from_bytes.len, to_bytes.ptr, to_bytes.len });
+    if (rc == 0) return c.JNI_TRUE;
+    if (rc == c.LIBSSH2_ERROR_EAGAIN) return c.JNI_FALSE;
+    if (rc != c.LIBSSH2_FX_OP_UNSUPPORTED) {
+        setSftpError(session, sftp, "SFTP rename failed", rc);
+        return c.JNI_FALSE;
+    }
+
+    const rename_flags: c_long = c.LIBSSH2_SFTP_RENAME_OVERWRITE | c.LIBSSH2_SFTP_RENAME_ATOMIC | c.LIBSSH2_SFTP_RENAME_NATIVE;
+    rc = sftpRetry(session, "SFTP rename", c.libssh2_sftp_rename_ex, .{ sftp, from_bytes.ptr, from_len, to_bytes.ptr, to_len, rename_flags });
+    if (rc == 0) return c.JNI_TRUE;
+    if (rc == c.LIBSSH2_ERROR_EAGAIN) return c.JNI_FALSE;
+    const status = c.libssh2_sftp_last_error(sftp);
+    const target_exists = rc == c.LIBSSH2_ERROR_SFTP_PROTOCOL and
+        (status == c.LIBSSH2_FX_FAILURE or status == c.LIBSSH2_FX_FILE_ALREADY_EXISTS);
+    if (!target_exists) {
+        setSftpError(session, sftp, "SFTP rename failed", rc);
+        return c.JNI_FALSE;
+    }
+    // SFTP v3 servers refuse to rename over an existing file and ignore the overwrite
+    // flag, so remove the target first.
+    rc = sftpRetry(session, "SFTP rename", c.libssh2_sftp_unlink_ex, .{ sftp, to_bytes.ptr, to_len });
+    if (rc != 0) {
+        if (rc != c.LIBSSH2_ERROR_EAGAIN) setSftpError(session, sftp, "SFTP rename failed: cannot remove the old file", rc);
+        return c.JNI_FALSE;
+    }
+    rc = sftpRetry(session, "SFTP rename", c.libssh2_sftp_rename_ex, .{ sftp, from_bytes.ptr, from_len, to_bytes.ptr, to_len, rename_flags });
+    if (rc == 0) return c.JNI_TRUE;
+    if (rc != c.LIBSSH2_ERROR_EAGAIN) setSftpError(session, sftp, "SFTP rename failed", rc);
+    return c.JNI_FALSE;
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpWriteChunk(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, data: c.jbyteArray) callconv(.c) c.jint {
@@ -1891,6 +1974,24 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         }
         setLibssh2Error(session, "SFTP delete directory failed", @intCast(rc));
         return c.JNI_FALSE;
+    }
+}
+
+/// Repeats an SFTP call while it returns EAGAIN. When the peer stops making progress it
+/// records "`what` timed out" and returns EAGAIN.
+fn sftpRetry(session: *NativeSshSession, what: []const u8, call: anytype, args: anytype) c_int {
+    const started_ms = nowMs();
+    var idle_since_ms = started_ms;
+    while (true) {
+        const rc: c_int = @call(.auto, call, args);
+        if (rc != c.LIBSSH2_ERROR_EAGAIN) return rc;
+        switch (awaitSftpProgress(session, &idle_since_ms)) {
+            .retry => {},
+            .no_socket, .stalled => {
+                setError(session, "{s} timed out after {d}ms", .{ what, nowMs() - started_ms });
+                return c.LIBSSH2_ERROR_EAGAIN;
+            },
+        }
     }
 }
 
