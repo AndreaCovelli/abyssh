@@ -47,4 +47,20 @@ class TmuxLayoutTest {
         assertNull(TmuxLayout.parse("nonsense"))
         assertNull(TmuxLayout.parse(""))
     }
+
+    @Test
+    fun rejectsLayoutsNestedTooDeep() {
+        fun nested(depth: Int): String = "10x10,0,0{".repeat(depth) + "10x10,0,0,1" + "}".repeat(depth)
+
+        assertEquals(1, TmuxLayout.parse("abcd,${nested(64)}")?.panes?.single()?.paneId)
+        assertNull(TmuxLayout.parse("abcd,${nested(65)}"))
+        assertNull(TmuxLayout.parse("abcd,${nested(100_000)}"))
+    }
+
+    @Test
+    fun rejectsSizesLargerThanATmuxWindow() {
+        assertEquals(10_000, TmuxLayout.parse("abcd,10000x6,0,0,0")?.cols)
+        assertNull(TmuxLayout.parse("abcd,10001x6,0,0,0"))
+        assertNull(TmuxLayout.parse("abcd,40x6,0,99999999999,0"))
+    }
 }

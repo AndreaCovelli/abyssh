@@ -29,6 +29,11 @@ internal data class TmuxWindowLayout(val cols: Int, val rows: Int, val panes: Li
  * `{}` (side by side) or `[]` (stacked).
  */
 internal object TmuxLayout {
+    // tmux nests a cell per split, so real layouts are a few levels deep; its windows are
+    // at most 10000 cells across.
+    private const val MAX_LAYOUT_DEPTH = 64
+    private const val MAX_LAYOUT_CELLS = 10_000
+
     /** The window [layout] describes, or null when it can't be read. */
     fun parse(layout: String): TmuxWindowLayout? {
         val body = layout.substringAfter(',', "")
@@ -45,29 +50,34 @@ internal object TmuxLayout {
         val atEnd: Boolean get() = pos == text.length
 
         /** Reads one cell and the panes inside it into [panes]; returns the cell's size. */
-        fun cell(panes: MutableList<TmuxPaneRect>): TmuxPaneSize? {
-            val cols = number() ?: return null
+        fun cell(panes: MutableList<TmuxPaneRect>, depth: Int = 0): TmuxPaneSize? {
+            // The recursion is bounded so a hostile layout can't overflow the stack.
+            if (depth > MAX_LAYOUT_DEPTH) return null
+            val cols = dimension() ?: return null
             if (!take('x')) return null
-            val rows = number() ?: return null
+            val rows = dimension() ?: return null
             if (!take(',')) return null
-            val x = number() ?: return null
+            val x = dimension() ?: return null
             if (!take(',')) return null
-            val y = number() ?: return null
+            val y = dimension() ?: return null
             val read = when {
                 take(',') -> number()?.let { pane -> panes += TmuxPaneRect(pane, x, y, cols, rows) } != null
-                take('{') -> children(panes, '}')
-                take('[') -> children(panes, ']')
+                take('{') -> children(panes, '}', depth + 1)
+                take('[') -> children(panes, ']', depth + 1)
                 else -> false
             }
             return if (read) TmuxPaneSize(cols, rows) else null
         }
 
-        private fun children(panes: MutableList<TmuxPaneRect>, close: Char): Boolean {
+        private fun children(panes: MutableList<TmuxPaneRect>, close: Char, depth: Int): Boolean {
             do {
-                if (cell(panes) == null) return false
+                if (cell(panes, depth) == null) return false
             } while (take(','))
             return take(close)
         }
+
+        /** A size or offset in cells, which tmux keeps within its largest window. */
+        private fun dimension(): Int? = number()?.takeIf { it <= MAX_LAYOUT_CELLS }
 
         private fun number(): Int? {
             val start = pos
