@@ -41,6 +41,8 @@ internal class HostKeyVerifier(private val store: HostKeyStore) : HostKeyPolicy 
         return accepted
     }
 
+    override fun trustedAlgorithms(host: String, port: Int): List<String> = store.storedAlgorithms(host, port)
+
     fun respond(accepted: Boolean) {
         decision?.complete(accepted)
         clear()

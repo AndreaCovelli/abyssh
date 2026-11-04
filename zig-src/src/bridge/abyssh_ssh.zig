@@ -515,19 +515,60 @@ const kex_prefs = "curve25519-sha256,curve25519-sha256@libssh.org," ++
     "diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512," ++
     "diffie-hellman-group18-sha512,diffie-hellman-group14-sha256," ++
     "diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1";
-const hostkey_prefs = "ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521," ++
-    "ssh-ed25519,rsa-sha2-512,rsa-sha2-256,ssh-rsa";
+// Each host key algorithm with its key type, as hostkeyAlgorithmName names it.
+const hostkey_methods = [_]struct { name: []const u8, kind: []const u8 }{
+    .{ .name = "ecdsa-sha2-nistp256", .kind = "ECDSA" },
+    .{ .name = "ecdsa-sha2-nistp384", .kind = "ECDSA" },
+    .{ .name = "ecdsa-sha2-nistp521", .kind = "ECDSA" },
+    .{ .name = "ssh-ed25519", .kind = "ED25519" },
+    .{ .name = "rsa-sha2-512", .kind = "RSA" },
+    .{ .name = "rsa-sha2-256", .kind = "RSA" },
+    .{ .name = "ssh-rsa", .kind = "RSA" },
+};
+const hostkey_prefs_max_len = len: {
+    var total: usize = 0;
+    for (hostkey_methods) |method| total += method.name.len + 1;
+    break :len total;
+};
 const cipher_prefs = "chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com," ++
     "aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc";
 const mac_prefs = "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com," ++
     "hmac-sha2-256,hmac-sha2-512,hmac-sha1-etm@openssh.com,hmac-sha1";
 
+/// The host key algorithms to offer, those of `preferred_types` first, as OpenSSH does
+/// for the types in known_hosts. Without that, a server with several keys could show one
+/// the user never verified, which the app reports as a changed key.
+fn hostkeyPrefs(preferred_types: []const u8, buf: *[hostkey_prefs_max_len]u8) [:0]const u8 {
+    var used: [hostkey_methods.len]bool = @splat(false);
+    var len: usize = 0;
+    var types = std.mem.tokenizeScalar(u8, preferred_types, ',');
+    while (true) {
+        // After the preferred types, one last pass adds every algorithm not yet listed.
+        const kind = types.next();
+        for (hostkey_methods, 0..) |method, i| {
+            if (used[i]) continue;
+            if (kind) |k| if (!std.mem.eql(u8, method.kind, k)) continue;
+            used[i] = true;
+            if (len > 0) {
+                buf[len] = ',';
+                len += 1;
+            }
+            @memcpy(buf[len..][0..method.name.len], method.name);
+            len += method.name.len;
+        }
+        if (kind == null) break;
+    }
+    buf[len] = 0;
+    return buf[0..len :0];
+}
+
 /// Sets the algorithms the handshake offers. Returns false, with the error set, when
 /// libssh2 rejects a list.
-fn applyMethodPrefs(session: *NativeSshSession, ssh_session: *c.LIBSSH2_SESSION) bool {
+fn applyMethodPrefs(session: *NativeSshSession, ssh_session: *c.LIBSSH2_SESSION, preferred_hostkey_types: []const u8) bool {
+    var hostkey_buf: [hostkey_prefs_max_len]u8 = undefined;
     const prefs = [_]struct { method: c_int, list: [:0]const u8 }{
         .{ .method = c.LIBSSH2_METHOD_KEX, .list = kex_prefs },
-        .{ .method = c.LIBSSH2_METHOD_HOSTKEY, .list = hostkey_prefs },
+        .{ .method = c.LIBSSH2_METHOD_HOSTKEY, .list = hostkeyPrefs(preferred_hostkey_types, &hostkey_buf) },
         .{ .method = c.LIBSSH2_METHOD_CRYPT_CS, .list = cipher_prefs },
         .{ .method = c.LIBSSH2_METHOD_CRYPT_SC, .list = cipher_prefs },
         .{ .method = c.LIBSSH2_METHOD_MAC_CS, .list = mac_prefs },
@@ -678,7 +719,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     session.cancel_fd = if (fd >= 0) fd else -1;
 }
 
-export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeConnect(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, host: c.jstring, port: c.jint, username: c.jstring) callconv(.c) c.jboolean {
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeConnect(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, host: c.jstring, port: c.jint, username: c.jstring, preferred_hostkey_types: c.jstring) callconv(.c) c.jboolean {
     _ = thiz;
     const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
     const host_slice = jniDupString(env, host) orelse {
@@ -696,6 +737,11 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         return c.JNI_FALSE;
     };
     defer allocator.free(username_slice);
+    const preferred_types = jniDupString(env, preferred_hostkey_types) orelse allocator.dupe(u8, "") catch {
+        setError(session, "Host key type alloc failed", .{});
+        return c.JNI_FALSE;
+    };
+    defer allocator.free(preferred_types);
 
     logInfo("nativeConnect host={s} port={} user={s}", .{ host_slice, port, username_slice });
 
@@ -723,7 +769,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     };
     session.session = ssh_session;
     c.libssh2_session_set_blocking(ssh_session, 0);
-    if (!applyMethodPrefs(session, ssh_session)) return c.JNI_FALSE;
+    if (!applyMethodPrefs(session, ssh_session, preferred_types)) return c.JNI_FALSE;
     logInfo("Starting SSH handshake...", .{});
     while (true) {
         const handshake_rc = c.libssh2_session_handshake(ssh_session, fd);

@@ -24,7 +24,12 @@ class NativeSshBridge {
     /** Sets the eventfd that cancels the connection when signalled; the caller closes it after the session. */
     external fun nativeSetCancelFd(handle: Long, fd: Int)
 
-    external fun nativeConnect(handle: Long, host: String, port: Int, username: String): Boolean
+    /**
+     * Opens the TCP connection and runs the SSH handshake. [preferredHostKeyTypes] lists
+     * the key types to ask for first, comma-separated, as [nativeGetHostKeyAlgorithm]
+     * names them (`ED25519,RSA`); empty keeps the default order.
+     */
+    external fun nativeConnect(handle: Long, host: String, port: Int, username: String, preferredHostKeyTypes: String): Boolean
 
     external fun nativeGetLastError(handle: Long): String?
 

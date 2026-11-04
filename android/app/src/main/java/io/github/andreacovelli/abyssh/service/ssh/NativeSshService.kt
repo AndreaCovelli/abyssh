@@ -45,7 +45,8 @@ class NativeSshService(
         check(handle != 0L) { "Failed to create native SSH session" }
         bridge.nativeSetCancelFd(handle, cancellation.open())
 
-        if (!bridge.nativeConnect(handle, host, port, username)) {
+        val preferredHostKeyTypes = hostKeyPolicy.trustedAlgorithms(host, port).joinToString(",")
+        if (!bridge.nativeConnect(handle, host, port, username, preferredHostKeyTypes)) {
             bridge.connectFailure(handle, cancellation, "Native SSH connect failed")
         }
 

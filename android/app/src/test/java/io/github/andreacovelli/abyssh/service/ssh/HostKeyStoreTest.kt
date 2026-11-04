@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -71,14 +72,48 @@ class HostKeyStoreTest {
     }
 
     @Test
-    fun `keys are stored per host, port and algorithm`() {
+    fun `keys are stored per host and port`() {
         val store = newStore()
         store.saveKey("example.com", 22, "ssh-ed25519", keyBytes)
 
         assertEquals(HostKeyCheck.Match, store.check("example.com", 22, "ssh-ed25519", keyBytes))
         assertTrue(store.check("other.com", 22, "ssh-ed25519", keyBytes) is HostKeyCheck.Unknown)
         assertTrue(store.check("example.com", 2222, "ssh-ed25519", keyBytes) is HostKeyCheck.Unknown)
-        assertTrue(store.check("example.com", 22, "ssh-rsa", keyBytes) is HostKeyCheck.Unknown)
+    }
+
+    @Test
+    fun `a key of another type than the trusted one counts as changed`() {
+        val store = newStore()
+        store.saveKey("example.com", 22, "ED25519", keyBytes)
+        val rsaKey = "rsa-host-key-bytes".toByteArray()
+
+        val check = store.check("example.com", 22, "RSA", rsaKey)
+
+        assertTrue(check is HostKeyCheck.Changed)
+        val trusted = store.check("unseen.example.com", 22, "ED25519", keyBytes) as HostKeyCheck.Unknown
+        assertEquals(trusted.fingerprint, (check as HostKeyCheck.Changed).previousFingerprint)
+    }
+
+    @Test
+    fun `trusting a key of a new type drops the old type`() {
+        val store = newStore()
+        store.saveKey("example.com", 22, "ED25519", keyBytes)
+        store.saveKey("example.com", 22, "RSA", "rsa-host-key-bytes".toByteArray())
+
+        assertEquals(listOf("RSA"), store.storedAlgorithms("example.com", 22))
+        assertNull(store.loadKey("example.com", 22, "ED25519"))
+    }
+
+    @Test
+    fun `stored algorithms ignore hosts that share the prefix`() {
+        val store = newStore()
+        store.saveKey("a", 22, "ED25519", keyBytes)
+        store.saveKey("a:22", 2222, "RSA", keyBytes)
+        store.saveKey("::1", 22, "ECDSA", keyBytes)
+
+        assertEquals(listOf("ED25519"), store.storedAlgorithms("a", 22))
+        assertEquals(listOf("ECDSA"), store.storedAlgorithms("::1", 22))
+        assertEquals(emptyList<String>(), store.storedAlgorithms("a", 2222))
     }
 
     @Test
