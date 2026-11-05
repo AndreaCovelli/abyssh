@@ -264,9 +264,9 @@ pub fn build(b: *std.Build) void {
     }
 
     // Zig tests that need no JNI or NDK, on the host: the backup container format, the
-    // fling cap for full-screen programs, and the vendored Mosh client, which links zlib
-    // built from source.
-    const test_step = b.step("test", "Run the backup, scroll, and Mosh tests on the host");
+    // fling cap for full-screen programs, the Kitty image cache, which runs Ghostty's
+    // terminal, and the vendored Mosh client, which links zlib built from source.
+    const test_step = b.step("test", "Run the backup, scroll, Kitty image, and Mosh tests on the host");
     const host = b.graph.host;
     const backup_tests = b.addTest(.{
         .name = "backup-tests",
@@ -287,6 +287,18 @@ pub fn build(b: *std.Build) void {
         }),
     });
     test_step.dependOn(&b.addRunArtifact(scroll_tests).step);
+    const kitty_cache_module = b.createModule(.{
+        .root_source_file = b.path("src/bridge/kitty_image_cache.zig"),
+        .target = host,
+        .link_libc = true,
+    });
+    kitty_cache_module.addImport("ghostty-vt", b.dependency("ghostty", .{
+        .target = host,
+        .simd = false,
+    }).module("ghostty-vt"));
+    kitty_cache_module.addImport("zigimg", b.dependency("zigimg", .{ .target = host }).module("zigimg"));
+    const kitty_cache_tests = b.addTest(.{ .name = "kitty-image-cache-tests", .root_module = kitty_cache_module });
+    test_step.dependOn(&b.addRunArtifact(kitty_cache_tests).step);
     const host_mosh = b.dependency("mosh", .{
         .target = host,
         .optimize = .safe,
