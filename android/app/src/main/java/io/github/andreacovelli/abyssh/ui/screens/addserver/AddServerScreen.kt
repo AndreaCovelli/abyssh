@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.ui.screens.terminal.HostKeyDialog
+import io.github.andreacovelli.abyssh.data.db.SavedSecrets
 import io.github.andreacovelli.abyssh.model.DEFAULT_KEEPALIVE_INTERVAL_SECONDS
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -266,6 +267,7 @@ private fun AuthenticationSection(form: AddServerForm, keys: List<SshKey>, vm: A
         }
 
     AbyssSectionHeader(stringResource(R.string.server_section_authentication))
+    UnreadableSecretNotices(form = form, onClear = vm::clearUnreadable)
     AbyssSegmentedControl(
         options = authOptions,
         labels =
@@ -307,6 +309,62 @@ private fun AuthenticationSection(form: AddServerForm, keys: List<SshKey>, vm: A
             style = AbyssTypography.current.bodySmall,
             color = AbyssColors.current.textMuted,
         )
+    }
+}
+
+/** Reports saved secrets that can't be read, whichever auth method is selected, since backups stop on them too. */
+@Composable
+private fun UnreadableSecretNotices(form: AddServerForm, onClear: (SavedSecrets) -> Unit) {
+    // A copy is a new host, with no stored value to keep or clear.
+    val isCopy = form.id == null
+    if (form.unreadableNotices.password) {
+        UnreadableSecretNotice(
+            message =
+                stringResource(
+                    if (isCopy) R.string.server_password_not_copied else R.string.server_password_unreadable,
+                ),
+            clearDescription = stringResource(R.string.server_clear_saved_password),
+            onClear = { onClear(SavedSecrets(password = true)) }.takeUnless { isCopy },
+        )
+    }
+    if (form.unreadableNotices.keyPassphrase) {
+        UnreadableSecretNotice(
+            message =
+                stringResource(
+                    if (isCopy) R.string.server_passphrase_not_copied else R.string.server_passphrase_unreadable,
+                ),
+            clearDescription = stringResource(R.string.server_clear_saved_passphrase),
+            onClear = { onClear(SavedSecrets(keyPassphrase = true)) }.takeUnless { isCopy },
+        )
+    }
+}
+
+@Composable
+private fun UnreadableSecretNotice(message: String, clearDescription: String, onClear: (() -> Unit)?) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AbyssText(
+            message,
+            style = AbyssTypography.current.bodySmall,
+            color = AbyssColors.current.error,
+            modifier = Modifier.weight(1f),
+        )
+        if (onClear != null) {
+            AbyssButton(
+                onClick = onClear,
+                variant = AbyssButtonVariant.Ghost,
+                contentDescription = clearDescription,
+            ) {
+                AbyssText(
+                    stringResource(R.string.action_clear),
+                    style = AbyssTypography.current.label,
+                    color = AbyssColors.current.textSecondary,
+                )
+            }
+        }
     }
 }
 

@@ -29,6 +29,12 @@
     <string name="auth_ssh_key">SSH key</string>
     <string name="auth_none">None</string>
     <string name="server_password_label">Password</string>
+    <string name="server_password_unreadable">The saved password can\'t be read. Saving keeps it until you enter a new one or clear it.</string>
+    <string name="server_passphrase_unreadable">The saved key passphrase can\'t be read. Saving keeps it until you enter a new one or clear it.</string>
+    <string name="server_password_not_copied">The saved password can\'t be read, so it wasn\'t copied. Enter it here if this server needs one.</string>
+    <string name="server_passphrase_not_copied">The saved key passphrase can\'t be read, so it wasn\'t copied. Enter it here if this server needs one.</string>
+    <string name="server_clear_saved_password">Clear saved password</string>
+    <string name="server_clear_saved_passphrase">Clear saved key passphrase</string>
     <string name="public_key_unavailable">No public key available</string>
     <string name="public_key_copied">Public key copied</string>
     <string name="key_set_passphrase">Set passphrase</string>

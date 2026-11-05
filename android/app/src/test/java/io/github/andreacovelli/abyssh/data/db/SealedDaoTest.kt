@@ -86,6 +86,79 @@ class SealedDaoTest {
         assertEquals(listOf("b"), dao.unreadableNames())
     }
 
+    // A sealed value bound to another key can't be opened here, like one the migration kept.
+    private fun storeUnreadableSecrets(id: Long): Pair<String, String> {
+        val otherBox = SecretBox(SecretKeySpec(ByteArray(32) { 9 }, "AES"))
+        val password = otherBox.seal("lost", SecretBox.hostPassword(id))
+        val passphrase = otherBox.seal("lost", SecretBox.hostKeyPassphrase(id))
+        db.openHelper.writableDatabase.execSQL(
+            "UPDATE host_profiles SET password = ?, keyPassphrase = ? WHERE id = ?",
+            arrayOf<Any>(password, passphrase, id),
+        )
+        return password to passphrase
+    }
+
+    @Test
+    fun `saving an edit keeps secrets that can't be opened`() = runBlocking {
+        val dao = db.hostProfileDao()
+        val id = dao.insert(HostProfile(name = "box", host = "h", username = "u"))
+        val (password, passphrase) = storeUnreadableSecrets(id)
+        assertEquals(SavedSecrets(password = true, keyPassphrase = true), dao.unreadableSecrets(id))
+
+        val read = dao.getById(id)!!
+        assertEquals("", read.password)
+        assertEquals("", read.keyPassphrase)
+        dao.insert(read.copy(name = "renamed"))
+
+        assertEquals("renamed", dao.getById(id)!!.name)
+        assertEquals(password, column("SELECT password FROM host_profiles"))
+        assertEquals(passphrase, column("SELECT keyPassphrase FROM host_profiles"))
+        assertEquals(listOf("renamed"), dao.unreadableNames())
+
+        dao.update(read.copy(name = "again"))
+        assertEquals("again", dao.getById(id)!!.name)
+        assertEquals(password, column("SELECT password FROM host_profiles"))
+        assertEquals(passphrase, column("SELECT keyPassphrase FROM host_profiles"))
+    }
+
+    @Test
+    fun `a typed secret replaces one that can't be opened and leaves the other`() = runBlocking {
+        val dao = db.hostProfileDao()
+        val id = dao.insert(HostProfile(name = "box", host = "h", username = "u"))
+        val (_, passphrase) = storeUnreadableSecrets(id)
+
+        dao.insert(dao.getById(id)!!.copy(password = "typed"))
+
+        assertEquals("typed", dao.getById(id)!!.password)
+        assertEquals(passphrase, column("SELECT keyPassphrase FROM host_profiles"))
+        assertEquals(SavedSecrets(keyPassphrase = true), dao.unreadableSecrets(id))
+    }
+
+    @Test
+    fun `only the discarded secret that can't be opened is erased`() = runBlocking {
+        val dao = db.hostProfileDao()
+        val id = dao.insert(HostProfile(name = "box", host = "h", username = "u"))
+        val (_, passphrase) = storeUnreadableSecrets(id)
+
+        dao.replaceDiscarding(dao.getById(id)!!, SavedSecrets(password = true))
+
+        assertEquals("", column("SELECT password FROM host_profiles"))
+        assertEquals(passphrase, column("SELECT keyPassphrase FROM host_profiles"))
+        assertEquals(SavedSecrets(keyPassphrase = true), dao.unreadableSecrets(id))
+    }
+
+    @Test
+    fun `an empty value still clears a secret that opens`() = runBlocking {
+        val dao = db.hostProfileDao()
+        val id = dao.insert(HostProfile(name = "box", host = "h", username = "u", password = "pw", keyPassphrase = "pp"))
+
+        dao.insert(dao.getById(id)!!.copy(password = "", keyPassphrase = ""))
+
+        assertEquals("", column("SELECT password FROM host_profiles"))
+        assertEquals("", column("SELECT keyPassphrase FROM host_profiles"))
+        assertEquals(SavedSecrets(), dao.unreadableSecrets(id))
+    }
+
     @Test
     fun `hosts with an explicit id and imported rows are sealed for that row`() = runBlocking {
         val dao = db.hostProfileDao()
