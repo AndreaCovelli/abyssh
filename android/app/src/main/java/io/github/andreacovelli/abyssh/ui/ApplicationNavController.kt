@@ -3,12 +3,14 @@ package io.github.andreacovelli.abyssh.ui
 import android.app.Application
 import android.content.Context
 import android.content.res.Resources
+import android.net.Uri
 import io.github.andreacovelli.abyssh.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.dropUnlessResumed
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -21,9 +23,12 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.data.secure.DataResetNotice
+import io.github.andreacovelli.abyssh.model.QuickConnectTarget
 import io.github.andreacovelli.abyssh.ui.screens.addserver.AddServerScreen
 import io.github.andreacovelli.abyssh.ui.screens.addserver.AddServerViewModel
 import io.github.andreacovelli.abyssh.ui.screens.keys.KeysViewModel
+import io.github.andreacovelli.abyssh.ui.screens.knownhosts.KnownHostsScreen
+import io.github.andreacovelli.abyssh.ui.screens.knownhosts.KnownHostsViewModel
 import io.github.andreacovelli.abyssh.ui.screens.serverlist.DataResetDialog
 import io.github.andreacovelli.abyssh.ui.screens.serverlist.ServerListScreen
 import io.github.andreacovelli.abyssh.ui.screens.serverlist.ServerListViewModel
@@ -47,6 +52,10 @@ fun ApplicationNavController() {
             composable("servers") { ServersRoute(navController, application) }
             composable("settings") {
                 SettingsRoute(navController, application, onAppLockVerified = lockState::markUnlocked)
+            }
+            composable("settings/known-hosts") {
+                val vm: KnownHostsViewModel = viewModel(factory = KnownHostsViewModel.factory(application))
+                KnownHostsScreen(vm = vm, onBack = dropUnlessResumed { navController.popBackStack() })
             }
             serverEditorRoutes(navController, application)
             terminalRoutes(navController, application)
@@ -113,6 +122,13 @@ private fun ServersRoute(navController: NavHostController, application: Applicat
             verifyHostThen(context, resources, requireAuthOnConnect || host.requireAuthOnConnect, open)
         },
         onOpenSettings = { navController.navigate("settings") },
+        onQuickConnect = { target ->
+            val host = Uri.encode(target.host)
+            val username = Uri.encode(target.username)
+            navController.navigate("servers/add?host=$host&port=${target.port}&username=$username") {
+                launchSingleTop = true
+            }
+        },
     )
 }
 
@@ -145,6 +161,7 @@ private fun SettingsRoute(
         },
         backupViewModel = viewModel<SettingsBackupViewModel>(factory = SettingsBackupViewModel.factory(application)),
         keysViewModel = viewModel<KeysViewModel>(factory = KeysViewModel.factory(application)),
+        onOpenKnownHosts = { navController.navigate("settings/known-hosts") { launchSingleTop = true } },
         onBack = {
             if (navController.currentBackStackEntry?.destination?.route == "settings") {
                 navController.popBackStack()
@@ -162,6 +179,37 @@ private fun NavGraphBuilder.serverEditorRoutes(navController: NavHostController,
     composable("servers/add") {
         val vm: AddServerViewModel = viewModel(factory = AddServerViewModel.factory(application, null))
         AddServerScreen(vm = vm, onBack = dropUnlessResumed { navController.popBackStack() })
+    }
+    composable(
+        route = "servers/add?host={host}&port={port}&username={username}",
+        arguments = listOf(
+            navArgument("host") { type = NavType.StringType },
+            navArgument("port") { type = NavType.IntType },
+            navArgument("username") { type = NavType.StringType },
+        ),
+    ) { backStackEntry ->
+        val context = LocalContext.current
+        val resources = LocalResources.current
+        val prefill = QuickConnectTarget(
+            username = backStackEntry.arguments?.getString("username").orEmpty(),
+            host = backStackEntry.arguments?.getString("host").orEmpty(),
+            port = backStackEntry.arguments?.getInt("port") ?: return@composable,
+        )
+        val vm: AddServerViewModel = viewModel(factory = AddServerViewModel.factory(application, null, prefill = prefill))
+        val requireAuthOnConnect = SettingsRepository.getInstance(application).requireAuthOnConnect
+        AddServerScreen(
+            vm = vm,
+            onBack = dropUnlessResumed { navController.popBackStack() },
+            onSaveAndConnect = { host ->
+                // Back stays with the list, whether or not verification lets the session open.
+                if (backStackEntry.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    navController.popBackStack()
+                    verifyHostThen(context, resources, requireAuthOnConnect.value || host.requireAuthOnConnect) {
+                        navController.navigate("terminal/${host.id}")
+                    }
+                }
+            },
+        )
     }
     composable(route = "servers/edit/{id}", arguments = idArgument) { backStackEntry ->
         val id = backStackEntry.arguments?.getLong("id")

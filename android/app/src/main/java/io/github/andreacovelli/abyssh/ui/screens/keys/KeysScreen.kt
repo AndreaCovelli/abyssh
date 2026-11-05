@@ -35,6 +35,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssCard
+import io.github.andreacovelli.abyssh.ui.components.readTextFile
 import io.github.andreacovelli.abyssh.ui.components.AbyssDialog
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
@@ -373,15 +374,4 @@ private fun DeleteKeyDialog(item: KeyListItem, onConfirm: () -> Unit, onDismiss:
 private const val MAX_KEY_FILE_BYTES = 64 * 1024
 
 /** The text of the key file at [uri], or null when it can't be read or is too large to be a key. */
-private fun readKeyFile(context: Context, uri: Uri): String? = runCatching {
-    context.contentResolver.openInputStream(uri)?.use { input ->
-        val buffer = ByteArray(MAX_KEY_FILE_BYTES + 1)
-        var size = 0
-        while (size < buffer.size) {
-            val read = input.read(buffer, size, buffer.size - size)
-            if (read < 0) break
-            size += read
-        }
-        if (size > MAX_KEY_FILE_BYTES) null else buffer.decodeToString(0, size)
-    }
-}.getOrNull()
+private fun readKeyFile(context: Context, uri: Uri): String? = readTextFile(context, uri, MAX_KEY_FILE_BYTES)

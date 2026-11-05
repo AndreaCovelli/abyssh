@@ -23,6 +23,7 @@ import io.github.andreacovelli.abyssh.model.DEFAULT_KEEPALIVE_INTERVAL_SECONDS
 import io.github.andreacovelli.abyssh.model.MAX_KEEPALIVE_INTERVAL_SECONDS
 import io.github.andreacovelli.abyssh.model.HostProfile
 import io.github.andreacovelli.abyssh.model.MultiplexerType
+import io.github.andreacovelli.abyssh.model.QuickConnectTarget
 import io.github.andreacovelli.abyssh.model.SshKey
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
@@ -42,20 +43,27 @@ import kotlinx.coroutines.launch
 
 /**
  * Form for adding or editing a server. With [copy], [hostId] is only the starting
- * point: the form is prefilled from it and saving creates a new server.
+ * point: the form is prefilled from it and saving creates a new server. [prefill] starts
+ * a new server from a quick connect address.
  */
 class AddServerViewModel(
     application: Application,
     private val hostId: Long?,
     private val copy: Boolean = false,
+    private val prefill: QuickConnectTarget? = null,
 ) : AndroidViewModel(application) {
     companion object {
-        fun factory(application: Application, hostId: Long?, copy: Boolean = false): ViewModelProvider.Factory =
+        fun factory(
+            application: Application,
+            hostId: Long?,
+            copy: Boolean = false,
+            prefill: QuickConnectTarget? = null,
+        ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
                     if (modelClass.isAssignableFrom(AddServerViewModel::class.java)) {
                         @Suppress("UNCHECKED_CAST")
-                        return AddServerViewModel(application, hostId, copy) as T
+                        return AddServerViewModel(application, hostId, copy, prefill) as T
                     }
                     throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
                 }
@@ -77,7 +85,7 @@ class AddServerViewModel(
             )
         )
 
-    private val _form = MutableStateFlow(AddServerForm())
+    private val _form = MutableStateFlow(prefill?.let(AddServerForm::from) ?: AddServerForm())
     val form: StateFlow<AddServerForm> = _form.asStateFlow()
 
     private val tester = ConnectionTester(viewModelScope, hostKeyStore, localNetwork)
@@ -129,6 +137,7 @@ class AddServerViewModel(
                         tmuxControlMode = profile.tmuxControlMode,
                         chooseSessionOnConnect = profile.chooseSessionOnConnect,
                         keepaliveInterval = profile.keepaliveIntervalSeconds.toString(),
+                        groupName = profile.groupName,
                         unreadableSecrets = hostRepository.unreadableSecrets(hostId),
                     )
             }
@@ -137,6 +146,10 @@ class AddServerViewModel(
 
     fun updateName(name: String) {
         _form.value = _form.value.copy(name = name)
+    }
+
+    fun updateGroup(groupName: String) {
+        _form.value = _form.value.copy(groupName = groupName)
     }
 
     fun updateHost(host: String) {
@@ -250,7 +263,8 @@ class AddServerViewModel(
 
     fun onHostKeyDecision(accept: Boolean) = tester.onHostKeyDecision(accept)
 
-    fun save(onComplete: () -> Unit) {
+    /** Saves the form, then calls [onComplete] with the saved host, unless it asks about open tabs first. */
+    fun save(onComplete: (HostProfile) -> Unit) {
         val current = _form.value
         val host = current.host.filterNot { it.isWhitespace() }
         val port = current.portNumber ?: return
@@ -261,6 +275,8 @@ class AddServerViewModel(
         _saving.value = true
 
         viewModelScope.launch {
+            // Set from the server list and by connecting, so the form may be behind on these.
+            val stored = current.id?.let { hostRepository.getById(it) }
             val profile =
                 HostProfile(
                     id = current.id ?: 0L,
@@ -279,20 +295,23 @@ class AddServerViewModel(
                     tmuxControlMode = current.tmuxControlMode,
                     chooseSessionOnConnect = current.chooseSessionOnConnect,
                     keepaliveIntervalSeconds = current.keepaliveIntervalSeconds,
+                    groupName = current.groupName.trim(),
+                    favorite = stored?.favorite ?: false,
+                    lastConnectedAtEpochMs = stored?.lastConnectedAtEpochMs ?: 0L,
                 )
-            var saved = false
+            var savedId: Long? = null
             try {
-                hostRepository.upsert(profile, discard = current.clearedSecrets)
-                saved = true
+                savedId = hostRepository.upsert(profile, discard = current.clearedSecrets)
             } finally {
-                if (!saved) _saving.value = false
+                if (savedId == null) _saving.value = false
             }
             generatedKey.keepIfUsed(profile.keyId)
-            val stale = if (current.id != null) applyToOpenTabs(profile) else emptyList()
+            val saved = profile.copy(id = savedId ?: profile.id)
+            val stale = if (current.id != null) sessionRepository.applyToOpenTabs(profile, sshKeyRepository) else emptyList()
             if (stale.isEmpty()) {
-                onComplete()
+                onComplete(saved)
             } else {
-                _pendingReconnect.value = PendingReconnect(stale, onComplete)
+                _pendingReconnect.value = PendingReconnect(stale) { onComplete(saved) }
             }
         }
     }
@@ -302,17 +321,6 @@ class AddServerViewModel(
 
     private val _pendingReconnect = MutableStateFlow<PendingReconnect?>(null)
     val pendingReconnect: StateFlow<PendingReconnect?> = _pendingReconnect.asStateFlow()
-
-    private suspend fun applyToOpenTabs(profile: HostProfile): List<TabSession> {
-        if (sessionRepository.tabsForHost(profile.id).isEmpty()) return emptyList()
-        val key = profile.keyId?.let { sshKeyRepository.getById(it) }
-        val spec = TabSpec.fromHostProfile(
-            host = profile,
-            publicKeyOpenSsh = key?.publicKeyOpenSsh.orEmpty(),
-            privateKeyPem = key?.privateKeyPem.orEmpty(),
-        )
-        return sessionRepository.applyHostUpdate(spec)
-    }
 
     override fun onCleared() {
         tester.close()
@@ -325,6 +333,18 @@ class AddServerViewModel(
         if (reconnect) sessionRepository.reconnectTabs(pending.tabs)
         pending.onDone()
     }
+}
+
+/** Gives this host's open tabs the saved [profile], and returns those that must reconnect to use it. */
+private suspend fun TerminalSessionRepository.applyToOpenTabs(profile: HostProfile, keys: SshKeyRepository): List<TabSession> {
+    if (tabsForHost(profile.id).isEmpty()) return emptyList()
+    val key = profile.keyId?.let { keys.getById(it) }
+    val spec = TabSpec.fromHostProfile(
+        host = profile,
+        publicKeyOpenSsh = key?.publicKeyOpenSsh.orEmpty(),
+        privateKeyPem = key?.privateKeyPem.orEmpty(),
+    )
+    return applyHostUpdate(spec)
 }
 
 data class AddServerForm(
@@ -346,10 +366,17 @@ data class AddServerForm(
     val tmuxControlMode: Boolean = false,
     val chooseSessionOnConnect: Boolean = false,
     val keepaliveInterval: String = DEFAULT_KEEPALIVE_INTERVAL_SECONDS.toString(),
+    val groupName: String = "",
     // The empty password and keyPassphrase above don't mean the host has none of these.
     val unreadableSecrets: SavedSecrets = SavedSecrets(),
     val clearedSecrets: SavedSecrets = SavedSecrets(),
-)
+) {
+    companion object {
+        /** A new server for a quick connect address, named after its host. */
+        fun from(target: QuickConnectTarget): AddServerForm =
+            AddServerForm(name = target.host, host = target.host, port = target.port.toString(), username = target.username)
+    }
+}
 
 /** The unreadable saved secrets the form hasn't replaced or cleared, which it reports to the user. */
 val AddServerForm.unreadableNotices: SavedSecrets

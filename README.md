@@ -20,7 +20,8 @@ Mosh, and renders the session with the same terminal engine as
 - SSH with a password, a key, or a key with a passphrase; Tailscale SSH; and Mosh,
   which keeps a session alive across network changes and sleep
 - A local shell on the phone
-- Host key checks on first connect, with a warning when a known key changes
+- Host key checks on first connect, a warning when a known key or its type changes, and
+  a list of trusted keys where you can forget one
 - A command per host that runs after each connect or reconnect
 - tmux and zmx session lists, so you can reattach to a session, end one, or choose
   which one to attach to each time you connect
@@ -43,7 +44,10 @@ Mosh, and renders the session with the same terminal engine as
 
 **Files and keys**
 
-- An SFTP file browser
+- An SFTP file browser that streams transfers of any size, resumes them after a failure,
+  and creates and renames folders
+- Host groups, favourites, and sorting by last connected
+- Quick connect from `user@host:port`, and import of hosts from an `ssh_config` file
 - Ed25519 and RSA key generation, and import of existing keys
 - Encrypted export and import of hosts and keys
 
@@ -53,6 +57,8 @@ Mosh, and renders the session with the same terminal engine as
   protects
 - An optional app lock that uses your fingerprint or the phone's screen lock
 - An option that hides the app's contents from screenshots and the recent apps list
+- No telemetry: see the [privacy policy](PRIVACY.md). To report a vulnerability, see the
+  [security policy](SECURITY.md)
 
 ## Install
 

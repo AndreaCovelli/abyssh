@@ -89,7 +89,6 @@ internal fun TerminalSessionContent(
     val selectedPane by vm.files.selectedPane.collectAsStateWithLifecycle()
     // The terminal takes Esc as a key; the files pane leaves it to act as Back.
     HoldEscapeKey(enabled = selectedPane == ConnectionTab.Terminal)
-    val fileState by vm.files.state.collectAsStateWithLifecycle()
     val input = remember(context, vm, overlay) { TerminalInputController(context, vm, overlay) }
     SideEffect {
         input.abysshKeys = host.abysshKeys
@@ -123,7 +122,6 @@ internal fun TerminalSessionContent(
         }
     }
 
-    fileState.uploadProgress?.let { UploadProgressDialog(progress = it, onCancel = vm.files::cancelUpload) }
     if (overlay.showTabSheet) TerminalPaletteSheet(vm, host, input, files)
 }
 
@@ -139,6 +137,7 @@ private fun TerminalSessionEffects(
     val haptics = LocalHapticFeedback.current
     LaunchedEffect(sessionState.handle, activeTabId) { input.clearSelection() }
     LaunchedEffect(input) { input.watchClipboard() }
+    FileTransferNotices(vm)
     val isDark = (theme?.background ?: colors.background).luminance() < 0.5f
     // Keyed on the tabs too, so a tab that opens while this screen shows, as tmux windows do, gets the colors.
     val tabs by vm.tabs.collectAsStateWithLifecycle()

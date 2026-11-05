@@ -5,4 +5,7 @@ enum class AuthMethod {
     Password,
     Key,
     KeyWithPassphrase,
+    ;
+
+    val usesKey: Boolean get() = this == Key || this == KeyWithPassphrase
 }

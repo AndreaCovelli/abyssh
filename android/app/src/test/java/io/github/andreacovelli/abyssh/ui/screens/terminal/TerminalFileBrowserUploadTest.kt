@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.service.terminal.isDirectoryMode
+import io.github.andreacovelli.abyssh.service.terminal.uploadMode
+import io.github.andreacovelli.abyssh.service.terminal.uploadTempPath
 import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

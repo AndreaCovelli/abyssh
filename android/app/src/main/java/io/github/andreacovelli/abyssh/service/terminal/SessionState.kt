@@ -34,4 +34,8 @@ data class HostKeyPrompt(
     val algorithm: String,
     val fingerprint: String,
     val previousFingerprint: String?,
-)
+    val previousAlgorithm: String? = null,
+) {
+    /** The key type the host used to have, when this key is of another type. */
+    val changedFromAlgorithm: String? get() = previousAlgorithm?.takeIf { it != algorithm }
+}

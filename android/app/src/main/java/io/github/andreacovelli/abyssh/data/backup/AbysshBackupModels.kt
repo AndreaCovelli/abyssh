@@ -71,6 +71,8 @@ data class BackupHostProfile(
     val tmuxControlMode: Boolean = false,
     val chooseSessionOnConnect: Boolean = false,
     val keepaliveIntervalSeconds: Int = DEFAULT_KEEPALIVE_INTERVAL_SECONDS,
+    val groupName: String = "",
+    val favorite: Boolean = false,
 ) {
     fun toEntity(
         idOverride: Long = id,
@@ -92,6 +94,8 @@ data class BackupHostProfile(
         tmuxControlMode = tmuxControlMode,
         chooseSessionOnConnect = chooseSessionOnConnect,
         keepaliveIntervalSeconds = keepaliveIntervalSeconds,
+        groupName = groupName,
+        favorite = favorite,
     )
 
     /** Leaves out the password and passphrase, so logging a backup can't leak them. */
@@ -117,6 +121,8 @@ data class BackupHostProfile(
             tmuxControlMode = host.tmuxControlMode,
             chooseSessionOnConnect = host.chooseSessionOnConnect,
             keepaliveIntervalSeconds = host.keepaliveIntervalSeconds,
+            groupName = host.groupName,
+            favorite = host.favorite,
         )
     }
 }

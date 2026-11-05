@@ -3,7 +3,7 @@ package io.github.andreacovelli.abyssh.ui.screens.serverlist
 import io.github.andreacovelli.abyssh.ui.components.rememberLocalNetworkPermissionGate
 
 import io.github.andreacovelli.abyssh.ui.components.AbyssStatusDot
-import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
+import io.github.andreacovelli.abyssh.ui.components.rememberNotificationPermissionGate
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.CardDefaults
 import androidx.compose.ui.draw.clip
@@ -14,9 +14,6 @@ import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.ui.components.onSecondaryClick
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
 import android.widget.Toast
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -43,6 +40,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -61,11 +59,12 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import io.github.andreacovelli.abyssh.model.HostProfile
+import io.github.andreacovelli.abyssh.model.QuickConnectTarget
+import io.github.andreacovelli.abyssh.model.needsSetup
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
@@ -87,9 +86,13 @@ fun ServerListScreen(
     onConnectServer: (HostProfile) -> Unit,
     onNewSession: (HostProfile) -> Unit,
     onOpenSettings: () -> Unit,
+    onQuickConnect: (QuickConnectTarget) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val hosts by vm.hosts.collectAsStateWithLifecycle()
+    val sections by vm.sections.collectAsStateWithLifecycle()
+    val sort by vm.sort.collectAsStateWithLifecycle()
+    val collapsedSections by vm.collapsedSections.collectAsStateWithLifecycle()
     val searchQuery by vm.search.collectAsStateWithLifecycle()
     val connectedHostIds by vm.connectedHostIds.collectAsStateWithLifecycle()
     val openSessions by vm.openSessions.collectAsStateWithLifecycle()
@@ -102,10 +105,18 @@ fun ServerListScreen(
     var pendingDisconnectHostId by remember { mutableStateOf<Long?>(null) }
     var pendingDisconnectLocalShell by remember { mutableStateOf(false) }
     var pendingDeleteHostId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var showQuickConnect by rememberSaveable { mutableStateOf(false) }
+    val sshConfigPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(vm::readSshConfig)
+    }
     LaunchedEffect(hosts, selectedHostId) {
         if (hosts.none { it.id == selectedHostId }) selectedHostId = null
     }
+    ServerListMessages(vm)
 
+    val withPermissions = { host: HostProfile, open: (HostProfile) -> Unit ->
+        withNotificationPermission { withLocalNetworkPermission(host.host) { open(host) } }
+    }
     val colors = AbyssColors.current
     Box(modifier = modifier.fillMaxSize().background(colors.background)) {
         Column(
@@ -121,7 +132,12 @@ fun ServerListScreen(
                 onSearchChange = vm::updateSearchQuery,
                 onOpenSettings = onOpenSettings,
             )
-            AbyssSectionHeader(stringResource(R.string.server_list_section_hosts))
+            HostsSectionBar(
+                sort = sort,
+                onSortChange = vm::setSort,
+                onQuickConnect = { showQuickConnect = true },
+                onImportSshConfig = { sshConfigPicker.launch(arrayOf("*/*")) },
+            )
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (localShellEnabled) {
                     item(key = "local-shell") {
@@ -135,60 +151,57 @@ fun ServerListScreen(
                 if (hosts.isEmpty()) {
                     item(key = "empty") { EmptyState(filtered = searchQuery.isNotBlank()) }
                 }
-                items(hosts, key = { it.id }) { host ->
+                // A filter shows every match, including those in collapsed sections.
+                hostSectionItems(
+                    sections = sections,
+                    collapsed = if (searchQuery.isBlank()) collapsedSections else emptySet(),
+                    onToggle = vm::toggleSection,
+                ) { host ->
                     val isConnected = host.id in connectedHostIds
                     HostCard(
                         host = host,
                         isConnected = isConnected,
                         sessionCount = openSessions.tabsFor(host.id),
                         isSelected = selectedHostId == host.id,
-                        onSelect = { selectedHostId = it },
-                        onDelete = {
-                            if (isConnected) {
-                                val message = resources.getString(R.string.server_list_disconnect_before_delete)
-                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                            } else {
-                                pendingDeleteHostId = host.id
-                            }
-                        },
-                        onEdit = { onEditServer(host.id) },
-                        onCopy = { onCopyServer(host.id) },
-                        onConnect = {
-                            withNotificationPermission {
-                                withLocalNetworkPermission(host.host) { onConnectServer(host) }
-                            }
-                        },
-                        onNewSession = {
-                            withNotificationPermission {
-                                withLocalNetworkPermission(host.host) { onNewSession(host) }
-                            }
-                        },
-                        onDisconnect = { pendingDisconnectHostId = host.id },
+                        actions = HostCardActions(
+                            onSelect = { selectedHostId = it },
+                            onDelete = {
+                                if (isConnected) {
+                                    val message = resources.getString(R.string.server_list_disconnect_before_delete)
+                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                } else {
+                                    pendingDeleteHostId = host.id
+                                }
+                            },
+                            onEdit = { onEditServer(host.id) },
+                            onCopy = { onCopyServer(host.id) },
+                            onToggleFavorite = { vm.setFavorite(host.id, !host.favorite) },
+                            onConnect = {
+                                if (host.needsSetup) onEditServer(host.id) else withPermissions(host, onConnectServer)
+                            },
+                            onNewSession = { withPermissions(host, onNewSession) },
+                            onDisconnect = { pendingDisconnectHostId = host.id },
+                        ),
                     )
                 }
             }
         }
 
-        ExtendedFloatingActionButton(
-            onClick = onAddServer,
-            icon = { Icon(painterResource(R.drawable.ic_add), contentDescription = null) },
-            text = { AbyssText(stringResource(R.string.server_list_add), style = AbyssTypography.current.label) },
-            containerColor = colors.accent,
-            contentColor = colors.onAccent,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(16.dp),
-        )
+        AddServerButton(onAddServer, Modifier.align(Alignment.BottomEnd))
 
+        if (showQuickConnect) {
+            QuickConnectDialog(
+                onConfirm = { target ->
+                    showQuickConnect = false
+                    onQuickConnect(target)
+                },
+                onDismiss = { showQuickConnect = false },
+            )
+        }
+        SshConfigImportPrompt(vm)
         if (pendingDisconnectLocalShell) {
-            DisconnectDialog(
-                name = stringResource(R.string.server_list_local_shell),
-                body = pluralStringResource(
-                    R.plurals.server_list_disconnect_local_body,
-                    openSessions.localShellTabs,
-                    openSessions.localShellTabs,
-                ),
+            LocalShellDisconnectDialog(
+                tabs = openSessions.localShellTabs,
                 onConfirm = vm::disconnectLocalShell,
                 onDismiss = { pendingDisconnectLocalShell = false },
             )
@@ -218,31 +231,73 @@ fun ServerListScreen(
     }
 }
 
-/**
- * Returns a runner that asks for the notification permission on Android 13 and later
- * before running its action. The session service needs it to show its notification; the
- * action runs whether or not the user grants it.
- */
 @Composable
-private fun rememberNotificationPermissionGate(): (() -> Unit) -> Unit {
+private fun ServerListMessages(vm: ServerListViewModel) {
     val context = LocalContext.current
-    val pending = remember { arrayOfNulls<() -> Unit>(1) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        val action = pending[0]
-        pending[0] = null
-        action?.invoke()
-    }
-    return { action ->
-        val needsPermission =
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-                PackageManager.PERMISSION_GRANTED
-        if (needsPermission) {
-            pending[0] = action
-            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            action()
+    val resources = LocalResources.current
+    LaunchedEffect(vm) {
+        vm.messages.collect { message ->
+            Toast.makeText(context, message.resolve(resources), Toast.LENGTH_SHORT).show()
         }
+    }
+}
+
+@Composable
+private fun AddServerButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = AbyssColors.current
+    ExtendedFloatingActionButton(
+        onClick = onClick,
+        icon = { Icon(painterResource(R.drawable.ic_add), contentDescription = null) },
+        text = { AbyssText(stringResource(R.string.server_list_add), style = AbyssTypography.current.label) },
+        containerColor = colors.accent,
+        contentColor = colors.onAccent,
+        modifier = modifier
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .padding(16.dp),
+    )
+}
+
+/** Shows what importing the chosen `ssh_config` file would do, once it has been read. */
+@Composable
+private fun SshConfigImportPrompt(vm: ServerListViewModel) {
+    val plan by vm.sshConfigImport.collectAsStateWithLifecycle()
+    plan?.let {
+        SshConfigImportDialog(
+            plan = it,
+            onConfirm = vm::confirmSshConfigImport,
+            onDismiss = vm::dismissSshConfigImport,
+        )
+    }
+}
+
+@Composable
+private fun LocalShellDisconnectDialog(tabs: Int, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    DisconnectDialog(
+        name = stringResource(R.string.server_list_local_shell),
+        body = pluralStringResource(R.plurals.server_list_disconnect_local_body, tabs, tabs),
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+    )
+}
+
+/**
+ * The [sections] as list items: a heading for each, unless all the hosts are in no group,
+ * and a [hostCard] per host of the sections not [collapsed].
+ */
+private fun LazyListScope.hostSectionItems(
+    sections: List<HostSection>,
+    collapsed: Set<String>,
+    onToggle: (String) -> Unit,
+    hostCard: @Composable (HostProfile) -> Unit,
+) {
+    sections.forEach { section ->
+        val isCollapsed = section.key in collapsed
+        if (section.kind != HostSectionKind.Ungrouped || sections.size > 1) {
+            item(key = "section-${section.key}") {
+                HostSectionHeader(section, isCollapsed, onToggle = { onToggle(section.key) })
+            }
+        }
+        if (!isCollapsed) items(section.hosts, key = { it.id }) { host -> hostCard(host) }
     }
 }
 
@@ -415,6 +470,17 @@ private fun LocalShellCard(
     }
 }
 
+private class HostCardActions(
+    val onSelect: (Long?) -> Unit,
+    val onDelete: () -> Unit,
+    val onCopy: () -> Unit,
+    val onToggleFavorite: () -> Unit,
+    val onEdit: () -> Unit,
+    val onConnect: () -> Unit,
+    val onNewSession: () -> Unit,
+    val onDisconnect: () -> Unit,
+)
+
 /**
  * A saved host. A long press shows the copy and delete actions above the card; a
  * connected card swipes left to disconnect.
@@ -425,14 +491,9 @@ private fun HostCard(
     isConnected: Boolean,
     sessionCount: Int,
     isSelected: Boolean,
-    onSelect: (Long?) -> Unit,
-    onDelete: () -> Unit,
-    onCopy: () -> Unit,
-    onEdit: () -> Unit,
-    onConnect: () -> Unit,
-    onNewSession: () -> Unit,
-    onDisconnect: () -> Unit,
+    actions: HostCardActions,
 ) {
+    val onSelect = actions.onSelect
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -440,15 +501,20 @@ private fun HostCard(
         if (isSelected) {
             HostSelectionActions(
                 hostId = host.id,
+                favorite = host.favorite,
                 onCancel = { onSelect(null) },
+                onToggleFavorite = {
+                    onSelect(null)
+                    actions.onToggleFavorite()
+                },
                 onCopy = {
                     onSelect(null)
-                    onCopy()
+                    actions.onCopy()
                 },
-                onDelete = onDelete,
+                onDelete = actions.onDelete,
             )
         }
-        SwipeToDisconnect(swipeKey = host.id, enabled = isConnected, onDisconnect = onDisconnect) {
+        SwipeToDisconnect(swipeKey = host.id, enabled = isConnected, onDisconnect = actions.onDisconnect) {
             HostCardContent(
                 host = host,
                 isConnected = isConnected,
@@ -457,24 +523,31 @@ private fun HostCard(
                 onLongPress = { onSelect(host.id) },
                 onEdit = {
                     onSelect(null)
-                    onEdit()
+                    actions.onEdit()
                 },
                 onConnect = {
                     onSelect(null)
-                    onConnect()
+                    actions.onConnect()
                 },
                 onNewSession = {
                     onSelect(null)
-                    onNewSession()
+                    actions.onNewSession()
                 },
-                onDisconnect = onDisconnect,
+                onDisconnect = actions.onDisconnect,
             )
         }
     }
 }
 
 @Composable
-private fun HostSelectionActions(hostId: Long, onCancel: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit) {
+private fun HostSelectionActions(
+    hostId: Long,
+    favorite: Boolean,
+    onCancel: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onCopy: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
     val padding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
@@ -485,6 +558,13 @@ private fun HostSelectionActions(hostId: Long, onCancel: () -> Unit, onCopy: () 
     ) {
         AbyssButton(onClick = onCancel, variant = AbyssButtonVariant.Ghost, contentPadding = padding) {
             AbyssText(stringResource(R.string.action_cancel), style = typography.label, color = colors.textSecondary)
+        }
+        AbyssButton(onClick = onToggleFavorite, variant = AbyssButtonVariant.Outlined, contentPadding = padding) {
+            AbyssText(
+                stringResource(if (favorite) R.string.server_list_unfavorite else R.string.server_list_favorite),
+                style = typography.label,
+                color = colors.accentSecondary,
+            )
         }
         AbyssButton(
             onClick = onCopy,
@@ -623,6 +703,9 @@ private fun HostCardContent(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (host.needsSetup) {
+                    AbyssBadge(text = stringResource(R.string.server_list_needs_setup), color = colors.warning)
+                }
                 if (host.transport == Transport.TailscaleSSH) {
                     AbyssBadge(text = "Tailscale", color = colors.accent)
                 }

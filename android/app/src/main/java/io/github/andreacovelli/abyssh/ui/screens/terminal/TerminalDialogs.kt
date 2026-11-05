@@ -1,29 +1,13 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -33,8 +17,6 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssDialog
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
-import io.github.andreacovelli.abyssh.ui.screens.files.UploadProgress
-import io.github.andreacovelli.abyssh.ui.screens.files.formatFileSize
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
@@ -55,6 +37,9 @@ internal fun HostKeyDialog(prompt: HostKeyPrompt, onDecision: (accept: Boolean) 
             appendLine(stringResource(R.string.terminal_host_key_algorithm, prompt.algorithm))
             if (previous != null) {
                 appendLine(stringResource(R.string.terminal_host_key_changed))
+                prompt.changedFromAlgorithm?.let { type ->
+                    appendLine(stringResource(R.string.terminal_host_key_type_changed, type, prompt.algorithm))
+                }
                 appendLine(stringResource(R.string.terminal_host_key_old, previous))
             }
             append(stringResource(R.string.terminal_host_key_new, prompt.fingerprint))
@@ -140,86 +125,6 @@ internal fun TerminalRecoveryActions(
                 ) {
                     AbyssText(stringResource(R.string.terminal_end_session), style = typography.label, color = colors.warning)
                 }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun UploadProgressDialog(progress: UploadProgress, onCancel: () -> Unit) {
-    val colors = AbyssColors.current
-    val typography = AbyssTypography.current
-    val context = LocalContext.current
-    val barWidthDp = 240.dp
-    val barHeightDp = 12.dp
-    val filledWidth =
-        if (progress.totalBytes > 0) {
-            barWidthDp * progress.percent.coerceAtMost(100) / 100f
-        } else {
-            // Unknown total: show a thin sliver as indeterminate indicator
-            barWidthDp * 0.15f
-        }
-
-    Box(
-        modifier =
-            Modifier.fillMaxSize().background(colors.background.copy(alpha = 0.7f)).clickable(
-                enabled = false
-            ) {},
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            modifier =
-                Modifier.clip(MaterialTheme.shapes.extraLarge)
-                    .background(colors.surfaceVariant)
-                    .border(1.dp, colors.border, MaterialTheme.shapes.extraLarge)
-                    .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(
-                painterResource(R.drawable.ic_upload),
-                contentDescription = null,
-                tint = colors.accent,
-                modifier = Modifier.size(28.dp),
-            )
-
-            AbyssText(text = progress.fileName, style = typography.code, color = colors.textPrimary)
-
-            if (progress.totalFiles > 1) {
-                AbyssText(
-                    text = stringResource(R.string.terminal_upload_file_index, progress.fileIndex + 1, progress.totalFiles),
-                    style = typography.labelSmall,
-                    color = colors.textMuted,
-                )
-            }
-
-            Box(
-                modifier =
-                    Modifier.width(barWidthDp)
-                        .height(barHeightDp)
-                        .clip(CircleShape)
-                        .background(colors.surface),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Box(
-                    modifier = Modifier.width(filledWidth).fillMaxHeight().background(colors.accent)
-                )
-            }
-
-            AbyssText(
-                text =
-                    if (progress.totalBytes > 0) {
-                        val written = formatFileSize(context, progress.bytesWritten)
-                        val total = formatFileSize(context, progress.totalBytes)
-                        "$written / $total  ${progress.percent}%"
-                    } else {
-                        formatFileSize(context, progress.bytesWritten)
-                    },
-                style = typography.labelSmall,
-                color = colors.textMuted,
-            )
-            AbyssButton(onClick = onCancel, variant = AbyssButtonVariant.Outlined) {
-                AbyssText(stringResource(R.string.action_cancel), style = typography.label)
             }
         }
     }

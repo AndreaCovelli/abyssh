@@ -14,6 +14,7 @@ import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.ui.screens.terminal.HostKeyDialog
 import io.github.andreacovelli.abyssh.data.db.SavedSecrets
+import io.github.andreacovelli.abyssh.model.HostProfile
 import io.github.andreacovelli.abyssh.model.DEFAULT_KEEPALIVE_INTERVAL_SECONDS
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -58,6 +59,7 @@ import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssDialog
+import io.github.andreacovelli.abyssh.ui.components.rememberNotificationPermissionGate
 import io.github.andreacovelli.abyssh.ui.components.AbyssSegmentedControl
 import io.github.andreacovelli.abyssh.ui.components.AbyssSwitch
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
@@ -66,7 +68,14 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
 @Composable
-fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun AddServerScreen(
+    vm: AddServerViewModel,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** Offers to connect once saved, as quick connect does, instead of only going back. */
+    onSaveAndConnect: ((HostProfile) -> Unit)? = null,
+) {
+    val withNotificationPermission = rememberNotificationPermissionGate()
     val form by vm.form.collectAsStateWithLifecycle()
     val withLocalNetworkPermission = rememberLocalNetworkPermissionGate()
     val testState by vm.testState.collectAsStateWithLifecycle()
@@ -134,7 +143,16 @@ fun AddServerScreen(vm: AddServerViewModel, onBack: () -> Unit, modifier: Modifi
             testState = testState,
             saving = saving,
             onTest = { withLocalNetworkPermission(form.host.filterNot { it.isWhitespace() }) { vm.testConnection() } },
-            onSave = { vm.save(onBack) },
+            saveLabel = stringResource(if (onSaveAndConnect != null) R.string.server_save_and_connect else R.string.action_save),
+            onSave = {
+                if (onSaveAndConnect != null) {
+                    withNotificationPermission {
+                        withLocalNetworkPermission(form.host) { vm.save(onSaveAndConnect) }
+                    }
+                } else {
+                    vm.save { onBack() }
+                }
+            },
         )
     }
 }
@@ -177,6 +195,15 @@ private fun ConnectionSection(form: AddServerForm, vm: AddServerViewModel) {
         onValueChange = vm::updateName,
         label = stringResource(R.string.server_name_label),
         placeholder = stringResource(R.string.server_name_placeholder),
+        singleLine = true,
+        autoFocus = false,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    AbyssTextField(
+        value = form.groupName,
+        onValueChange = vm::updateGroup,
+        label = stringResource(R.string.server_group_label),
+        placeholder = stringResource(R.string.server_group_placeholder),
         singleLine = true,
         autoFocus = false,
         modifier = Modifier.fillMaxWidth(),
@@ -476,6 +503,7 @@ private fun TestAndSaveButtons(
     form: AddServerForm,
     testState: ConnectionTestState,
     saving: Boolean,
+    saveLabel: String,
     onTest: () -> Unit,
     onSave: () -> Unit,
 ) {
@@ -500,7 +528,7 @@ private fun TestAndSaveButtons(
         AbyssText(errorMessage.asString(), style = typography.bodySmall, color = AbyssColors.current.error)
     }
     AbyssButton(onClick = onSave, enabled = form.canSave() && !saving, modifier = Modifier.fillMaxWidth()) {
-        AbyssText(stringResource(R.string.action_save), style = typography.label)
+        AbyssText(saveLabel, style = typography.label)
     }
 }
 

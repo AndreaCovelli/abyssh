@@ -48,6 +48,7 @@ fun SettingsScreen(
     onEnableAppLock: () -> Unit,
     backupViewModel: SettingsBackupViewModel,
     keysViewModel: KeysViewModel,
+    onOpenKnownHosts: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -107,6 +108,7 @@ fun SettingsScreen(
                             actions = vm,
                             onEnableAppLock = onEnableAppLock,
                             onOpenBackup = { openSheet = SettingsSheet.Backup },
+                            onOpenKnownHosts = onOpenKnownHosts,
                         )
                     SettingsCategory.Terminal ->
                         TerminalSettings(
@@ -177,6 +179,7 @@ private fun GeneralSettings(
     actions: GeneralSettingsActions,
     onEnableAppLock: () -> Unit,
     onOpenBackup: () -> Unit,
+    onOpenKnownHosts: () -> Unit,
 ) {
     val typography = AbyssTypography.current
     val colors = AbyssColors.current
@@ -233,14 +236,31 @@ private fun GeneralSettings(
         color = colors.textMuted,
     )
     Spacer(modifier = Modifier.height(16.dp))
+    ManageRow(
+        label = stringResource(R.string.backup_title),
+        hint = stringResource(R.string.settings_backup_hint),
+        onManage = onOpenBackup,
+    )
+    Spacer(modifier = Modifier.height(16.dp))
+    ManageRow(
+        label = stringResource(R.string.settings_known_hosts),
+        hint = stringResource(R.string.settings_known_hosts_hint),
+        onManage = onOpenKnownHosts,
+    )
+}
+
+/** A setting that opens somewhere else to manage it, with a hint below. */
+@Composable
+private fun ManageRow(label: String, hint: String, onManage: () -> Unit) {
+    val typography = AbyssTypography.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AbyssText(stringResource(R.string.backup_title), style = typography.label)
+        AbyssText(label, style = typography.label)
         AbyssButton(
-            onClick = onOpenBackup,
+            onClick = onManage,
             variant = AbyssButtonVariant.Outlined,
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
         ) {
@@ -248,7 +268,7 @@ private fun GeneralSettings(
         }
     }
     Spacer(modifier = Modifier.height(4.dp))
-    AbyssText(stringResource(R.string.settings_backup_hint), style = typography.bodySmall, color = colors.textMuted)
+    AbyssText(hint, style = typography.bodySmall, color = AbyssColors.current.textMuted)
 }
 
 @Composable

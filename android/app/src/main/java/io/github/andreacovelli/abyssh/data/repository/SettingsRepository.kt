@@ -28,6 +28,9 @@ class SettingsRepository(context: Context) {
     /** Word separators, ligatures, and blinking. */
     val text = TerminalTextSettings(prefs)
 
+    /** The server list's sort order and collapsed sections. */
+    val hostList = HostListSettings(prefs)
+
 
     private val _fontName = MutableStateFlow(
         AbyssFontOption.fromId(prefs.getString(KEY_FONT, DEFAULT_FONT)).id,
