@@ -34,8 +34,9 @@ const max_entries = 256;
 /// A longer one still reaches Ghostty, but restores and forgets nothing.
 const max_header_bytes = 512;
 
-// The decoder hook takes no terminal, and each session decodes on its own thread, so
-// this says which cache the PNG being decoded on this thread belongs to.
+// The decoder hook takes no terminal, and sessions decode on different threads, so this
+// says which cache the PNG being decoded on this thread belongs to. It is set only while
+// a command runs, so terminals that share a thread, as tmux panes can, stay apart.
 threadlocal var capturing: ?*ImageCache = null;
 
 /// Hands a PNG about to be decoded to the cache of the command running on this thread.
