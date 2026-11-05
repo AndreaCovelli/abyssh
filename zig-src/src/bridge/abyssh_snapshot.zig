@@ -2,6 +2,7 @@ const std = @import("std");
 const time = @import("time.zig");
 const scroll_momentum = @import("scroll_momentum.zig");
 const ghostty = @import("ghostty-vt");
+const kitty_image_cache = @import("kitty_image_cache.zig");
 const zignal_png = @import("zignal_png.zig");
 
 const c = @import("c");
@@ -153,6 +154,7 @@ const AbysshTerminal = struct {
     render_state: ghostty.RenderState = .empty,
     stream_handler: AbysshStreamHandler = undefined,
     stream: AbysshTerminalStream,
+    image_cache: kitty_image_cache.ImageCache,
     cols: u16,
     rows: u16,
     cell_width: u32,
@@ -215,7 +217,7 @@ const AbysshStreamHandler = struct {
         if (action == .report_pwd) {
             self.reportPwd(value.url);
         }
-        self.inner.vt(action, value);
+        self.owner.image_cache.vt(&self.owner.terminal, &self.inner, action, value);
     }
 
     fn clipboardContents(self: *AbysshStreamHandler, _: u8, data: []const u8) void {
@@ -531,6 +533,7 @@ fn appendPtyWrite(terminal: *AbysshTerminal, bytes: []const u8) void {
 }
 
 fn abysshDecodePng(alloc: std.mem.Allocator, data: []const u8) ghostty.sys.DecodeError!ghostty.sys.Image {
+    kitty_image_cache.capturePng(data);
     var w: u32 = 0;
     var h: u32 = 0;
     const pixels = zignal_png.decodePng(data.ptr, data.len, &w, &h) orelse return error.InvalidData;
@@ -623,6 +626,7 @@ fn createTerminal(cols: c.jint, rows: c.jint, max_scrollback_bytes: c.jint) !*Ab
         .terminal = inner,
         .stream_handler = undefined,
         .stream = undefined,
+        .image_cache = .init(allocator),
         .cols = init_cols,
         .rows = init_rows,
         .cell_width = 1,
@@ -661,6 +665,7 @@ export fn abyssh_destroy_terminal(handle: c.jlong) callconv(.c) void {
     if (terminal.clipboard) |buf| allocator.free(buf);
     terminal.render_state.deinit(allocator);
     terminal.stream.deinit();
+    terminal.image_cache.deinit();
     terminal.terminal.deinit(allocator);
     allocator.destroy(terminal);
 }
