@@ -15,7 +15,7 @@ internal fun HostKeyStore.promptFor(host: String, port: Int, algorithm: String, 
         is HostKeyCheck.Match -> null
         is HostKeyCheck.Unknown -> HostKeyPrompt(host, port, algorithm, result.fingerprint, null)
         is HostKeyCheck.Changed ->
-            HostKeyPrompt(host, port, algorithm, result.fingerprint, result.previousFingerprint)
+            HostKeyPrompt(host, port, algorithm, result.fingerprint, result.previousFingerprint, result.previousAlgorithm)
     }
 
 /**

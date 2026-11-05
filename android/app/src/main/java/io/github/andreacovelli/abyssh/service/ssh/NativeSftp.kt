@@ -56,12 +56,55 @@ class NativeSftp internal constructor(private val bridge: NativeSshBridge, priva
         }
     }
 
-    fun readFile(path: String, maxBytes: Int = 4 * 1024 * 1024): ByteArray {
+    fun openWriteAt(path: String, offset: Long) {
         val handle = initialized()
-        require(maxBytes > 0) { "maxBytes must be > 0" }
-        val boundedMaxBytes = minOf(maxBytes, MAX_SFTP_READ_BYTES)
-        return bridge.nativeSftpReadFile(handle, path, boundedMaxBytes)
+        if (!bridge.nativeSftpOpenWriteAt(handle, path, offset)) {
+            bridge.sftpFailure(handle, "Native SFTP open failed")
+        }
+    }
+
+    fun openRead(path: String, offset: Long) {
+        val handle = initialized()
+        if (!bridge.nativeSftpOpenRead(handle, path, offset)) {
+            bridge.sftpFailure(handle, "Native SFTP open failed")
+        }
+    }
+
+    /** The next bytes of the file [openRead] opened, up to [maxBytes]; empty at its end. */
+    fun readChunk(maxBytes: Int): ByteArray {
+        val handle = connected()
+        return bridge.nativeSftpReadChunk(handle, maxBytes)
             ?: bridge.sftpFailure(handle, "Native SFTP read failed")
+    }
+
+    fun closeRead() {
+        val handle = connected()
+        if (!bridge.nativeSftpCloseRead(handle)) {
+            bridge.sftpFailure(handle, "Native SFTP close failed")
+        }
+    }
+
+    /** The size and modification time of [path], following links, or null when nothing is there. */
+    fun fileInfo(path: String): RemoteFileInfo? {
+        val handle = initialized()
+        val info = bridge.nativeSftpFileInfo(handle, path)
+            ?: bridge.sftpFailure(handle, "Native SFTP stat failed")
+        return if (info.size == FILE_INFO_FIELDS) RemoteFileInfo(info[0], info[1]) else null
+    }
+
+    fun makeDirectory(path: String) {
+        val handle = initialized()
+        if (!bridge.nativeSftpMakeDirectory(handle, path)) {
+            bridge.sftpFailure(handle, "Native SFTP mkdir failed")
+        }
+    }
+
+    /** Moves [from] to [to], without asking the server to replace a file there. */
+    fun move(from: String, to: String) {
+        val handle = initialized()
+        if (!bridge.nativeSftpMove(handle, from, to)) {
+            bridge.sftpFailure(handle, "Native SFTP move failed")
+        }
     }
 
     fun deleteFile(path: String) {
@@ -85,10 +128,12 @@ class NativeSftp internal constructor(private val bridge: NativeSshBridge, priva
     }
 
     private companion object {
-        // Absolute in-memory ceiling; callers request 16/32 MiB, so this is the effective download limit.
-        const val MAX_SFTP_READ_BYTES = 4 * 1024 * 1024
+        const val FILE_INFO_FIELDS = 2
     }
 }
+
+/** What a server says about a file: -1 for what it leaves out. */
+data class RemoteFileInfo(val size: Long, val modifiedAtEpochSeconds: Long)
 
 /** Throws the native SFTP error, as [SftpStatusException] when the server sent it. */
 private fun NativeSshBridge.sftpFailure(handle: Long, fallback: String): Nothing {

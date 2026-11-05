@@ -46,6 +46,17 @@ class HostKeyStore(
         }
     }
 
+    /** Every trusted key, sorted by host, port, and type. */
+    fun knownHostKeys(): List<KnownHostKey> =
+        prefs.all.entries
+            .mapNotNull { (key, value) -> knownHostKey(key, value as? String) }
+            .sortedWith(compareBy(KnownHostKey::host, KnownHostKey::port, KnownHostKey::algorithm))
+
+    /** Stops trusting the key, so the next connection asks about the host as a new one. */
+    fun forget(host: String, port: Int, algorithm: String) {
+        prefs.edit { remove(key(host, port, algorithm)) }
+    }
+
     fun check(
         host: String,
         port: Int,
@@ -55,9 +66,9 @@ class HostKeyStore(
         // A key of another type counts as a changed key, not a new host: a server that
         // suddenly offers only a different type is what an impostor without the trusted
         // key would do.
-        val existing =
-            loadKey(host, port, algorithm)
-                ?: storedAlgorithms(host, port).firstNotNullOfOrNull { loadKey(host, port, it) }
+        val existingAlgorithm =
+            algorithm.takeIf { loadKey(host, port, it) != null } ?: storedAlgorithms(host, port).firstOrNull()
+        val existing = existingAlgorithm?.let { loadKey(host, port, it) }
         return when {
             existing == null -> HostKeyCheck.Unknown(fingerprint = fingerprintSha256(keyBytes))
             existing.contentEquals(keyBytes) -> HostKeyCheck.Match
@@ -65,12 +76,29 @@ class HostKeyStore(
                 HostKeyCheck.Changed(
                     previousFingerprint = fingerprintSha256(existing),
                     fingerprint = fingerprintSha256(keyBytes),
+                    previousAlgorithm = existingAlgorithm,
                 )
         }
     }
 
     private fun key(host: String, port: Int, algorithm: String): String =
         "$host:$port:$algorithm"
+
+    // The host can hold colons itself, as IPv6 addresses do, so split from the end.
+    private fun knownHostKey(key: String, encoded: String?): KnownHostKey? {
+        val algorithmStart = key.lastIndexOf(':')
+        if (algorithmStart <= 0 || encoded == null) return null
+        val portStart = key.lastIndexOf(':', algorithmStart - 1)
+        if (portStart <= 0) return null
+        val port = key.substring(portStart + 1, algorithmStart).toIntOrNull() ?: return null
+        val keyBytes = runCatching { Base64.decode(encoded, Base64.NO_WRAP) }.getOrNull() ?: return null
+        return KnownHostKey(
+            host = key.substring(0, portStart),
+            port = port,
+            algorithm = key.substring(algorithmStart + 1),
+            fingerprint = fingerprintSha256(keyBytes),
+        )
+    }
 
     private fun fingerprintSha256(keyBytes: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(keyBytes)
@@ -79,11 +107,20 @@ class HostKeyStore(
     }
 }
 
+/** A host key the user has trusted. */
+data class KnownHostKey(
+    val host: String,
+    val port: Int,
+    val algorithm: String,
+    val fingerprint: String,
+)
+
 sealed interface HostKeyCheck {
     data object Match : HostKeyCheck
     data class Unknown(val fingerprint: String) : HostKeyCheck
     data class Changed(
         val previousFingerprint: String,
         val fingerprint: String,
+        val previousAlgorithm: String,
     ) : HostKeyCheck
 }

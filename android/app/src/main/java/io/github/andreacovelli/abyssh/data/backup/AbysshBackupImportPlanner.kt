@@ -1,6 +1,5 @@
 package io.github.andreacovelli.abyssh.data.backup
 
-import io.github.andreacovelli.abyssh.model.AuthMethod
 import io.github.andreacovelli.abyssh.model.HostProfile
 import io.github.andreacovelli.abyssh.model.SshKey
 import io.github.andreacovelli.abyssh.model.Transport
@@ -93,25 +92,10 @@ object AbysshBackupImportPlanner {
             if (!hostIds.add(host.id)) throw BackupFormatException("Duplicate host id")
             if (host.name.isBlank()) throw BackupFormatException("Host name is required")
             if (host.host.isBlank()) throw BackupFormatException("Host address is required")
-            if (host.username.isBlank()) throw BackupFormatException("Host username is required")
             if (host.port !in 1..65535) throw BackupFormatException("Invalid host port")
             if (host.keyId != null && host.keyId !in keyIds) {
                 throw BackupFormatException("Host references a missing SSH key")
             }
-            if (host.authMethod.requiresKey() && host.keyId == null) {
-                throw BackupFormatException("Key authentication host is missing an SSH key")
-            }
-        }
-    }
-
-    private fun uniqueName(baseName: String, usedNames: MutableSet<String>): String {
-        val trimmed = baseName.trim().ifBlank { "imported" }
-        if (usedNames.add(trimmed)) return trimmed
-        var index = 2
-        while (true) {
-            val candidate = "$trimmed-$index"
-            if (usedNames.add(candidate)) return candidate
-            index += 1
         }
     }
 
@@ -122,12 +106,27 @@ object AbysshBackupImportPlanner {
             publicKeyOpenSsh == backupKey.publicKeyOpenSsh &&
             createdAtEpochMs == backupKey.createdAtEpochMs
 
-    /** Whether this host has every setting of [backupHost], with its key at [localKeyId]. */
+    /**
+     * Whether this host connects the way [backupHost] does, with its key at [localKeyId].
+     * Where the list shows a host and when it last connected don't make it another host.
+     */
     private fun HostProfile.sameAs(backupHost: BackupHostProfile, localKeyId: Long?): Boolean =
-        this == backupHost.toEntity(idOverride = id, keyIdOverride = localKeyId)
+        withoutOrganization() == backupHost.toEntity(idOverride = id, keyIdOverride = localKeyId).withoutOrganization()
 
-    private fun AuthMethod.requiresKey(): Boolean =
-        this == AuthMethod.Key || this == AuthMethod.KeyWithPassphrase
+    private fun HostProfile.withoutOrganization(): HostProfile =
+        copy(groupName = "", favorite = false, lastConnectedAtEpochMs = 0L)
+}
+
+/** [baseName], with a number added if needed to keep it out of [usedNames], which it joins. */
+internal fun uniqueName(baseName: String, usedNames: MutableSet<String>): String {
+    val trimmed = baseName.trim().ifBlank { "imported" }
+    if (usedNames.add(trimmed)) return trimmed
+    var index = 2
+    while (true) {
+        val candidate = "$trimmed-$index"
+        if (usedNames.add(candidate)) return candidate
+        index += 1
+    }
 }
 
 data class BackupImportPlan(

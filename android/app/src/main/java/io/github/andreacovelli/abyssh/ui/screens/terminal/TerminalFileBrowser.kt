@@ -7,23 +7,23 @@ import io.github.andreacovelli.abyssh.model.UiTextException
 
 import io.github.andreacovelli.abyssh.R
 
+import io.github.andreacovelli.abyssh.service.terminal.FileTransfer
+import io.github.andreacovelli.abyssh.service.terminal.FileTransferQueue
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionRepository
+import io.github.andreacovelli.abyssh.service.terminal.TransferEvent
 import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
 import io.github.andreacovelli.abyssh.ui.screens.files.FileBrowserEntry
 import io.github.andreacovelli.abyssh.ui.screens.files.FileBrowserUiState
 import io.github.andreacovelli.abyssh.ui.screens.files.FileEntryType
 import io.github.andreacovelli.abyssh.ui.screens.files.FileSort
-import io.github.andreacovelli.abyssh.ui.screens.files.UploadProgress
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -35,8 +35,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * The SFTP file browser beside each terminal tab: which pane the tab shows, the
- * directory it lists, uploads into it, and downloads and deletes from it.
+ * The SFTP file browser beside each terminal tab: which pane the tab shows, the directory
+ * it lists, and the changes made to it. Transfers run in [FileTransferQueue].
  */
 // SFTP errors come from native code as many exception types; the broad catches show them
 // in the browser state.
@@ -54,7 +54,8 @@ class TerminalFileBrowser internal constructor(
     // the previous, so stale responses can never overwrite newer state.
     private val refreshJobs = ConcurrentHashMap<String, Job>()
     private val resolverJobs = ConcurrentHashMap<String, Job>()
-    private val uploadJobs = ConcurrentHashMap<String, Job>()
+
+    val queue: FileTransferQueue = sessionRepository.fileTransfers
 
     /** Whether the active tab shows its terminal or its files. */
     val selectedPane: StateFlow<ConnectionTab> =
@@ -66,6 +67,19 @@ class TerminalFileBrowser internal constructor(
         combine(activeTabId, stateByTab) { id, map ->
             if (id == null) FileBrowserUiState() else map[id] ?: FileBrowserUiState()
         }.stateIn(scope, SharingStarted.Eagerly, FileBrowserUiState())
+
+    /** The active tab's transfers. */
+    val transfers: StateFlow<List<FileTransfer>> =
+        combine(activeTabId, queue.transfers) { id, rows -> rows.filter { it.tabId == id } }
+            .stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    init {
+        scope.launch {
+            queue.events.collect { event ->
+                if (event is TransferEvent.Uploaded) refresh(event.tabId)
+            }
+        }
+    }
 
     fun selectPane(pane: ConnectionTab) {
         val id = activeTabId.value ?: return
@@ -85,7 +99,6 @@ class TerminalFileBrowser internal constructor(
         homeByTab.remove(tabId)
         resolverJobs.remove(tabId)?.cancel()
         refreshJobs.remove(tabId)?.cancel()
-        uploadJobs.remove(tabId)?.cancel()
     }
 
     fun refresh() {
@@ -121,53 +134,6 @@ class TerminalFileBrowser internal constructor(
         return UploadTarget(tabId, path, name, existingMode = mode.takeIf { it != MISSING_MODE })
     }
 
-    /**
-     * Writes [target] through a hidden temporary file beside it, renamed into place once
-     * every byte has arrived, so a failed upload never leaves a partial file. [copy]
-     * sends the content through the sink it is given.
-     */
-    suspend fun upload(target: UploadTarget, copy: suspend (write: suspend (ByteArray) -> Unit) -> Unit) {
-        if (target.existingMode?.let(::isDirectoryMode) == true) {
-            throw UiTextException(
-                UiText.Resource(R.string.files_upload_target_is_directory, target.name),
-                "Upload target is a directory",
-            )
-        }
-        val sftp = sessionRepository.withSftp(target.tabId) { it }
-            ?: throw UiTextException(UiText.Resource(R.string.error_session_not_connected), "Session closed")
-        val tempPath = uploadTempPath(target.path)
-        sftp.openWrite(tempPath, uploadMode(target.existingMode))
-        try {
-            copy { chunk -> sftp.writeChunk(chunk) }
-            sftp.closeWrite()
-            sftp.rename(tempPath, target.path)
-        } catch (e: Exception) {
-            withContext(NonCancellable) {
-                runCatching { sftp.closeWrite() }
-                runCatching { sftp.delete(tempPath, isDirectory = false) }
-            }
-            throw e
-        }
-        withContext(Dispatchers.Main) { refresh(target.tabId) }
-    }
-
-    /** Shows [progress] on the tab the upload goes to, which may no longer be the active one. */
-    fun setUploadProgress(tabId: String, progress: UploadProgress?) {
-        updateState(tabId) { it.copy(uploadProgress = progress) }
-    }
-
-    /** Keeps [job] as [tabId]'s upload until it ends, so [cancelUpload] can stop it. */
-    fun trackUpload(tabId: String, job: Job) {
-        uploadJobs[tabId] = job
-        job.invokeOnCompletion { uploadJobs.remove(tabId, job) }
-    }
-
-    /** Stops the active tab's upload; the partial file is deleted. */
-    fun cancelUpload() {
-        val tabId = activeTabId.value ?: return
-        uploadJobs.remove(tabId)?.cancel()
-    }
-
     /** The mode of what [path] points to, following symlinks, or null when nothing is there. */
     suspend fun targetMode(tabId: String, path: String): Int? = sessionRepository.withSftp(tabId) { it.stat(path) }
 
@@ -176,7 +142,29 @@ class TerminalFileBrowser internal constructor(
         withContext(Dispatchers.Main) { refresh() }
     }
 
-    suspend fun read(tabId: String, entry: FileBrowserEntry, maxBytes: Int): ByteArray = sessionRepository.withSftp(tabId) { it.readFile(entry.path, maxBytes) } ?: ByteArray(0)
+    /** Creates the folder [name] in the directory tab [tabId] shows. */
+    suspend fun createFolder(tabId: String, name: String) {
+        val directory = stateByTab.value[tabId]?.currentPath ?: return
+        val path = directory.trimEnd('/') + "/" + name
+        sessionRepository.withSftp(tabId) { sftp ->
+            if (sftp.stat(path) != null) throw nameTaken(name)
+            sftp.makeDirectory(path)
+        }
+        withContext(Dispatchers.Main) { refresh(tabId) }
+    }
+
+    /** Renames [entry] within its directory, and never over something already called [newName]. */
+    suspend fun rename(tabId: String, entry: FileBrowserEntry, newName: String) {
+        val path = parentPath(entry.path).trimEnd('/') + "/" + newName
+        sessionRepository.withSftp(tabId) { sftp ->
+            if (sftp.stat(path) != null) throw nameTaken(newName)
+            sftp.move(entry.path, path)
+        }
+        withContext(Dispatchers.Main) { refresh(tabId) }
+    }
+
+    private fun nameTaken(name: String) =
+        UiTextException(UiText.Resource(R.string.files_name_taken, name), "Name already exists")
 
     private fun updateState(id: String, transform: (FileBrowserUiState) -> FileBrowserUiState) {
         stateByTab.update { current ->
@@ -270,29 +258,14 @@ class TerminalFileBrowser internal constructor(
 data class UploadTarget(val tabId: String, val path: String, val name: String, val existingMode: Int?)
 
 private const val LISTING_FIELDS = 4
-private const val S_IFMT = 0xF000
-private const val S_IFDIR = 0x4000
-private const val PERMISSION_BITS = 0xFFF
-private const val OWNER_READ_WRITE = 0x180
-private const val TEMP_NAME_MAX = 200
-
-internal fun isDirectoryMode(mode: Int): Boolean = mode and S_IFMT == S_IFDIR
-
-/** The permission bits for an upload: the replaced file's, or owner-only for a new one. */
-internal fun uploadMode(existingMode: Int?): Int =
-    existingMode?.and(PERMISSION_BITS)?.takeIf { it != 0 } ?: OWNER_READ_WRITE
 
 /** The last path segment of a picked file's display name, which a provider may fill with anything. */
 internal fun uploadFileName(displayName: String): String =
     displayName.substringAfterLast('/').takeUnless { it.isBlank() || it == "." || it == ".." } ?: "upload"
 
-/** A hidden name beside [path] that no other upload picks. */
-internal fun uploadTempPath(path: String, random: Random = Random.Default): String {
-    val directory = path.substringBeforeLast('/', "")
-    val name = path.substringAfterLast('/').take(TEMP_NAME_MAX)
-    val suffix = random.nextLong().toULong().toString(radix = 16)
-    return "$directory/.$name.$suffix.abyssh-upload"
-}
+/** Whether [name] can name one file or folder inside a directory. */
+internal fun isValidFileName(name: String): Boolean =
+    name.isNotBlank() && '/' !in name && name != "." && name != ".."
 
 /** The parent of [path], or `/` at the top. */
 internal fun parentPath(path: String): String = path.substringBeforeLast('/', "").ifBlank { "/" }
@@ -329,9 +302,10 @@ internal fun parseDirectoryListing(
     }
 }
 
+/** Folders first, then everything else, each in the order [sort] asks for. */
 internal fun List<FileBrowserEntry>.sortedFor(sort: FileSort): List<FileBrowserEntry> = when (sort) {
     FileSort.Name -> sortedBy { it.name.lowercase() }
     FileSort.Size -> sortedByDescending { it.sizeBytes ?: -1L }
     // The timestamp text is year first, so text order is time order.
     FileSort.Modified -> sortedByDescending { it.modifiedAtText.orEmpty() }
-}
+}.sortedBy { it.type != FileEntryType.Directory }

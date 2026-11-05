@@ -20,6 +20,9 @@ private const val ENCODED_BOOLEAN_SIZE = 1
 // What payload v5 added after v4's fields: the keepalive interval.
 private const val V5_FIELDS_SIZE = Int.SIZE_BYTES
 
+// What payload v6 added after v5's fields, when empty: the group and the favourite flag.
+private const val V6_FIELDS_SIZE = Int.SIZE_BYTES + ENCODED_BOOLEAN_SIZE
+
 class AbysshBackupCoreTest {
     @Test
     fun encryptedBackupRoundTripPreservesAllCurrentFields() {
@@ -310,7 +313,7 @@ class AbysshBackupCoreTest {
     fun payloadV4DefaultsKeepaliveInterval() {
         val v5 = AbysshBackupCodec.encodePayload(samplePayload(chooseSessionOnConnect = true, keepaliveIntervalSeconds = 0))
         writeIntAt(v5, offset = Int.SIZE_BYTES, value = 4)
-        val v4 = v5.copyOf(v5.size - V5_FIELDS_SIZE)
+        val v4 = v5.copyOf(v5.size - V6_FIELDS_SIZE - V5_FIELDS_SIZE)
 
         val decoded = AbysshBackupCodec.decodePayload(v4)
 
@@ -321,7 +324,7 @@ class AbysshBackupCoreTest {
     @Test(expected = BackupFormatException::class)
     fun payloadDecodeRejectsNegativeKeepaliveInterval() {
         val bytes = AbysshBackupCodec.encodePayload(samplePayload())
-        writeIntAt(bytes, offset = bytes.size - Int.SIZE_BYTES, value = -1)
+        writeIntAt(bytes, offset = bytes.size - V6_FIELDS_SIZE - Int.SIZE_BYTES, value = -1)
 
         AbysshBackupCodec.decodePayload(bytes)
     }
@@ -330,7 +333,7 @@ class AbysshBackupCoreTest {
     fun payloadV3DefaultsChooseSessionOnConnectToOff() {
         val v5 = AbysshBackupCodec.encodePayload(samplePayload(tmuxControlMode = true, chooseSessionOnConnect = true))
         writeIntAt(v5, offset = Int.SIZE_BYTES, value = 3)
-        val v3 = v5.copyOf(v5.size - V5_FIELDS_SIZE - ENCODED_BOOLEAN_SIZE)
+        val v3 = v5.copyOf(v5.size - V6_FIELDS_SIZE - V5_FIELDS_SIZE - ENCODED_BOOLEAN_SIZE)
 
         val decoded = AbysshBackupCodec.decodePayload(v3)
 
@@ -342,7 +345,7 @@ class AbysshBackupCoreTest {
     fun payloadV2DefaultsTmuxControlModeToOff() {
         val v5 = AbysshBackupCodec.encodePayload(samplePayload(tmuxControlMode = true))
         writeIntAt(v5, offset = Int.SIZE_BYTES, value = 2)
-        val v2 = v5.copyOf(v5.size - V5_FIELDS_SIZE - 2 * ENCODED_BOOLEAN_SIZE)
+        val v2 = v5.copyOf(v5.size - V6_FIELDS_SIZE - V5_FIELDS_SIZE - 2 * ENCODED_BOOLEAN_SIZE)
 
         val decoded = AbysshBackupCodec.decodePayload(v2)
 
@@ -354,7 +357,7 @@ class AbysshBackupCoreTest {
     fun payloadV1DefaultsMultiplexerToNull() {
         val v5 = AbysshBackupCodec.encodePayload(samplePayload())
         writeIntAt(v5, offset = Int.SIZE_BYTES, value = 1)
-        val v1 = v5.copyOf(v5.size - V5_FIELDS_SIZE - 2 * ENCODED_BOOLEAN_SIZE - encodedNullableStringSize(MultiplexerType.Tmux.id))
+        val v1 = v5.copyOf(v5.size - V6_FIELDS_SIZE - V5_FIELDS_SIZE - 2 * ENCODED_BOOLEAN_SIZE - encodedNullableStringSize(MultiplexerType.Tmux.id))
 
         val decoded = AbysshBackupCodec.decodePayload(v1)
 
@@ -362,9 +365,71 @@ class AbysshBackupCoreTest {
         assertEquals("echo hello", decoded.hosts.single().postConnectCommand)
     }
 
+    @Test
+    fun payloadV6PreservesGroupAndFavorite() {
+        val host = sampleHost(keyId = null).copy(groupName = "Work", favorite = true)
+        val payload = BackupPayload(keys = emptyList(), hosts = listOf(BackupHostProfile.fromEntity(host)))
+
+        val decoded = AbysshBackupCodec.decodePayload(AbysshBackupCodec.encodePayload(payload)).hosts.single()
+
+        assertEquals("Work", decoded.groupName)
+        assertTrue(decoded.favorite)
+    }
+
+    @Test
+    fun payloadV5DefaultsGroupAndFavorite() {
+        val decoded = AbysshBackupCodec.decodePayload(asVersion(5, samplePayload(keepaliveIntervalSeconds = 0))).hosts.single()
+
+        assertEquals("", decoded.groupName)
+        assertFalse(decoded.favorite)
+        assertEquals(0, decoded.keepaliveIntervalSeconds)
+    }
+
+    @Test
+    fun backupsLeaveOutWhenAHostLastConnected() {
+        val host = BackupHostProfile.fromEntity(sampleHost().copy(lastConnectedAtEpochMs = 123L))
+
+        assertEquals(0L, host.toEntity().lastConnectedAtEpochMs)
+    }
+
+    @Test
+    fun importPlanSkipsASavedHostWhoseOrganizationDiffers() {
+        val localKey = sampleKey(id = 77L)
+        val saved = sampleHost(id = 9L, keyId = 77L).copy(groupName = "Work", favorite = true, lastConnectedAtEpochMs = 123L)
+        val payload = BackupPayload(
+            keys = listOf(BackupSshKey.fromEntity(localKey.copy(id = 1L))),
+            hosts = listOf(BackupHostProfile.fromEntity(sampleHost(keyId = 1L))),
+        )
+
+        val plan = AbysshBackupImportPlanner.planImport(payload, existingKeys = listOf(localKey), existingHosts = listOf(saved))
+
+        assertEquals(1, plan.skippedHostCount)
+        assertTrue(plan.hostActions.isEmpty())
+    }
+
+    @Test
+    fun importPlanAcceptsHostsThatStillNeedSetup() {
+        val host = sampleHost(keyId = null).copy(username = "")
+        val payload = BackupPayload(keys = emptyList(), hosts = listOf(BackupHostProfile.fromEntity(host)))
+
+        val plan = AbysshBackupImportPlanner.planImport(payload, existingKeys = emptyList(), existingHosts = emptyList())
+
+        assertEquals(1, plan.hostActions.size)
+    }
+
     @Test(expected = BackupFormatException::class)
     fun payloadDecodeRejectsMalformedBytes() {
         AbysshBackupCodec.decodePayload(byteArrayOf(1, 2, 3))
+    }
+
+    /**
+     * [payload], whose one host has the default group and favourite, encoded as the older
+     * [version]: without those fields, which come last.
+     */
+    private fun asVersion(version: Int, payload: BackupPayload): ByteArray {
+        val encoded = AbysshBackupCodec.encodePayload(payload)
+        writeIntAt(encoded, offset = Int.SIZE_BYTES, value = version)
+        return encoded.copyOf(encoded.size - V6_FIELDS_SIZE)
     }
 
     private fun assumeNativeBackupAvailable() {

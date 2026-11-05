@@ -22,5 +22,10 @@ class HostRepository(private val dao: HostProfileDao) {
 
     suspend fun delete(profile: HostProfile) = dao.delete(profile)
 
+    suspend fun getAll(): List<HostProfile> = dao.getAll()
+
+    suspend fun insertForImport(profile: HostProfile): Long = dao.insertForImport(profile)
+
+
     suspend fun clearKeyReference(keyId: Long) = dao.clearKeyReference(keyId)
 }

@@ -4,7 +4,9 @@ import io.github.andreacovelli.abyssh.ui.screens.files.FileBrowserEntry
 import io.github.andreacovelli.abyssh.ui.screens.files.FileEntryType
 import io.github.andreacovelli.abyssh.ui.screens.files.FileSort
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TerminalFileBrowserListingTest {
@@ -81,6 +83,21 @@ class TerminalFileBrowserListingTest {
         ).sortedFor(FileSort.Modified)
 
         assertEquals(listOf("new", "old", "none"), sorted.map { it.name })
+    }
+
+    @Test
+    fun `every sort lists directories before files`() {
+        val folder = entry("zebra").copy(type = FileEntryType.Directory, sizeBytes = 1)
+        val file = entry("apple", size = 900, modified = "9")
+        FileSort.entries.forEach { sort ->
+            assertEquals(sort.name, listOf("zebra", "apple"), listOf(file, folder).sortedFor(sort).map { it.name })
+        }
+    }
+
+    @Test
+    fun `a file name has no slashes and isn't a directory reference`() {
+        listOf("notes.txt", ".hidden", "with space", "..triple").forEach { assertTrue(it, isValidFileName(it)) }
+        listOf("", "  ", "a/b", "/", ".", "..").forEach { assertFalse(it, isValidFileName(it)) }
     }
 
     private fun entry(name: String, size: Long? = null, modified: String? = null) =

@@ -17,7 +17,7 @@ import java.text.Normalizer
  * format, key derivation and cipher are described in `abyssh_backup.zig`.
  */
 object AbysshBackupCodec {
-    const val PAYLOAD_VERSION: Int = 5
+    const val PAYLOAD_VERSION: Int = 6
     const val MAX_BACKUP_SIZE_BYTES: Int = 32 * 1024 * 1024
 
     /** Version 1 containers keyed the passphrase as typed; later ones key its NFC form. */
@@ -115,6 +115,8 @@ object AbysshBackupCodec {
             writer.writeBoolean(host.tmuxControlMode)
             writer.writeBoolean(host.chooseSessionOnConnect)
             writer.writeInt(host.keepaliveIntervalSeconds)
+            writeStringField(host.groupName, "group")
+            writer.writeBoolean(host.favorite)
         }
 
         val encoded = writer.toByteArray()
@@ -195,6 +197,8 @@ object AbysshBackupCodec {
                 } else {
                     DEFAULT_KEEPALIVE_INTERVAL_SECONDS
                 }
+                val groupName = if (version >= 6) readStringField("group") else ""
+                val favorite = version >= 6 && reader.readBoolean()
                 if (transport != Transport.LocalShell) {
                     add(
                         BackupHostProfile(
@@ -214,6 +218,8 @@ object AbysshBackupCodec {
                             tmuxControlMode = tmuxControlMode,
                             chooseSessionOnConnect = chooseSessionOnConnect,
                             keepaliveIntervalSeconds = keepaliveIntervalSeconds,
+                            groupName = groupName,
+                            favorite = favorite,
                         ),
                     )
                 }

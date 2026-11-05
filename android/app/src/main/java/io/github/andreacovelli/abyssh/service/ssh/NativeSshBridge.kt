@@ -110,7 +110,25 @@ class NativeSshBridge {
 
     external fun nativeSftpCloseWrite(handle: Long): Boolean
 
-    external fun nativeSftpReadFile(handle: Long, path: String, maxBytes: Int): ByteArray?
+    /** Opens the existing file `path` for writing from `offset`, to continue an upload. */
+    external fun nativeSftpOpenWriteAt(handle: Long, path: String, offset: Long): Boolean
+
+    /** Opens `path` for reading from `offset`, for [nativeSftpReadChunk]. */
+    external fun nativeSftpOpenRead(handle: Long, path: String, offset: Long): Boolean
+
+    /** The next bytes of the open download, up to `maxBytes`: empty at the end of the file, null on failure. */
+    external fun nativeSftpReadChunk(handle: Long, maxBytes: Int): ByteArray?
+
+    external fun nativeSftpCloseRead(handle: Long): Boolean
+
+    /** The size and modification time of `path`, -1 for what the server leaves out: empty when nothing is there, null on failure. */
+    external fun nativeSftpFileInfo(handle: Long, path: String): LongArray?
+
+    /** Creates the directory `path`, which must not exist yet. */
+    external fun nativeSftpMakeDirectory(handle: Long, path: String): Boolean
+
+    /** Moves `from` to `to`, without asking the server to replace a file there. */
+    external fun nativeSftpMove(handle: Long, from: String, to: String): Boolean
 
     /** The mode of `path`, 0 when the server leaves it out, -1 when nothing is there, -2 on failure. */
     external fun nativeSftpStat(handle: Long, path: String): Int

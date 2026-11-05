@@ -9,6 +9,7 @@ import android.util.Log
 import io.github.andreacovelli.abyssh.ui.components.plainTextClip
 import android.content.ClipboardManager
 import io.github.andreacovelli.abyssh.R
+import io.github.andreacovelli.abyssh.data.db.AppDatabase
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.model.UiText
@@ -61,6 +62,11 @@ class TerminalSessionRepository private constructor(application: Application) {
         tabs = { _tabs.value },
     )
     private val foreground = SessionForegroundTracker(appContext)
+
+    /** File transfers, which keep running while the terminal screen is closed. */
+    val fileTransfers = FileTransferQueue(scope, Dispatchers.IO, ContentResolverFiles(appContext)) { tabId ->
+        withSftp(tabId) { it }
+    }
 
     // A frame of the display while the setting asks to match its refresh rate.
     private val frameInterval =
@@ -120,6 +126,32 @@ class TerminalSessionRepository private constructor(application: Application) {
         liveTabs
             .map { tabs -> tabs.mapNotNullTo(mutableSetOf()) { it.spec.hostId } }
             .stateIn(scope, SharingStarted.Eagerly, emptySet())
+
+    private val connectedHosts: Flow<Set<Long>> =
+        _tabs
+            .flatMapLatest { tabs ->
+                if (tabs.isEmpty()) {
+                    flowOf(emptySet())
+                } else {
+                    combine(
+                        tabs.map { tab ->
+                            tab.sessionState.map { state -> tab.spec.hostId.takeIf { state.status == SessionStatus.Connected } }
+                        },
+                    ) { hostIds -> hostIds.filterNotNull().toSet() }
+                }
+            }
+            .distinctUntilChanged()
+
+    init {
+        scope.launch {
+            recordNewConnections(connectedHosts) { id ->
+                // Only the sort order depends on this, so a failed write isn't worth a crash.
+                runCatching {
+                    AppDatabase.getInstance(appContext).hostOrganizationDao().setLastConnected(id, System.currentTimeMillis())
+                }.onFailure { Log.w(TAG, "Couldn't record the connection time", it) }
+            }
+        }
+    }
 
     private val tmuxTabs =
         TmuxControlTabs(
@@ -236,7 +268,7 @@ class TerminalSessionRepository private constructor(application: Application) {
         if (tab !in tabs) return
         _activeTabId.value = tabAfterClose(tabs, tab.id, _activeTabId.value)
         _tabs.value = tabs - tab
-        tab.engine.dispose()
+        fileTransfers.releaseTabThen(tab.id, tab.engine.sftp, tab.engine::dispose)
     }
 
     /**
@@ -359,7 +391,7 @@ class TerminalSessionRepository private constructor(application: Application) {
         val tabs = _tabs.value
         _tabs.value = emptyList()
         _activeTabId.value = null
-        tabs.forEach { it.engine.dispose() }
+        tabs.forEach { tab -> fileTransfers.releaseTabThen(tab.id, tab.engine.sftp, tab.engine::dispose) }
     }
 
     /**

@@ -32,16 +32,6 @@ data class FileBrowserEntry(
     val modifiedAtText: String? = null,
 )
 
-data class UploadProgress(
-    val fileName: String,
-    val bytesWritten: Long,
-    val totalBytes: Long,
-    val fileIndex: Int,
-    val totalFiles: Int,
-) {
-    val percent: Int get() = if (totalBytes > 0) (bytesWritten * 100 / totalBytes).toInt().coerceAtMost(100) else 0
-}
-
 data class FileBrowserUiState(
     val currentPath: String = "/",
     val entries: List<FileBrowserEntry> = emptyList(),
@@ -49,7 +39,6 @@ data class FileBrowserUiState(
     val isLoading: Boolean = false,
     val error: UiText? = null,
     val resolvedHomePath: String? = null,
-    val uploadProgress: UploadProgress? = null,
 )
 
 /** [bytes] in the device's language and units, such as "1.5 MB". */

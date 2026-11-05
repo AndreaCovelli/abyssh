@@ -11,6 +11,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
 import io.github.andreacovelli.abyssh.ui.components.AbyssIconButton
 import io.github.andreacovelli.abyssh.R
+import io.github.andreacovelli.abyssh.service.terminal.FileTransfer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
@@ -49,20 +50,41 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
+/** What the browser's bars and rows do with the directory as a whole. */
+class FileBrowserActions(
+    val onGoUp: () -> Unit,
+    val onRefresh: () -> Unit,
+    val onSelectSort: (FileSort) -> Unit,
+    val onOpenPath: (String) -> Unit,
+    val onBackToTerminal: () -> Unit,
+    val onImportFile: () -> Unit,
+    val onNewFolder: () -> Unit,
+)
+
+/** What a row's buttons and menu do with its entry. */
+class FileEntryActions(
+    val onCopyPath: (FileBrowserEntry) -> Unit,
+    // Also takes symlinks, which may point at a folder or a file.
+    val onOpen: (FileBrowserEntry) -> Unit,
+    val onDownload: (FileBrowserEntry) -> Unit,
+    val onRename: (FileBrowserEntry) -> Unit,
+    val onDelete: (FileBrowserEntry) -> Unit,
+)
+
+/** What the buttons on a transfer's row do. */
+class FileTransferActions(
+    val onStop: (FileTransfer) -> Unit,
+    val onResume: (FileTransfer) -> Unit,
+    val onDiscard: (FileTransfer) -> Unit,
+)
+
 @Composable
 fun FileBrowserScreen(
     state: FileBrowserUiState,
-    onGoUp: () -> Unit,
-    onRefresh: () -> Unit,
-    onSelectSort: (FileSort) -> Unit,
-    onOpenPath: (String) -> Unit,
-    onBackToTerminal: () -> Unit,
-    onCopyPath: (String) -> Unit,
-    onImportFile: () -> Unit,
-    // Also takes symlinks, which may point at a folder or a file.
-    onOpenFile: (FileBrowserEntry) -> Unit,
-    onDownloadFile: (FileBrowserEntry) -> Unit,
-    onDeleteFile: (FileBrowserEntry) -> Unit,
+    transfers: List<FileTransfer>,
+    actions: FileBrowserActions,
+    entryActions: FileEntryActions,
+    transferActions: FileTransferActions,
     modifier: Modifier = Modifier,
 ) {
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -70,7 +92,7 @@ fun FileBrowserScreen(
 
     // At the top of the tree, going up returns to the terminal.
     val goUpOrBack = {
-        if (state.currentPath == "/" || state.currentPath == state.resolvedHomePath) onBackToTerminal() else onGoUp()
+        if (state.currentPath == "/" || state.currentPath == state.resolvedHomePath) actions.onBackToTerminal() else actions.onGoUp()
     }
     BackHandler(onBack = goUpOrBack)
     // Registered later, so back clears a filter before it leaves the folder.
@@ -91,8 +113,8 @@ fun FileBrowserScreen(
         FileBrowserTopBar(
             searchQuery = searchQuery,
             onSearchChange = { searchQuery = it },
-            onBackToTerminal = onBackToTerminal,
-            onRefresh = onRefresh,
+            onBackToTerminal = actions.onBackToTerminal,
+            onRefresh = actions.onRefresh,
         )
         Spacer(modifier = Modifier.height(8.dp))
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -107,11 +129,12 @@ fun FileBrowserScreen(
                             FileEntryRow(
                                 entry = entry,
                                 optionsExpanded = optionsEntryPath == entry.path,
+                                actions = entryActions,
                                 onClick = {
                                     optionsEntryPath = null
                                     when (entry.type) {
-                                        FileEntryType.Directory -> onOpenPath(entry.path)
-                                        FileEntryType.Symlink -> onOpenFile(entry)
+                                        FileEntryType.Directory -> actions.onOpenPath(entry.path)
+                                        FileEntryType.Symlink -> entryActions.onOpen(entry)
                                         else -> Unit
                                     }
                                 },
@@ -119,23 +142,22 @@ fun FileBrowserScreen(
                                     optionsEntryPath = if (optionsEntryPath == entry.path) null else entry.path
                                 },
                                 onDismissOptions = { optionsEntryPath = null },
-                                onCopyPath = { onCopyPath(entry.path) },
-                                onOpenFile = { onOpenFile(entry) },
-                                onDownloadFile = { onDownloadFile(entry) },
-                                onDeleteFile = { onDeleteFile(entry) },
                             )
                         }
                     }
                 }
             }
         }
+        if (transfers.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            FileTransferPanel(transfers, transferActions)
+        }
         Spacer(modifier = Modifier.height(8.dp))
         FileBrowserBottomBar(
             currentPath = state.currentPath,
             sort = state.sort,
             onGoUp = goUpOrBack,
-            onSelectSort = onSelectSort,
-            onImportFile = onImportFile,
+            actions = actions,
         )
     }
 }
@@ -201,13 +223,10 @@ private fun FileBrowserStatus(
 private fun FileEntryRow(
     entry: FileBrowserEntry,
     optionsExpanded: Boolean,
+    actions: FileEntryActions,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onDismissOptions: () -> Unit,
-    onCopyPath: () -> Unit,
-    onOpenFile: () -> Unit,
-    onDownloadFile: () -> Unit,
-    onDeleteFile: () -> Unit,
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
@@ -238,7 +257,7 @@ private fun FileEntryRow(
             AbyssIconButton(
                 icon = R.drawable.ic_content_copy,
                 contentDescription = stringResource(R.string.files_copy_path),
-                onClick = onCopyPath,
+                onClick = { actions.onCopyPath(entry) },
                 tint = colors.textMuted,
                 iconSize = 18.dp,
             )
@@ -252,15 +271,16 @@ private fun FileEntryRow(
                 onDismissRequest = onDismissOptions,
                 containerColor = colors.surface,
             ) {
-                val choose = { action: () -> Unit ->
-                    action()
+                val choose = { action: (FileBrowserEntry) -> Unit ->
+                    action(entry)
                     onDismissOptions()
                 }
                 if (entry.type != FileEntryType.Directory) {
-                    FileMenuItem(stringResource(R.string.action_open), colors.textPrimary) { choose(onOpenFile) }
-                    FileMenuItem(stringResource(R.string.action_download), colors.textPrimary) { choose(onDownloadFile) }
+                    FileMenuItem(stringResource(R.string.action_open), colors.textPrimary) { choose(actions.onOpen) }
+                    FileMenuItem(stringResource(R.string.action_download), colors.textPrimary) { choose(actions.onDownload) }
                 }
-                FileMenuItem(stringResource(R.string.action_delete), colors.error) { choose(onDeleteFile) }
+                FileMenuItem(stringResource(R.string.action_rename), colors.textPrimary) { choose(actions.onRename) }
+                FileMenuItem(stringResource(R.string.action_delete), colors.error) { choose(actions.onDelete) }
             }
         }
     }
@@ -279,8 +299,7 @@ private fun FileBrowserBottomBar(
     currentPath: String,
     sort: FileSort,
     onGoUp: () -> Unit,
-    onSelectSort: (FileSort) -> Unit,
-    onImportFile: () -> Unit,
+    actions: FileBrowserActions,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -295,11 +314,16 @@ private fun FileBrowserBottomBar(
                 contentDescription = stringResource(R.string.files_go_up),
                 onClick = onGoUp,
             )
-            SortButton(selected = sort, onSelect = onSelectSort)
+            SortButton(selected = sort, onSelect = actions.onSelectSort)
+            AbyssIconButton(
+                icon = R.drawable.ic_create_new_folder,
+                contentDescription = stringResource(R.string.files_new_folder),
+                onClick = actions.onNewFolder,
+            )
             AbyssIconButton(
                 icon = R.drawable.ic_arrow_upward,
                 contentDescription = stringResource(R.string.files_upload),
-                onClick = onImportFile,
+                onClick = actions.onImportFile,
             )
         }
         Spacer(modifier = Modifier.height(4.dp))

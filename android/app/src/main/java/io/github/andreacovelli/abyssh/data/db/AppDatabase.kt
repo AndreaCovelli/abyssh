@@ -15,12 +15,19 @@ import io.github.andreacovelli.abyssh.model.SshKey
 
 @Database(
     entities = [HostProfile::class, SshKey::class],
-    version = 15,
-    autoMigrations = [AutoMigration(from = 11, to = 12), AutoMigration(from = 12, to = 13), AutoMigration(from = 13, to = 14)],
+    version = 16,
+    autoMigrations = [
+        AutoMigration(from = 11, to = 12),
+        AutoMigration(from = 12, to = 13),
+        AutoMigration(from = 13, to = 14),
+        AutoMigration(from = 15, to = 16),
+    ],
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun hostProfileDao(): HostProfileDao
+
+    abstract fun hostOrganizationDao(): HostOrganizationDao
     abstract fun sshKeyDao(): SshKeyDao
 
     @Volatile private var box: SecretBox? = null

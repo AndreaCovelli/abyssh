@@ -35,6 +35,8 @@ const max_read_bytes = 1024 * 1024;
 // SFTP servers may make progress between short 120ms socket waits; use a
 // longer idle cap before failing directory listing/realpath as truly stalled.
 const sftp_idle_limit_ms: i64 = 15_000;
+// The most one read hands back, however much the caller asks for.
+const sftp_max_read_chunk: usize = 256 * 1024;
 
 const NativeSshSession = struct {
     socket_fd: c_int = -1,
@@ -42,6 +44,7 @@ const NativeSshSession = struct {
     channel: ?*c.LIBSSH2_CHANNEL = null,
     sftp: ?*c.LIBSSH2_SFTP = null,
     upload_handle: ?*c.LIBSSH2_SFTP_HANDLE = null,
+    download_handle: ?*c.LIBSSH2_SFTP_HANDLE = null,
     username: ?[]u8 = null,
     hostkey_ptr: ?[*]const u8 = null,
     hostkey_len: usize = 0,
@@ -404,6 +407,10 @@ fn destroyNativeSshSession(session: *NativeSshSession) void {
         _ = closeSftpHandle(session, uh, "destroy upload handle");
         session.upload_handle = null;
     }
+    if (session.download_handle) |dh| {
+        _ = closeSftpHandle(session, dh, "destroy download handle");
+        session.download_handle = null;
+    }
     if (session.sftp) |sftp| {
         _ = shutdownSftp(session, sftp, "destroy session");
         session.sftp = null;
@@ -524,8 +531,8 @@ fn closeSftpHandle(session: *NativeSshSession, handle: *c.LIBSSH2_SFTP_HANDLE, r
 
 fn resetSftpAfterFailure(session: *NativeSshSession, reason: []const u8) void {
     if (session.sftp == null) return;
-    if (session.upload_handle != null) {
-        logError("Skipping SFTP reset after {s}: upload active", .{reason});
+    if (session.upload_handle != null or session.download_handle != null) {
+        logError("Skipping SFTP reset after {s}: transfer active", .{reason});
         return;
     }
     logError("Resetting SFTP subsystem after {s}", .{reason});
@@ -1615,6 +1622,10 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         _ = closeSftpHandle(session, upload_handle, "native close upload handle");
         session.upload_handle = null;
     }
+    if (session.download_handle) |download_handle| {
+        _ = closeSftpHandle(session, download_handle, "native close download handle");
+        session.download_handle = null;
+    }
     if (session.sftp) |sftp| {
         _ = shutdownSftp(session, sftp, "native close");
         session.sftp = null;
@@ -1808,28 +1819,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     const path_z = dupSentinel(path_bytes) orelse return c.JNI_FALSE;
     defer allocator.free(path_z);
 
-    if (session.upload_handle) |stale| {
-        const started_ms = nowMs();
-        var idle_since_ms = started_ms;
-        var eagain_count: u64 = 0;
-        close_stale: while (true) {
-            const rc = c.libssh2_sftp_close_handle(stale);
-            if (rc != c.LIBSSH2_ERROR_EAGAIN) break;
-            eagain_count +%= 1;
-            switch (awaitSftpProgress(session, &idle_since_ms)) {
-                .retry => {},
-                .no_socket, .stalled => {
-                    const now = nowMs();
-                    logError(
-                        "SFTP close timed out after {}ms (idle {}ms, EAGAIN={})",
-                        .{ now - started_ms, now - idle_since_ms, eagain_count },
-                    );
-                    break :close_stale;
-                },
-            }
-        }
-        session.upload_handle = null;
-    }
+    closeStaleUpload(session);
 
     // Uploads write a fresh temporary file, so refuse to open one that already exists.
     const flags: c_ulong = c.LIBSSH2_FXF_WRITE | c.LIBSSH2_FXF_CREAT | c.LIBSSH2_FXF_EXCL;
@@ -1844,6 +1834,186 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     const rc = sftpRetry(session, "SFTP setstat", c.libssh2_sftp_fstat_ex, .{ file, &attrs, 1 });
     if (rc != 0) logInfo("SFTP setstat on upload failed rc={}", .{rc});
     return c.JNI_TRUE;
+}
+
+fn closeStaleUpload(session: *NativeSshSession) void {
+    const stale = session.upload_handle orelse return;
+    session.upload_handle = null;
+    if (!closeSftpHandle(session, stale, "SFTP close of a stale upload")) {
+        logError("Couldn't close a stale SFTP upload", .{});
+    }
+}
+
+/// Opens the existing file `path` for writing from `offset`, to continue an upload.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpOpenWriteAt(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, path: c.jstring, offset: c.jlong) callconv(.c) c.jboolean {
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
+    if (offset < 0) {
+        setError(session, "SFTP open failed: negative offset", .{});
+        return c.JNI_FALSE;
+    }
+    const sftp = ensureSftp(session) orelse return c.JNI_FALSE;
+    const path_bytes = jniDupString(env, path) orelse return c.JNI_FALSE;
+    defer allocator.free(path_bytes);
+    const path_z = dupSentinel(path_bytes) orelse return c.JNI_FALSE;
+    defer allocator.free(path_z);
+
+    closeStaleUpload(session);
+    const file = sftpOpenFile(session, sftp, path_z, c.LIBSSH2_FXF_WRITE, 0) orelse return c.JNI_FALSE;
+    c.libssh2_sftp_seek64(file, @intCast(offset));
+    session.upload_handle = file;
+    return c.JNI_TRUE;
+}
+
+/// Opens `path` for reading from `offset`, for later calls to nativeSftpReadChunk.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpOpenRead(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, path: c.jstring, offset: c.jlong) callconv(.c) c.jboolean {
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
+    if (offset < 0) {
+        setError(session, "SFTP open failed: negative offset", .{});
+        return c.JNI_FALSE;
+    }
+    const sftp = ensureSftp(session) orelse return c.JNI_FALSE;
+    const path_bytes = jniDupString(env, path) orelse return c.JNI_FALSE;
+    defer allocator.free(path_bytes);
+    const path_z = dupSentinel(path_bytes) orelse return c.JNI_FALSE;
+    defer allocator.free(path_z);
+
+    if (session.download_handle) |stale| {
+        session.download_handle = null;
+        if (!closeSftpHandle(session, stale, "SFTP close of a stale download")) {
+            logError("Couldn't close a stale SFTP download", .{});
+        }
+    }
+    const file = sftpOpenFile(session, sftp, path_z, c.LIBSSH2_FXF_READ, 0) orelse return c.JNI_FALSE;
+    c.libssh2_sftp_seek64(file, @intCast(offset));
+    session.download_handle = file;
+    return c.JNI_TRUE;
+}
+
+/// The next bytes of the open download, up to `max_bytes` and sftp_max_read_chunk. An
+/// empty array means the end of the file, and null means failure. Returns early rather
+/// than wait with bytes in hand, so a slow server doesn't delay the progress shown.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpReadChunk(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, max_bytes: c.jint) callconv(.c) c.jbyteArray {
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return null;
+    const file = session.download_handle orelse {
+        setError(session, "SFTP read failed: no file is open", .{});
+        return null;
+    };
+    if (max_bytes <= 0) {
+        setError(session, "SFTP read failed: invalid length", .{});
+        return null;
+    }
+    const buffer = allocator.alloc(u8, @min(@as(usize, @intCast(max_bytes)), sftp_max_read_chunk)) catch {
+        setError(session, "SFTP read failed: out of memory", .{});
+        return null;
+    };
+    defer allocator.free(buffer);
+
+    var filled: usize = 0;
+    const started_ms = nowMs();
+    var idle_since_ms = started_ms;
+    while (filled < buffer.len) {
+        const rc = c.libssh2_sftp_read(file, buffer[filled..].ptr, buffer.len - filled);
+        if (rc == 0) break;
+        if (rc > 0) {
+            filled += @intCast(rc);
+            idle_since_ms = nowMs();
+            continue;
+        }
+        if (rc != c.LIBSSH2_ERROR_EAGAIN) {
+            setLibssh2Error(session, "SFTP read failed", @intCast(rc));
+            return null;
+        }
+        if (filled > 0) break;
+        switch (awaitSftpProgress(session, &idle_since_ms)) {
+            .retry => {},
+            .no_socket, .stalled => {
+                setError(session, "SFTP read timed out after {d}ms", .{nowMs() - started_ms});
+                return null;
+            },
+        }
+    }
+    return jniNewByteArrayOrNull(env, buffer[0..filled]);
+}
+
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpCloseRead(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) c.jboolean {
+    _ = thiz;
+    _ = env;
+    const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
+    const file = session.download_handle orelse return c.JNI_TRUE;
+    session.download_handle = null;
+    return if (closeSftpHandle(session, file, "SFTP close failed")) c.JNI_TRUE else c.JNI_FALSE;
+}
+
+/// Creates the directory `path`, which must not exist yet.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpMakeDirectory(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, path: c.jstring) callconv(.c) c.jboolean {
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
+    const sftp = ensureSftp(session) orelse return c.JNI_FALSE;
+    const path_bytes = jniDupString(env, path) orelse return c.JNI_FALSE;
+    defer allocator.free(path_bytes);
+    if (path_bytes.len > std.math.maxInt(c_uint)) {
+        setError(session, "SFTP mkdir failed: path too long", .{});
+        return c.JNI_FALSE;
+    }
+    const rc = sftpRetry(session, "SFTP mkdir", c.libssh2_sftp_mkdir_ex, .{ sftp, path_bytes.ptr, @as(c_uint, @intCast(path_bytes.len)), @as(c_long, 0o755) });
+    if (rc == 0) return c.JNI_TRUE;
+    if (rc != c.LIBSSH2_ERROR_EAGAIN) setSftpError(session, sftp, "SFTP mkdir failed", rc);
+    return c.JNI_FALSE;
+}
+
+/// Moves `from` to `to` without the overwrite flag: unlike nativeSftpRename, it doesn't
+/// ask the server to replace a file that is already there.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpMove(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, from: c.jstring, to: c.jstring) callconv(.c) c.jboolean {
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
+    const sftp = ensureSftp(session) orelse return c.JNI_FALSE;
+    const from_bytes = jniDupString(env, from) orelse return c.JNI_FALSE;
+    defer allocator.free(from_bytes);
+    const to_bytes = jniDupString(env, to) orelse return c.JNI_FALSE;
+    defer allocator.free(to_bytes);
+    if (from_bytes.len > std.math.maxInt(c_uint) or to_bytes.len > std.math.maxInt(c_uint)) {
+        setError(session, "SFTP move failed: path too long", .{});
+        return c.JNI_FALSE;
+    }
+    const rc = sftpRetry(session, "SFTP move", c.libssh2_sftp_rename_ex, .{ sftp, from_bytes.ptr, @as(c_uint, @intCast(from_bytes.len)), to_bytes.ptr, @as(c_uint, @intCast(to_bytes.len)), @as(c_long, 0) });
+    if (rc == 0) return c.JNI_TRUE;
+    if (rc != c.LIBSSH2_ERROR_EAGAIN) setSftpError(session, sftp, "SFTP move failed", rc);
+    return c.JNI_FALSE;
+}
+
+/// The size and modification time of `path` (following links), -1 for what the server
+/// leaves out. An empty array when nothing is there, and null on any other failure.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpFileInfo(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, path: c.jstring) callconv(.c) c.jlongArray {
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return null;
+    const sftp = ensureSftp(session) orelse return null;
+    const path_bytes = jniDupString(env, path) orelse return null;
+    defer allocator.free(path_bytes);
+    const path_z = dupSentinel(path_bytes) orelse return null;
+    defer allocator.free(path_z);
+    var attrs = std.mem.zeroes(c.LIBSSH2_SFTP_ATTRIBUTES);
+    const rc = sftpRetry(session, "SFTP stat", c.libssh2_sftp_stat_ex, .{ sftp, path_z.ptr, @as(c_uint, @intCast(path_z.len)), c.LIBSSH2_SFTP_STAT, &attrs });
+    if (rc != 0) {
+        if (rc == c.LIBSSH2_ERROR_EAGAIN) return null;
+        if (rc == c.LIBSSH2_ERROR_SFTP_PROTOCOL) {
+            const status = c.libssh2_sftp_last_error(sftp);
+            if (status == c.LIBSSH2_FX_NO_SUCH_FILE or status == c.LIBSSH2_FX_NO_SUCH_PATH) {
+                return env.*.*.NewLongArray.?(env, 0);
+            }
+        }
+        setSftpError(session, sftp, "SFTP stat failed", rc);
+        return null;
+    }
+    // A size is whatever the server claims, so it may not fit.
+    const size: c.jlong = if (attrs.flags & c.LIBSSH2_SFTP_ATTR_SIZE != 0) std.math.cast(c.jlong, attrs.filesize) orelse -1 else -1;
+    const modified: c.jlong = if (attrs.flags & c.LIBSSH2_SFTP_ATTR_ACMODTIME != 0) std.math.cast(c.jlong, attrs.mtime) orelse -1 else -1;
+    const info = [_]c.jlong{ size, modified };
+    const out = env.*.*.NewLongArray.?(env, info.len) orelse return null;
+    env.*.*.SetLongArrayRegion.?(env, out, 0, info.len, &info);
+    return out;
 }
 
 /// The mode of `path` (following links), 0 when the server leaves it out, -1 when
@@ -2005,96 +2175,6 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
         setLibssh2Error(session, "SFTP close failed", @intCast(rc));
         return c.JNI_FALSE;
     }
-}
-
-export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpReadFile(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, path: c.jstring, max_bytes: c.jint) callconv(.c) c.jbyteArray {
-    _ = thiz;
-    const session = sessionFromHandle(handle) orelse return null;
-    const sftp = ensureSftp(session) orelse return null;
-    const path_bytes = jniDupString(env, path) orelse return null;
-    defer allocator.free(path_bytes);
-    const path_z = dupSentinel(path_bytes) orelse return null;
-    defer allocator.free(path_z);
-    const file = sftpOpenFile(session, sftp, path_z, c.LIBSSH2_FXF_READ, 0) orelse return null;
-    defer {
-        var idle_since_ms = nowMs();
-        while (true) {
-            const rc = c.libssh2_sftp_close_handle(file);
-            if (rc == 0) break;
-            if (rc == c.LIBSSH2_ERROR_EAGAIN) {
-                switch (awaitSftpProgress(session, &idle_since_ms)) {
-                    .retry => continue,
-                    .no_socket, .stalled => {},
-                }
-            }
-            logInfo("SFTP close handle failed rc={}", .{rc});
-            break;
-        }
-    }
-
-    var out: std.ArrayList(u8) = .empty;
-    defer out.deinit(allocator);
-    const limit: usize = if (max_bytes <= 0) 4096 else @intCast(max_bytes);
-    var buf: [32768]u8 = undefined;
-    const started_ms = nowMs();
-    var idle_since_ms = started_ms;
-    var eagain_count: u64 = 0;
-    while (out.items.len < limit) {
-        const want = @min(buf.len, limit - out.items.len);
-        const rc = c.libssh2_sftp_read(file, &buf, want);
-        if (rc > 0) {
-            out.appendSlice(allocator, buf[0..@intCast(rc)]) catch return null;
-            idle_since_ms = nowMs();
-            continue;
-        }
-        if (rc == 0) break;
-        if (rc == c.LIBSSH2_ERROR_EAGAIN) {
-            eagain_count +%= 1;
-            switch (awaitSftpProgress(session, &idle_since_ms)) {
-                .retry => continue,
-                .no_socket, .stalled => {
-                    const now = nowMs();
-                    setError(
-                        session,
-                        "SFTP read timed out after {d}ms (idle {d}ms, EAGAIN={d})",
-                        .{ now - started_ms, now - idle_since_ms, eagain_count },
-                    );
-                    logError(
-                        "SFTP read timeout elapsed={}ms idle={}ms eagain={}",
-                        .{ now - started_ms, now - idle_since_ms, eagain_count },
-                    );
-                    return null;
-                },
-            }
-        }
-        setLibssh2Error(session, "SFTP read failed", @intCast(rc));
-        return null;
-    }
-
-    if (out.items.len == limit) {
-        var probe: [1]u8 = undefined;
-        idle_since_ms = nowMs();
-        while (true) {
-            const rc = c.libssh2_sftp_read(file, &probe, probe.len);
-            if (rc > 0) {
-                setError(session, "SFTP read aborted: {s} is larger than the {d} byte download limit", .{ path_z, limit });
-                return null;
-            }
-            if (rc == 0) break;
-            if (rc != c.LIBSSH2_ERROR_EAGAIN) {
-                setLibssh2Error(session, "SFTP read failed", @intCast(rc));
-                return null;
-            }
-            switch (awaitSftpProgress(session, &idle_since_ms)) {
-                .retry => {},
-                .no_socket, .stalled => {
-                    setError(session, "SFTP read probe timed out for {s}", .{path_z});
-                    return null;
-                },
-            }
-        }
-    }
-    return jniNewByteArrayOrNull(env, out.items);
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSftpDeleteFile(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, path: c.jstring) callconv(.c) c.jboolean {

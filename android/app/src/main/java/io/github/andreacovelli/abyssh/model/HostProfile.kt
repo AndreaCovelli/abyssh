@@ -45,12 +45,27 @@ data class HostProfile(
     // three in a row is dropped and reconnected.
     @ColumnInfo(defaultValue = "30")
     val keepaliveIntervalSeconds: Int = DEFAULT_KEEPALIVE_INTERVAL_SECONDS,
+    // The section the server list shows the host in; blank for none.
+    @ColumnInfo(defaultValue = "''")
+    val groupName: String = "",
+    @ColumnInfo(defaultValue = "0")
+    val favorite: Boolean = false,
+    // When a session on this host last connected, or 0 for never.
+    @ColumnInfo(defaultValue = "0")
+    val lastConnectedAtEpochMs: Long = 0L,
 ) {
     // Leaves out the password and key passphrase, so logging a host can't leak them.
     override fun toString(): String =
         "HostProfile(id=$id, name=$name, host=$host, port=$port, username=$username, keyId=$keyId, " +
             "transport=$transport, authMethod=$authMethod)"
 }
+
+/**
+ * Whether the host lacks what it needs to connect: a host imported from `ssh_config` may
+ * have no username or no key chosen yet, and deleting a key leaves its hosts without one.
+ */
+val HostProfile.needsSetup: Boolean
+    get() = username.isBlank() || (authMethod.usesKey && keyId == null)
 
 const val DEFAULT_KEEPALIVE_INTERVAL_SECONDS = 30
 

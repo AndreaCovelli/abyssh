@@ -49,6 +49,7 @@ class MigrationPathTest {
         helper.runMigrationsAndValidate(name, 13, true).close()
         helper.runMigrationsAndValidate(name, 14, true).close()
         helper.runMigrationsAndValidate(name, 15, true, Migration14To15 { box }).close()
+        helper.runMigrationsAndValidate(name, 16, true).close()
     }
 
     @Test
@@ -74,6 +75,9 @@ class MigrationPathTest {
             assertFalse(host.tmuxControlMode)
             assertFalse(host.chooseSessionOnConnect)
             assertEquals(30, host.keepaliveIntervalSeconds)
+            assertEquals("", host.groupName)
+            assertFalse(host.favorite)
+            assertEquals(0L, host.lastConnectedAtEpochMs)
 
             assertEquals("pem", db.sshKeyDao().getById(1)!!.privateKeyPem)
             // Version 15 adds the foreign key, so a dangling keyId is cleared.

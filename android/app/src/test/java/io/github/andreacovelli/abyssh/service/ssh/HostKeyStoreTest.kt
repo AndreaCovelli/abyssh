@@ -117,6 +117,78 @@ class HostKeyStoreTest {
     }
 
     @Test
+    fun `a change of key type names the type the host had`() {
+        val store = newStore()
+        store.saveKey("example.com", 22, "ED25519", keyBytes)
+
+        val check = store.check("example.com", 22, "RSA", "rsa-host-key-bytes".toByteArray())
+
+        assertEquals("ED25519", (check as HostKeyCheck.Changed).previousAlgorithm)
+    }
+
+    @Test
+    fun `a new key of the same type names that type`() {
+        val store = newStore()
+        store.saveKey("example.com", 22, "ED25519", keyBytes)
+
+        val check = store.check("example.com", 22, "ED25519", "rotated".toByteArray())
+
+        assertEquals("ED25519", (check as HostKeyCheck.Changed).previousAlgorithm)
+    }
+
+    @Test
+    fun `known keys list every host with its fingerprint`() {
+        val store = newStore()
+        store.saveKey("b.example", 22, "RSA", keyBytes)
+        store.saveKey("a.example", 2222, "ED25519", keyBytes)
+        val fingerprint = (store.check("new.example", 22, "ED25519", keyBytes) as HostKeyCheck.Unknown).fingerprint
+
+        assertEquals(
+            listOf(
+                KnownHostKey("a.example", 2222, "ED25519", fingerprint),
+                KnownHostKey("b.example", 22, "RSA", fingerprint),
+            ),
+            store.knownHostKeys(),
+        )
+    }
+
+    @Test
+    fun `known keys split IPv6 hosts from the end of the entry`() {
+        val store = newStore()
+        store.saveKey("2001:db8::1", 22, "ED25519", keyBytes)
+
+        val key = store.knownHostKeys().single()
+
+        assertEquals("2001:db8::1", key.host)
+        assertEquals(22, key.port)
+        assertEquals("ED25519", key.algorithm)
+    }
+
+    @Test
+    fun `known keys skip entries the store did not write`() {
+        context.getSharedPreferences(HostKeyStore.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString("no-port", "AAAA")
+            .putString("host:notaport:RSA", "AAAA")
+            .putInt("host:22:RSA", 1)
+            .commit()
+
+        assertEquals(emptyList<KnownHostKey>(), newStore().knownHostKeys())
+    }
+
+    @Test
+    fun `a forgotten key makes the host unknown again and leaves other hosts`() {
+        val store = newStore()
+        store.saveKey("example.com", 22, "ED25519", keyBytes)
+        store.saveKey("example.com", 2222, "ED25519", keyBytes)
+
+        store.forget("example.com", 22, "ED25519")
+
+        assertTrue(store.check("example.com", 22, "ED25519", keyBytes) is HostKeyCheck.Unknown)
+        assertEquals(HostKeyCheck.Match, store.check("example.com", 2222, "ED25519", keyBytes))
+    }
+
+    @Test
     fun `binary key bytes survive the Base64 round-trip`() {
         val binary = ByteArray(64) { it.toByte() }
         val store = newStore()
