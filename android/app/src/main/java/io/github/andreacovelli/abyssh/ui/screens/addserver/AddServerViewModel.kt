@@ -14,6 +14,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import io.github.andreacovelli.abyssh.data.db.AppDatabase
+import io.github.andreacovelli.abyssh.data.db.SavedSecrets
 import io.github.andreacovelli.abyssh.data.repository.HostRepository
 import io.github.andreacovelli.abyssh.data.repository.KeyGenerationResult
 import io.github.andreacovelli.abyssh.data.repository.SshKeyRepository
@@ -30,9 +31,6 @@ import io.github.andreacovelli.abyssh.service.terminal.TabSession
 import io.github.andreacovelli.abyssh.service.terminal.TabSpec
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionRepository
 import io.github.andreacovelli.abyssh.service.terminal.runsRemoteCommands
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -91,9 +89,7 @@ class AddServerViewModel(
     /** True from the first Save until the editor closes, so a second tap saves nothing. */
     val saving: StateFlow<Boolean> = _saving.asStateFlow()
 
-    // The key "Generate" made in this form, deleted when the form closes unless a saved
-    // host uses it.
-    private var generatedKeyId: Long? = null
+    private val generatedKey = UnsavedGeneratedKey(sshKeyRepository)
 
     private val _keys = MutableStateFlow<List<SshKey>>(emptyList())
     val keys: StateFlow<List<SshKey>> = _keys.asStateFlow()
@@ -133,6 +129,7 @@ class AddServerViewModel(
                         tmuxControlMode = profile.tmuxControlMode,
                         chooseSessionOnConnect = profile.chooseSessionOnConnect,
                         keepaliveInterval = profile.keepaliveIntervalSeconds.toString(),
+                        unreadableSecrets = hostRepository.unreadableSecrets(hostId),
                     )
             }
         }
@@ -162,6 +159,11 @@ class AddServerViewModel(
         _form.value = _form.value.copy(keyPassphrase = passphrase)
     }
 
+    /** Marks unreadable saved secrets to erase when the form is saved. */
+    fun clearUnreadable(secrets: SavedSecrets) {
+        _form.value = _form.value.withClearedSecrets(secrets)
+    }
+
     fun selectStoredKey(keyId: Long?) {
         viewModelScope.launch {
             val selected =
@@ -184,8 +186,7 @@ class AddServerViewModel(
             val baseName = if (nameHint.isNotBlank()) nameHint else current.name
             when (val result = sshKeyRepository.generate(baseName, current.keyPassphrase)) {
                 is KeyGenerationResult.Success -> {
-                    discardGeneratedKey()
-                    generatedKeyId = result.key.id
+                    generatedKey.replaceWith(result.key.id)
                     _form.value =
                         _form.value.copy(
                             keyId = result.key.id,
@@ -281,12 +282,12 @@ class AddServerViewModel(
                 )
             var saved = false
             try {
-                hostRepository.upsert(profile)
+                hostRepository.upsert(profile, discard = current.clearedSecrets)
                 saved = true
             } finally {
                 if (!saved) _saving.value = false
             }
-            if (profile.keyId == generatedKeyId) generatedKeyId = null
+            generatedKey.keepIfUsed(profile.keyId)
             val stale = if (current.id != null) applyToOpenTabs(profile) else emptyList()
             if (stale.isEmpty()) {
                 onComplete()
@@ -315,16 +316,7 @@ class AddServerViewModel(
 
     override fun onCleared() {
         tester.close()
-        discardGeneratedKey()
-    }
-
-    // No saved host uses the key, so nothing refers to it. It runs outside viewModelScope,
-    // which onCleared has already cancelled.
-    @OptIn(DelicateCoroutinesApi::class)
-    private fun discardGeneratedKey() {
-        val id = generatedKeyId ?: return
-        generatedKeyId = null
-        GlobalScope.launch(Dispatchers.IO) { sshKeyRepository.deleteById(id) }
+        generatedKey.discard()
     }
 
     fun finishPendingReconnect(reconnect: Boolean) {
@@ -354,6 +346,24 @@ data class AddServerForm(
     val tmuxControlMode: Boolean = false,
     val chooseSessionOnConnect: Boolean = false,
     val keepaliveInterval: String = DEFAULT_KEEPALIVE_INTERVAL_SECONDS.toString(),
+    // The empty password and keyPassphrase above don't mean the host has none of these.
+    val unreadableSecrets: SavedSecrets = SavedSecrets(),
+    val clearedSecrets: SavedSecrets = SavedSecrets(),
+)
+
+/** The unreadable saved secrets the form hasn't replaced or cleared, which it reports to the user. */
+val AddServerForm.unreadableNotices: SavedSecrets
+    get() = SavedSecrets(
+        password = unreadableSecrets.password && !clearedSecrets.password && password.isEmpty(),
+        keyPassphrase = unreadableSecrets.keyPassphrase && !clearedSecrets.keyPassphrase && keyPassphrase.isEmpty(),
+    )
+
+fun AddServerForm.withClearedSecrets(secrets: SavedSecrets): AddServerForm = copy(
+    clearedSecrets =
+        SavedSecrets(
+            password = clearedSecrets.password || secrets.password,
+            keyPassphrase = clearedSecrets.keyPassphrase || secrets.keyPassphrase,
+        ),
 )
 
 private const val DEFAULT_SSH_PORT = 22

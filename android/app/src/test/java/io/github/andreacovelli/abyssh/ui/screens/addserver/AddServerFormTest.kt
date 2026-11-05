@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.addserver
 
+import io.github.andreacovelli.abyssh.data.db.SavedSecrets
 import io.github.andreacovelli.abyssh.model.AuthMethod
 import io.github.andreacovelli.abyssh.model.MultiplexerType
 import io.github.andreacovelli.abyssh.model.Transport
@@ -84,5 +85,30 @@ class AddServerFormTest {
 
         val filled = AddServerForm(name = "box", host = "example.org", username = "me", password = "pw")
         assertFalse(filled.copy(port = "70000").canSave())
+    }
+
+    @Test
+    fun `an unreadable secret is reported until it is replaced`() {
+        val form = AddServerForm(unreadableSecrets = SavedSecrets(password = true, keyPassphrase = true))
+        assertEquals(SavedSecrets(password = true, keyPassphrase = true), form.unreadableNotices)
+        // Key auth doesn't show the password field, and the password is still reported.
+        assertTrue(form.copy(authMethod = AuthMethod.Key).unreadableNotices.password)
+
+        val typed = form.copy(password = "new")
+        assertEquals(SavedSecrets(keyPassphrase = true), typed.unreadableNotices)
+        // Deleting what was typed goes back to keeping the stored value.
+        assertEquals(form.unreadableNotices, typed.copy(password = "").unreadableNotices)
+    }
+
+    @Test
+    fun `clearing one unreadable secret adds to those already cleared`() {
+        val form = AddServerForm(unreadableSecrets = SavedSecrets(password = true, keyPassphrase = true))
+        val cleared = form.withClearedSecrets(SavedSecrets(password = true))
+        assertEquals(SavedSecrets(password = true), cleared.clearedSecrets)
+        assertEquals(SavedSecrets(keyPassphrase = true), cleared.unreadableNotices)
+
+        val both = cleared.withClearedSecrets(SavedSecrets(keyPassphrase = true))
+        assertEquals(SavedSecrets(password = true, keyPassphrase = true), both.clearedSecrets)
+        assertEquals(SavedSecrets(), both.unreadableNotices)
     }
 }
