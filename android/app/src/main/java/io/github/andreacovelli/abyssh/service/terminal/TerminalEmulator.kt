@@ -160,6 +160,15 @@ internal class TerminalEmulator(
     }
 
     /**
+     * The text of up to the last [rows] rows of the history above the normal screen,
+     * oldest first, without the spaces around each.
+     */
+    fun historyTail(rows: Int): List<String> {
+        if (!isOpen) return emptyList()
+        return bridge.nativeHistoryTail(handle, rows)?.split('\n')?.dropLast(1).orEmpty()
+    }
+
+    /**
      * Something now shows this terminal, such as its pane or a preview. While nothing
      * does, output builds no snapshots and Kitty animations pause on their current frame.
      */

@@ -2050,6 +2050,41 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     return @intCast(@min(active.screen.y - top.screen.y, std.math.maxInt(c.jint)));
 }
 
+/// The text of the last `rows` rows of the primary screen's history, the rows above its
+/// screen, oldest first, each ended by a newline and without the spaces around it. Fewer
+/// rows when the history is shorter; null without a terminal.
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeHistoryTail(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+    rows: c.jint,
+) callconv(.c) c.jstring {
+    _ = thiz;
+    const terminal = abysshFromHandle(handle) orelse return null;
+    const screen = terminal.terminal.screens.get(.primary) orelse return null;
+    const cols = screen.pages.cols;
+    if (cols == 0) return null;
+    var count: usize = 0;
+    var row = screen.pages.getTopLeft(.active);
+    while (count < @max(0, rows)) : (count += 1) row = row.up(1) orelse break;
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+    for (0..count) |index| {
+        if (index > 0) row = row.down(1) orelse break;
+        var start = row;
+        start.x = 0;
+        var end = row;
+        end.x = cols - 1;
+        const sel = ghostty.Selection.init(start, end, false);
+        defer sel.deinit(screen);
+        const text = screen.selectionString(allocator, .{ .sel = sel, .trim = true }) catch return null;
+        defer allocator.free(text);
+        out.appendSlice(allocator, text) catch return null;
+        out.append(allocator, '\n') catch return null;
+    }
+    return jniNewString(env, out.items);
+}
+
 /// Scrolls the viewport to `rows` rows above the bottom of the screen, or to the top of
 /// the history when it holds fewer.
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeScrollToRowsAboveBottom(

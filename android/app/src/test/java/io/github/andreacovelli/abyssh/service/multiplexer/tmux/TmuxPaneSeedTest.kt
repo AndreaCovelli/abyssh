@@ -44,6 +44,21 @@ class TmuxPaneSeedTest {
     }
 
     @Test
+    fun redrawingClearsTheScreenAndTurnsOffModesThePaneDoesNotUse() {
+        val state = TmuxPaneState(size = TmuxPaneSize(10, 2), cursorY = 1, mouseSgr = true)
+
+        val redraw = String(TmuxPaneSeed.redraw(state, emptyList(), listOf("x")), Charsets.UTF_8)
+
+        assertEquals(
+            "${esc}0m${esc}H${esc}J" +
+                "$esc?1l$esc?1000l$esc?1002l$esc?1003l$esc?1005l$esc?1006l$esc?2004l" +
+                "$esc?7h${esc}4l$esc?25h\u001b>" +
+                "${esc}0m${esc}1;1Hx${esc}0m$esc?1006h${esc}2;1H",
+            redraw,
+        )
+    }
+
+    @Test
     fun skipsTheHistoryCaptureWhenThePaneHasNone() {
         val state = TmuxPaneState(size = TmuxPaneSize(10, 2))
 

@@ -85,6 +85,29 @@ internal object TmuxPaneSeed {
             val lines = history.takeLast(state.historySize)
             if (lines.isNotEmpty()) appendHistory(out, lines, state.size.rows)
         }
+        appendScreens(out, state, normalScreen, screen)
+        appendModes(out, state)
+        return out.toString().toByteArray(Charsets.UTF_8)
+    }
+
+    /**
+     * The bytes that draw a pane's screens, modes, and cursor again over a terminal of
+     * the pane's size that keeps its history, after [TmuxPaneResize.prepare]: they clear
+     * the screen, which may hold lines the resize pulled down, and turn off the modes
+     * the pane doesn't use.
+     */
+    fun redraw(state: TmuxPaneState, normalScreen: List<String>, screen: List<String>): ByteArray {
+        val out = StringBuilder()
+        out.append(CSI).append("0m").append(CSI).append('H').append(CSI).append('J')
+        listOf(1, 1000, 1002, 1003, 1005, 1006, 2004).forEach { mode -> out.append(CSI).append('?').append(mode).append('l') }
+        out.append(CSI).append("?7h").append(CSI).append("4l").append(CSI).append("?25h").append("\u001b>")
+        appendScreens(out, state, normalScreen, screen)
+        appendModes(out, state)
+        return out.toString().toByteArray(Charsets.UTF_8)
+    }
+
+    /** Draws [screen], and behind it [normalScreen] when the alternate screen is up. */
+    private fun appendScreens(out: StringBuilder, state: TmuxPaneState, normalScreen: List<String>, screen: List<String>) {
         if (state.alternateOn) {
             drawScreen(out, normalScreen, state.size.rows)
             val savedX = state.alternateSavedX?.takeIf { it < state.size.cols } ?: 0
@@ -92,8 +115,6 @@ internal object TmuxPaneSeed {
             out.append(cup(savedY, savedX)).append(CSI).append("?1049h")
         }
         drawScreen(out, screen, state.size.rows)
-        appendModes(out, state)
-        return out.toString().toByteArray(Charsets.UTF_8)
     }
 
     /** Writes [lines] and scrolls them all off the screen, leaving it blank with the lines in the scrollback. */

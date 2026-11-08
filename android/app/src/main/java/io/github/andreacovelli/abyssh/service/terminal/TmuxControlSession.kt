@@ -11,6 +11,7 @@ import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TMUX_PAUSE_AFTER_
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlCommands
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlEvent
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSize
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneState
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxWindowLayout
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
 import io.github.andreacovelli.abyssh.service.network.NetworkWaiter
@@ -55,6 +56,20 @@ internal interface TmuxPaneView {
 
     /** Replaces pane [paneId]'s terminal with a blank one of [size] and writes [seed] into it, as when it appears or resizes. */
     fun showPane(paneId: Int, size: TmuxPaneSize, seed: ByteArray)
+
+    /**
+     * Resizes pane [paneId]'s terminal to [state]'s height, keeping its history, and
+     * draws its screens again, as [TmuxWindowPanes.resizePane] does. Calls [onMismatch]
+     * when the terminal can't follow tmux, and the pane needs a full capture.
+     */
+    fun resizePane(
+        paneId: Int,
+        state: TmuxPaneState,
+        historyTail: List<String>,
+        normalScreen: List<String>,
+        screen: List<String>,
+        onMismatch: () -> Unit,
+    )
 
     fun paneOutput(paneId: Int, data: ByteArray)
 }
@@ -144,6 +159,7 @@ internal class TmuxControlSession(
                 override fun select(view: TmuxPaneView) = post { selectWindowTab(this@TmuxControlSession, view) }
             },
             attached = { attached },
+            onThread = ::onThread,
         )
 
     fun start() = onThread {

@@ -5,6 +5,7 @@ import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.UiText
 import io.github.andreacovelli.abyssh.model.toUiText
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSize
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneState
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxWindowLayout
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -120,6 +121,19 @@ internal class TmuxPaneConnection(
 
     override fun showPane(paneId: Int, size: TmuxPaneSize, seed: ByteArray) {
         onSessionThread { panes.showPane(paneId, size, seed) }
+    }
+
+    override fun resizePane(
+        paneId: Int,
+        state: TmuxPaneState,
+        historyTail: List<String>,
+        normalScreen: List<String>,
+        screen: List<String>,
+        onMismatch: () -> Unit,
+    ) {
+        onSessionThread {
+            if (!panes.resizePane(paneId, state, historyTail, normalScreen, screen)) onMismatch()
+        }
     }
 
     override fun paneOutput(paneId: Int, data: ByteArray) {

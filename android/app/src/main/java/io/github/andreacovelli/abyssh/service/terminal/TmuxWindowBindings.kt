@@ -1,7 +1,9 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlCommands
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlEvent
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxLayout
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneResize
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSeed
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSize
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneState
@@ -24,13 +26,16 @@ internal interface TmuxWindowTabs {
  * appears or its size changes. The panes of a quiet tab, and of a tab nothing has shown
  * yet, are paused, so tmux sends nothing for them, and captured once the tab is shown:
  * attaching to a session with many windows downloads only the windows the user looks
- * at. Every call runs on the control session's thread; commands go out only while
- * [attached] says tmux has reported the session.
+ * at. When only a pane's height changes, as when the keyboard shows or hides, its
+ * terminal keeps the history and only the screens are captured. Every call runs on the
+ * control session's thread, which [onThread] runs a block on; commands go out only
+ * while [attached] says tmux has reported the session.
  */
 internal class TmuxWindowBindings(
     private val link: TmuxCommandSink,
     private val tabs: TmuxWindowTabs,
     private val attached: () -> Boolean,
+    private val onThread: (() -> Unit) -> Unit,
 ) {
     private class Binding(val view: TmuxPaneView, var shown: Boolean) {
         var windowId: Int? = null
@@ -58,9 +63,11 @@ internal class TmuxWindowBindings(
     private val opening = mutableSetOf<Int>()
     private val requested = mutableSetOf<Int>()
 
-    // Panes being captured, by capture number; their output is dropped until the capture lands.
-    private val seeding = mutableMapOf<Int, Long>()
-    private var seedCount = 0L
+    // A capture on its way; [full] when it reads the history too.
+    private class Capture(val full: Boolean)
+
+    // Panes being captured, and the latest capture of each; their output is dropped until it lands.
+    private val seeding = mutableMapOf<Int, Capture>()
 
     // The view whose tab is the app's active one, if it belongs to this session.
     private var focused: TmuxPaneView? = null
@@ -256,8 +263,10 @@ internal class TmuxWindowBindings(
             if (binding.held) {
                 pause(binding, pane.paneId)
             } else if (binding.captured[pane.paneId] != pane.size) {
-                binding.captured[pane.paneId] = pane.size
-                seed(pane.paneId)
+                val old = binding.captured.put(pane.paneId, pane.size)
+                // A pane whose full capture hasn't landed has no terminal to keep yet.
+                val kept = old != null && old.cols == pane.size.cols && seeding[pane.paneId]?.full != true
+                if (kept) resize(pane.paneId, old, pane.size) else seed(pane.paneId)
             }
         }
     }
@@ -277,21 +286,50 @@ internal class TmuxWindowBindings(
 
     /**
      * Captures pane [paneId] and shows it; the pane's output waits until then, since the
-     * capture includes it. A resize captures again too: when tmux resizes a pane it
-     * reflows the lines and moves lines between the history and the screen in its own
-     * way, which resizing the local terminal can't match.
+     * capture includes it. A width change captures again too, because tmux rewraps the
+     * lines in its own way, which resizing the local terminal can't match.
      */
     private fun seed(paneId: Int) {
-        val number = ++seedCount
-        seeding[paneId] = number
-        link.sendAll(TmuxControlCommands.capturePane(paneId)) { replies ->
-            if (seeding[paneId] != number) return@sendAll
+        capture(paneId, TmuxControlCommands.capturePane(paneId), full = true) { target, state, replies ->
+            target.view.showPane(paneId, state.size, TmuxPaneSeed.build(state, replies[1].lines, replies[2].lines, replies[3].lines))
+        }
+    }
+
+    /**
+     * Captures pane [paneId]'s screens after its height went from [old] to [new], and has
+     * its terminal keep the history, unless the terminal can't follow tmux and the pane
+     * needs a full capture.
+     */
+    private fun resize(paneId: Int, old: TmuxPaneSize, new: TmuxPaneSize) {
+        val commands = TmuxControlCommands.captureResizedPane(paneId, TmuxPaneResize.checkedRows(old.rows, new.rows))
+        capture(paneId, commands, full = false) { target, state, replies ->
+            target.view.resizePane(paneId, state, replies[1].lines, replies[2].lines, replies[3].lines) {
+                onThread { if (paneId !in seeding && bindings.any { it.shows(paneId) }) seed(paneId) }
+            }
+        }
+    }
+
+    /**
+     * Sends [commands], which read pane [paneId]'s state first, and passes their replies
+     * to [show] unless a later capture of the pane started meanwhile. The pane's output
+     * is dropped until then, since the capture includes it.
+     */
+    private fun capture(
+        paneId: Int,
+        commands: List<String>,
+        full: Boolean,
+        show: (Binding, TmuxPaneState, List<TmuxControlEvent.Reply>) -> Unit,
+    ) {
+        val capture = Capture(full)
+        seeding[paneId] = capture
+        link.sendAll(commands) { replies ->
+            if (seeding[paneId] !== capture) return@sendAll
             seeding -= paneId
             val target = bindings.firstOrNull { it.shows(paneId) } ?: return@sendAll
             val state = replies[0].takeUnless { it.failed }?.lines?.firstOrNull()?.let(TmuxPaneState::parse)
                 ?: return@sendAll
             target.captured[paneId] = state.size
-            target.view.showPane(paneId, state.size, TmuxPaneSeed.build(state, replies[1].lines, replies[2].lines, replies[3].lines))
+            show(target, state, replies)
         }
     }
 }

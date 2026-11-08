@@ -2,7 +2,9 @@ package io.github.andreacovelli.abyssh.service.terminal
 
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlCommands
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlEvent
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneResize
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSize
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneState
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxWindowLayout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -12,7 +14,7 @@ class TmuxWindowBindingsTest {
     private val sink = FakeSink()
     private val tabs = FakeTabs()
     private var attached = true
-    private val bindings = TmuxWindowBindings(sink, tabs, attached = { attached })
+    private val bindings = TmuxWindowBindings(sink, tabs, attached = { attached }, onThread = { it() })
 
     @Test
     fun attachingCapturesOnlyTheShownTab() {
@@ -77,6 +79,56 @@ class TmuxWindowBindingsTest {
         answerCapture(1, TmuxPaneSize(80, 12))
 
         assertEquals(listOf(1 to TmuxPaneSize(80, 12)), view.panes)
+    }
+
+    @Test
+    fun aHeightChangeCapturesOnlyTheScreensAndKeepsTheHistory() {
+        val view = shownWindow()
+        answerCapture(1, TmuxPaneSize(80, 24))
+        sink.clear()
+
+        bindings.layoutChanged(1, layout(pane = 1, cols = 80, rows = 12))
+
+        assertEquals(TmuxControlCommands.captureResizedPane(1, TmuxPaneResize.checkedRows(24, 12)), sink.sent)
+        answerCapture(1, TmuxPaneSize(80, 12))
+
+        assertEquals(listOf(1 to TmuxPaneSize(80, 24)), view.panes)
+        assertEquals(listOf(1 to TmuxPaneSize(80, 12)), view.resized)
+    }
+
+    @Test
+    fun aHistoryTheTerminalCannotKeepIsCapturedInFull() {
+        val view = shownWindow()
+        answerCapture(1, TmuxPaneSize(80, 24))
+        view.keepsHistory = false
+        bindings.layoutChanged(1, layout(pane = 1, cols = 80, rows = 12))
+        answerCapture(1, TmuxPaneSize(80, 12))
+        sink.clear()
+
+        view.mismatch?.invoke()
+
+        assertEquals(TmuxControlCommands.capturePane(1), sink.sent)
+    }
+
+    @Test
+    fun aWidthChangeCapturesInFull() {
+        shownWindow()
+        answerCapture(1, TmuxPaneSize(80, 24))
+        sink.clear()
+
+        bindings.layoutChanged(1, layout(pane = 1, cols = 60, rows = 24))
+
+        assertEquals(TmuxControlCommands.capturePane(1), sink.sent)
+    }
+
+    @Test
+    fun aHeightChangeBeforeTheFirstCaptureLandsCapturesInFull() {
+        shownWindow()
+        sink.clear()
+
+        bindings.layoutChanged(1, layout(pane = 1, cols = 80, rows = 12))
+
+        assertEquals(TmuxControlCommands.capturePane(1), sink.sent)
     }
 
     @Test
@@ -260,7 +312,12 @@ class TmuxWindowBindingsTest {
     private class FakeView : TmuxPaneView {
         val windows = mutableListOf<Int>()
         val panes = mutableListOf<Pair<Int, TmuxPaneSize>>()
+        val resized = mutableListOf<Pair<Int, TmuxPaneSize>>()
         val output = mutableListOf<ByteArray>()
+
+        // Whether the pane's terminal follows tmux on a resize, and the call it makes when it doesn't.
+        var keepsHistory = true
+        var mismatch: (() -> Unit)? = null
 
         override fun bindWindow(windowId: Int) {
             windows += windowId
@@ -270,6 +327,17 @@ class TmuxWindowBindingsTest {
 
         override fun showPane(paneId: Int, size: TmuxPaneSize, seed: ByteArray) {
             panes += paneId to size
+        }
+
+        override fun resizePane(
+            paneId: Int,
+            state: TmuxPaneState,
+            historyTail: List<String>,
+            normalScreen: List<String>,
+            screen: List<String>,
+            onMismatch: () -> Unit,
+        ) {
+            if (keepsHistory) resized += paneId to state.size else mismatch = onMismatch
         }
 
         override fun paneOutput(paneId: Int, data: ByteArray) {

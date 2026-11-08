@@ -104,6 +104,8 @@ class GhosttyBridge {
     external fun nativeViewportRowsAboveBottom(handle: Long): Int
     // Scrolls to [rows] rows above the bottom, or to the top when the history is shorter.
     external fun nativeScrollToRowsAboveBottom(handle: Long, rows: Int)
+    // The last rows of the primary screen's history, oldest first, each trimmed and ended by a newline.
+    external fun nativeHistoryTail(handle: Long, rows: Int): String?
     // Scrolls delta OSC 133 prompts up (negative) or down; false when the view stayed put.
     external fun nativeScrollToPrompt(handle: Long, delta: Int): Boolean
     external fun nativeHyperlinkAt(handle: Long, cellX: Int, cellY: Int): String?
