@@ -48,6 +48,20 @@ class TmuxControlCommandsTest {
     }
 
     @Test
+    fun parsesTheJsonLayoutsTmux38Lists() {
+        val layout = """{"V":2,"L":{"t":"h","w":81,"h":23,"x":0,"y":0,"c":[""" +
+            """{"t":"p","w":40,"h":23,"x":0,"y":0,"i":0,"I":"%8"},""" +
+            """{"t":"p","w":40,"h":23,"x":41,"y":0,"a":true,"i":1,"I":"%9"}]}}"""
+
+        assertEquals(
+            listOf(
+                TmuxWindow(4, true, 9, TmuxWindowLayout(81, 23, listOf(TmuxPaneRect(8, 0, 0, 40, 23), TmuxPaneRect(9, 41, 0, 40, 23))), 0, "my vim"),
+            ),
+            TmuxControlCommands.parseWindows(listOf("@4 0 1 %9 40 23 $layout my vim")),
+        )
+    }
+
+    @Test
     fun parsesWindowsAndNewWindowReplies() {
         assertEquals(
             listOf(
