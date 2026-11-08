@@ -56,7 +56,4 @@ object ZmxMultiplexer : Multiplexer {
         remoteSessions = remoteSessions,
         localSessionNames = localSessionNames,
     )
-
-    private fun shellQuote(value: String): String =
-        "'" + value.replace("'", "'\\''") + "'"
 }

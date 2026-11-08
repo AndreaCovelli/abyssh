@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.service.multiplexer.tmux
 
 import io.github.andreacovelli.abyssh.service.multiplexer.TmuxMultiplexer
+import io.github.andreacovelli.abyssh.service.multiplexer.shellQuote
 
 private const val SEND_KEYS_CHUNK_BYTES = 256
 private const val VERSION_MARKER = "ABYSSH_TMUX_VERSION"
@@ -139,6 +140,4 @@ internal object TmuxControlCommands {
         "capture-pane -p -e -a -q -t %$paneId",
         "capture-pane -p -e -t %$paneId",
     )
-
-    private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 }
