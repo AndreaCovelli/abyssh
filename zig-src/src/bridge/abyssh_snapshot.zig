@@ -2050,6 +2050,19 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     return @intCast(@min(active.screen.y - top.screen.y, std.math.maxInt(c.jint)));
 }
 
+/// Whether the alternate screen is up, as full-screen programs such as vim and less use:
+/// it has no scrollback of its own.
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeIsAlternateScreen(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+) callconv(.c) c.jboolean {
+    _ = env;
+    _ = thiz;
+    const terminal = abysshFromHandle(handle) orelse return c.JNI_FALSE;
+    return if (terminal.terminal.screens.active_key == .alternate) c.JNI_TRUE else c.JNI_FALSE;
+}
+
 /// The text of the last `rows` rows of the primary screen's history, the rows above its
 /// screen, oldest first, each ended by a newline and without the spaces around it. Fewer
 /// rows when the history is shorter; null without a terminal.

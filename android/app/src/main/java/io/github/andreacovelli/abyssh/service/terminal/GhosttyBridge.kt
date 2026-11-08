@@ -102,6 +102,8 @@ class GhosttyBridge {
     external fun nativeScrollToScreenRow(handle: Long, screenRow: Int)
     // Rows the viewport sits above the bottom of the screen, 0 while it follows the output.
     external fun nativeViewportRowsAboveBottom(handle: Long): Int
+    // Whether the alternate screen, which has no scrollback, is up.
+    external fun nativeIsAlternateScreen(handle: Long): Boolean
     // Scrolls to [rows] rows above the bottom, or to the top when the history is shorter.
     external fun nativeScrollToRowsAboveBottom(handle: Long, rows: Int)
     // The last rows of the primary screen's history, oldest first, each trimmed and ended by a newline.

@@ -79,6 +79,7 @@ fun TerminalScreen(
     TerminalPassphraseDialog(launcher, onBack)
     MultiplexerSessionChooserDialog(vm, onBack)
     TerminalEndSessionDialog(endSession, tabs)
+    TmuxRenameWindowDialog(vm, overlay)
     hostKeyPrompt?.let { prompt -> HostKeyDialog(prompt, vm::onHostKeyDecision) }
 
     val onNewConnection = { launcher.openAnotherSession(activeTab?.spec?.hostId ?: route.hostId) }
@@ -204,6 +205,7 @@ private fun TerminalStripTabManager(
         onDismiss = { overlay.showTabManager = false },
         shortcuts = abysshKeys,
         multiplexerPanel = {
+            TmuxWindowActionsPanel(vm, overlay, onDismiss = { overlay.showTabManager = false })
             TerminalMultiplexerPanel(
                 vm = vm,
                 onDismiss = { overlay.showTabManager = false },

@@ -161,6 +161,7 @@ class TerminalSessionRepository private constructor(application: Application) {
             addTab = { spec, control, windowId, select -> addTab(spec, control, windowId, select) },
             removeTab = ::removeTab,
             selectTab = ::selectTab,
+            orderTabs = { ordered -> _tabs.value = reorderedTabs(_tabs.value, ordered) },
             sessionsChanged = { _multiplexerSessionsChanged.tryEmit(it.sessionKey) },
         )
 
@@ -302,8 +303,12 @@ class TerminalSessionRepository private constructor(application: Application) {
         }
     }
 
-    fun reconnectActive() {
-        activeTab.value?.let(::reconnectTab)
+    /** Runs [action] on the active tab's tmux window, or says to wait while tmux reconnects. */
+    fun runTmuxAction(action: TmuxWindowAction) {
+        val tab = activeTab.value ?: return
+        if (!tmuxTabs.run(tab, action) && tab.engine.tmuxControl != null) {
+            notices.notify(UiText.Resource(R.string.tmux_action_needs_connection))
+        }
     }
 
     /** Closes the tabs of a multiplexer session that ended, without sending tmux anything more. */

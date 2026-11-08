@@ -20,9 +20,11 @@ internal class TmuxControlTabs(
     private val addTab: (spec: TabSpec, control: TmuxControlSession, windowId: Int?, select: Boolean) -> TabSession,
     private val removeTab: (TabSession) -> Unit,
     private val selectTab: (String) -> Unit,
+    private val orderTabs: (List<TabSession>) -> Unit,
     private val sessionsChanged: (TabSpec) -> Unit,
 ) : TmuxControlHost {
     private val sessions = mutableListOf<TmuxControlSession>()
+    private var activeTab: TabSession? = null
 
     /**
      * Opens a tab on the control session for [spec]'s host and tmux session, starting
@@ -63,7 +65,7 @@ internal class TmuxControlTabs(
             ?: hostSessions.firstOrNull()
             ?: return OpenWindowResult.NoSession
         if (control.status.value.status != SessionStatus.Connected) return OpenWindowResult.Offline
-        control.newWindow()
+        control.windowControl.newWindow()
         return OpenWindowResult.Opened
     }
 
@@ -91,6 +93,35 @@ internal class TmuxControlTabs(
         return hostSessions.firstOrNull { it.sessionName == spec.multiplexerSessionName } ?: hostSessions.firstOrNull()
     }
 
+    /**
+     * Runs [action] on [tab]'s tmux window. Returns false when [tab] shows no tmux
+     * window, or its control session isn't attached, so tmux would never hear of it.
+     */
+    fun run(tab: TabSession, action: TmuxWindowAction): Boolean {
+        val control = tab.engine.tmuxControl ?: return false
+        val view = tab.engine.tmuxView ?: return false
+        if (control.status.value.status != SessionStatus.Connected) return false
+        when (action) {
+            TmuxWindowAction.SplitRight -> control.windowControl.splitPane(view, sideBySide = true)
+            TmuxWindowAction.SplitDown -> control.windowControl.splitPane(view, sideBySide = false)
+            TmuxWindowAction.ClosePane -> control.windowControl.killPane(view)
+            TmuxWindowAction.ZoomPane -> control.windowControl.toggleZoom(view)
+            is TmuxWindowAction.Rename -> control.windowControl.renameWindow(view, action.name)
+            TmuxWindowAction.NextWindow -> selectAdjacentWindow(control, tab, 1)
+            TmuxWindowAction.PreviousWindow -> selectAdjacentWindow(control, tab, -1)
+            TmuxWindowAction.Detach -> end(control)
+        }
+        return true
+    }
+
+    // The tabs are in window order, so the next tab shows the next window.
+    private fun selectAdjacentWindow(control: TmuxControlSession, tab: TabSession, delta: Int) {
+        val tabs = tabsOf(control)
+        val index = tabs.indexOf(tab)
+        if (index < 0 || tabs.size < 2) return
+        selectTab(tabs[Math.floorMod(index + delta, tabs.size)].id)
+    }
+
     /** Shows tmux session [name] in the control session behind [tab]. */
     fun switchSession(tab: TabSession, name: String): Boolean {
         val control = tab.engine.tmuxControl ?: return false
@@ -107,7 +138,7 @@ internal class TmuxControlTabs(
         if (tabsOf(control).isEmpty()) {
             end(control)
         } else if (windowId != null) {
-            control.killWindow(windowId)
+            control.windowControl.killWindow(windowId)
         }
     }
 
@@ -124,6 +155,7 @@ internal class TmuxControlTabs(
 
     /** Tells each control session which of its tabs, if any, is now the active one. */
     fun activeTabChanged(tab: TabSession?) {
+        activeTab = tab
         sessions.forEach { control ->
             control.focus(tab?.engine?.takeIf { it.tmuxControl === control }?.tmuxView)
         }
@@ -145,8 +177,22 @@ internal class TmuxControlTabs(
         tabsOf(control).firstOrNull { it.engine.showsTmuxView(view) }?.let { selectTab(it.id) }
     }
 
+    override fun orderWindowTabs(control: TmuxControlSession, views: List<TmuxPaneView>) {
+        val tabs = tabsOf(control)
+        orderTabs(views.mapNotNull { view -> tabs.firstOrNull { it.engine.showsTmuxView(view) } })
+    }
+
+    // One tab stays, the active one if it is the session's, to say why and offer to attach
+    // again, which reopens the other windows.
     override fun controlEnded(control: TmuxControlSession) {
-        if (control in sessions) end(control)
+        if (control !in sessions) return
+        val tabs = tabsOf(control)
+        val kept = tabs.firstOrNull { it === activeTab } ?: tabs.firstOrNull()
+        if (kept == null) {
+            end(control)
+            return
+        }
+        tabs.filter { it !== kept }.forEach(removeTab)
     }
 
     override fun sessionRenamed(control: TmuxControlSession, name: String) {

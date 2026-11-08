@@ -26,7 +26,8 @@ internal data class TmuxWindowLayout(val cols: Int, val rows: Int, val panes: Li
 /**
  * Reads a tmux window layout such as `eb8f,100x30,0,0{50x30,0,0,1,49x30,51,0,2}`:
  * a checksum, then cells of `WxH,X,Y` that end in a pane number or hold more cells in
- * `{}` (side by side) or `[]` (stacked).
+ * `{}` (side by side) or `[]` (stacked). tmux 3.8 lists layouts as JSON instead, which
+ * [TmuxJsonLayout] reads.
  */
 internal object TmuxLayout {
     // tmux nests a cell per split, so real layouts are a few levels deep; its windows are
@@ -36,6 +37,7 @@ internal object TmuxLayout {
 
     /** The window [layout] describes, or null when it can't be read. */
     fun parse(layout: String): TmuxWindowLayout? {
+        if (layout.startsWith('{')) return TmuxJsonLayout.parse(layout, MAX_LAYOUT_DEPTH, MAX_LAYOUT_CELLS)
         val body = layout.substringAfter(',', "")
         if (body.isEmpty()) return null
         val panes = mutableListOf<TmuxPaneRect>()

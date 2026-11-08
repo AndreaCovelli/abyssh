@@ -36,13 +36,14 @@ class TmuxControlParserTest {
         assertEquals(TmuxControlEvent.WindowsChanged, events[0])
         assertEquals(TmuxControlEvent.SessionsChanged, events[1])
         assertEquals(TmuxControlEvent.SessionChanged(0, "abyssh-1"), events[2])
-        val output = events[3] as TmuxControlEvent.Output
+        assertEquals(TmuxControlEvent.WindowRenamed(0, "tmux"), events[3])
+        val output = events[4] as TmuxControlEvent.Output
         assertEquals(0, output.paneId)
         assertEquals("\u001b[?2004h\u001b[01;32mandrea\u001b[00m:~\$ ", String(output.data, Charsets.UTF_8))
-        assertEquals(TmuxControlEvent.Reply(emptyList(), failed = false), events[4])
-        assertEquals(TmuxControlEvent.LayoutChanged(0, "f25d,40x6,0,0,0"), events[5])
-        assertEquals(TmuxControlEvent.Reply(listOf("@0 1 %0 40 6"), failed = false), events[6])
-        assertEquals(7, events.size)
+        assertEquals(TmuxControlEvent.Reply(emptyList(), failed = false), events[5])
+        assertEquals(TmuxControlEvent.LayoutChanged(0, "f25d,40x6,0,0,0"), events[6])
+        assertEquals(TmuxControlEvent.Reply(listOf("@0 1 %0 40 6"), failed = false), events[7])
+        assertEquals(8, events.size)
     }
 
     @Test
@@ -52,8 +53,8 @@ class TmuxControlParserTest {
 
         assertEquals(whole.filterNot { it is TmuxControlEvent.Output }, split.filterNot { it is TmuxControlEvent.Output })
         assertArrayEquals(
-            (whole[3] as TmuxControlEvent.Output).data,
-            (split[3] as TmuxControlEvent.Output).data,
+            (whole[4] as TmuxControlEvent.Output).data,
+            (split[4] as TmuxControlEvent.Output).data,
         )
     }
 
@@ -138,10 +139,34 @@ class TmuxControlParserTest {
     }
 
     @Test
-    fun ignoresShellOutputBeforeControlModeStarts() {
+    fun passesShellOutputBeforeControlModeStartsOnAsText() {
         val events = parse("Last login: today\r\nwelcome %user\r\n\u001bP1000p%exit server exited\r\n")
 
-        assertEquals(listOf(TmuxControlEvent.Exit("server exited")), events)
+        assertEquals(
+            listOf(
+                TmuxControlEvent.Text("Last login: today"),
+                TmuxControlEvent.Text("welcome %user"),
+                TmuxControlEvent.Exit("server exited"),
+            ),
+            events,
+        )
+    }
+
+    @Test
+    fun readsAWindowRenameToANameWithSpaces() {
+        assertEquals(listOf(TmuxControlEvent.WindowRenamed(3, "build logs")), parse("%window-renamed @3 build logs\n"))
+    }
+
+    @Test
+    fun theStartCommandsFailureComesAsText() {
+        val events = parse("\u001bP1000p%begin 1 2 0\r\ncan't find session: work\r\n%error 1 2 0\r\n")
+
+        assertEquals(listOf(TmuxControlEvent.Text("can't find session: work")), events)
+    }
+
+    @Test
+    fun theStartCommandsOutputIsSkippedWhenItSucceeds() {
+        assertTrue(parse("%begin 1 2 0\nsome output\n%end 1 2 0\n").isEmpty())
     }
 
     @Test

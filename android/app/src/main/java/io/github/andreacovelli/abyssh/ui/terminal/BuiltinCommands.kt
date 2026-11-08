@@ -29,7 +29,23 @@ enum class BuiltinCommand(
     Search("search", R.string.command_search, R.string.command_search_description, 'f'),
     Zoom("zoom", R.string.command_zoom, R.string.command_zoom_description, 'z'),
     PreviousPrompt("previous_prompt", R.string.command_previous_prompt, R.string.command_previous_prompt_description, 'k'),
-    NextPrompt("next_prompt", R.string.command_next_prompt, R.string.command_next_prompt_description, 'j');
+    NextPrompt("next_prompt", R.string.command_next_prompt, R.string.command_next_prompt_description, 'j'),
+
+    // tmux control mode only: the menu shows these on a tmux window's tab.
+    SplitRight("tmux_split_right", R.string.command_split_right, R.string.command_split_right_description, 'v'),
+    SplitDown("tmux_split_down", R.string.command_split_down, R.string.command_split_down_description, 'b'),
+    ClosePane("tmux_close_pane", R.string.command_close_pane, R.string.command_close_pane_description, 'x'),
+    ZoomPane("tmux_zoom_pane", R.string.command_zoom_pane, R.string.command_zoom_pane_description, 'm'),
+    RenameWindow("tmux_rename_window", R.string.command_rename_window, R.string.command_rename_window_description, 'r'),
+    PreviousWindow(
+        "tmux_previous_window",
+        R.string.command_previous_window,
+        R.string.command_previous_window_description,
+        'h',
+    ),
+    NextWindow("tmux_next_window", R.string.command_next_window, R.string.command_next_window_description, 'l'),
+    Detach("tmux_detach", R.string.command_detach, R.string.command_detach_description, 'd'),
+    ;
 
     companion object {
         fun fromId(id: String): BuiltinCommand? = entries.find { it.id == id }
@@ -68,13 +84,28 @@ object BuiltinShortcutStore {
         return result
     }
 
+    /**
+     * Gives the commands added since [shortcuts] were saved their default keys, unless
+     * a saved command already has that key.
+     */
+    private fun withNewCommands(shortcuts: Map<String, String>): Map<String, String> {
+        if (shortcuts.isEmpty()) return shortcuts
+        val result = shortcuts.toMutableMap()
+        val taken = shortcuts.values.filter { it.isNotEmpty() }.toMutableSet()
+        BuiltinCommand.entries.filter { it.id !in shortcuts }.forEach { command ->
+            val key = command.defaultKey.toString()
+            result[command.id] = if (taken.add(key)) key else ""
+        }
+        return result
+    }
+
     fun serialize(shortcuts: Map<String, String>): String = json.encodeToString(shortcuts)
 
     fun parse(raw: String?): Map<String, String> {
         if (raw.isNullOrBlank()) return defaults
         return try {
             val parsed = json.decodeFromString<Map<String, String>>(raw)
-            normalize(parsed).ifEmpty { defaults }
+            withNewCommands(normalize(parsed)).ifEmpty { defaults }
         } catch (_: SerializationException) {
             defaults
         }

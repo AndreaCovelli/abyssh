@@ -14,10 +14,12 @@ import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
 import io.github.andreacovelli.abyssh.ui.terminal.AbysshKeyBindings
 import io.github.andreacovelli.abyssh.ui.terminal.AccessoryAction
+import io.github.andreacovelli.abyssh.ui.terminal.GhosttyKey
 import io.github.andreacovelli.abyssh.ui.terminal.GhosttyKeyAction
 import io.github.andreacovelli.abyssh.ui.terminal.ModifierState
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalAccessoryDispatcher
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalInputView
+import io.github.andreacovelli.abyssh.ui.terminal.TerminalModifier
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalSelection
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalSelectionState
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalSpecialKey
@@ -60,6 +62,12 @@ internal class TerminalInputController(
     var tabMode = TerminalTabMode.Classic
     var allTabs: List<TabSession> = emptyList()
     var routeTabs: List<TabSession> = emptyList()
+
+    /** tmux's prefix keys, on while the active tab shows a tmux window and the setting is on. */
+    val tmuxPrefix = TmuxPrefixKeys(tmuxPrefixCommandRunner(vm, overlay))
+
+    /** Runs a key that changes the view: scrolls the scrollback or changes the font size. */
+    var onViewKey: (TerminalViewKey) -> Unit = {}
 
     // Set while a Ctrl+C that copied is held, so its repeat and release stay out of the
     // terminal after the selection is gone.
@@ -125,11 +133,17 @@ internal class TerminalInputController(
      * Ctrl belongs to the shortcut, not to the first pasted character.
      */
     fun pasteClipboard(applyModifiers: Boolean = true): Boolean {
+        val held = modifierState
+        spendModifiers()
+        return paste(held.takeIf { applyModifiers })
+    }
+
+    private fun paste(modifiers: ModifierState?): Boolean {
         val clip = clipboard?.primaryClip
         if (clip == null || clip.itemCount == 0) return false
         val text = clip.getItemAt(0).coerceToText(context).toString()
         if (text.isEmpty()) return false
-        input.onPasteText(if (applyModifiers) modifierState.applyToText(text) else text)
+        input.onPasteText(modifiers?.applyToText(text) ?: text)
         clearSelection()
         return true
     }
@@ -156,13 +170,18 @@ internal class TerminalInputController(
         }
     }
 
-    /** The sticky Shift was spent on a selection, not on the next key. */
+    /** A Shift held for one key was spent on a selection, not on the next key. */
     fun spendStickyShift() {
-        if (modifierState.shift) modifierState = modifierState.copy(shift = false)
+        if (!modifierState.isLocked(TerminalModifier.Shift)) modifierState = modifierState.copy(shift = false)
     }
 
     fun spendStickyAlt() {
-        if (modifierState.alt) modifierState = modifierState.copy(alt = false)
+        if (!modifierState.isLocked(TerminalModifier.Alt)) modifierState = modifierState.copy(alt = false)
+    }
+
+    /** Releases the modifiers held for one key, after a key used them. Locked ones stay. */
+    private fun spendModifiers() {
+        if (modifierState.hasActiveModifiers()) modifierState = modifierState.afterKey()
     }
 
     /**
@@ -183,19 +202,28 @@ internal class TerminalInputController(
             result.specialKey?.let { key -> input.onSpecialKeyInput(key, held.terminalMods()) }
             result.text?.let(input::onTextInput)
         }
-        // Paste applies the sticky modifiers but leaves them held.
-        if (result.shouldPaste) pasteClipboard()
+        if (result.shouldPaste) paste(held)
         if (result.promptJump != 0) input.scrollToPrompt(result.promptJump)
     }
 
     private fun onText(text: String) {
         when {
+            text.isEmpty() -> Unit
             abysshKeys.handleText(text) -> Unit
-            isCopyShortcut(text, modifierState, hasSelectedText) -> copySelection()
+            tmuxPrefix.handleText(text, modifierState.terminalMods()) -> spendModifiers()
+            isCopyShortcut(text, modifierState, hasSelectedText) -> {
+                spendModifiers()
+                copySelection()
+            }
             isPasteShortcut(text, modifierState, ctrlVPastes) -> pasteClipboard(applyModifiers = false)
             else -> {
                 clearSelection()
-                input.sendText(text, modifierState)
+                // A modifier held for one key applies to the first character of a word the keyboard commits.
+                val held = modifierState
+                spendModifiers()
+                val firstEnd = text.offsetByCodePoints(0, 1)
+                input.sendText(text.substring(0, firstEnd), held)
+                if (firstEnd < text.length) input.sendText(text.substring(firstEnd), modifierState)
             }
         }
     }
@@ -210,8 +238,16 @@ internal class TerminalInputController(
         }
         val switcherTabs = if (overlay.isSwitcherOpen) overlay.switcherTabs(allTabs, routeTabs) else null
         if (switcherTabs.isNullOrEmpty() && handleAbysshShortcutKey(key, codepoint, action, charCode)) return
+        val allMods = mods or modifierState.terminalMods()
+        if (switcherTabs.isNullOrEmpty() && key !in MODIFIER_KEYS && tmuxPrefix.handleKey(codepoint, allMods, action, charCode)) {
+            spendModifiers()
+            heldShortcutKey = key
+            return
+        }
         if (switcherTabs != null && handleSwitcherKey(key, codepoint, action, switcherTabs)) return
-        forwardKey(key, codepoint, mods or modifierState.terminalMods(), action, charCode)
+        forwardKey(key, codepoint, allMods, action, charCode)
+        // A modifier key pressed on a hardware keyboard joins the held ones rather than using them.
+        if (action == GhosttyKeyAction.Press && key !in MODIFIER_KEYS) spendModifiers()
     }
 
     /** A hardware shortcut chord: the same command as tapping the shortcuts key and then [key]. */
@@ -279,7 +315,11 @@ internal class TerminalInputController(
     private fun forwardKey(key: Int, codepoint: Int, mods: Int, action: Int, charCode: Int) {
         val press = action == GhosttyKeyAction.Press
         val promptJump = promptJumpShortcut(key, mods)
+        // Without a screen yet, keys reach the program, as on the alternate screen.
+        val alternateScreen = vm.activeTab.value?.sessionState?.value?.snapshot?.alternateScreen != false
+        val viewKey = terminalViewKey(key, mods, alternateScreen)
         when {
+            viewKey != null -> if (action != GhosttyKeyAction.Release) onViewKey(viewKey)
             isSearchShortcut(key, mods) -> if (press) vm.search.open()
             promptJump != 0 -> if (action != GhosttyKeyAction.Release) input.scrollToPrompt(promptJump)
             isCopyShortcut(key, mods, hasSelectedText || (!press && copyShortcutHeld)) -> {
@@ -298,5 +338,16 @@ internal class TerminalInputController(
 
     private companion object {
         const val NO_HELD_KEY = -1
+
+        val MODIFIER_KEYS = setOf(
+            GhosttyKey.shiftLeft,
+            GhosttyKey.shiftRight,
+            GhosttyKey.controlLeft,
+            GhosttyKey.controlRight,
+            GhosttyKey.altLeft,
+            GhosttyKey.altRight,
+            GhosttyKey.metaLeft,
+            GhosttyKey.metaRight,
+        )
     }
 }

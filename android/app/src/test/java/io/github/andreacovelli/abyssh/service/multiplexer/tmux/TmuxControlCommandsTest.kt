@@ -48,29 +48,56 @@ class TmuxControlCommandsTest {
     }
 
     @Test
+    fun parsesTheJsonLayoutsTmux38Lists() {
+        val layout = """{"V":2,"L":{"t":"h","w":81,"h":23,"x":0,"y":0,"c":[""" +
+            """{"t":"p","w":40,"h":23,"x":0,"y":0,"i":0,"I":"%8"},""" +
+            """{"t":"p","w":40,"h":23,"x":41,"y":0,"a":true,"i":1,"I":"%9"}]}}"""
+
+        assertEquals(
+            listOf(
+                TmuxWindow(4, true, 9, TmuxWindowLayout(81, 23, listOf(TmuxPaneRect(8, 0, 0, 40, 23), TmuxPaneRect(9, 41, 0, 40, 23))), 0, "my vim"),
+            ),
+            TmuxControlCommands.parseWindows(listOf("@4 0 1 %9 40 23 $layout my vim")),
+        )
+    }
+
+    @Test
     fun parsesWindowsAndNewWindowReplies() {
         assertEquals(
             listOf(
-                TmuxWindow(0, true, 0, TmuxWindowLayout.single(0, TmuxPaneSize(40, 6))),
-                TmuxWindow(3, false, 7, TmuxWindowLayout.single(7, TmuxPaneSize(80, 23))),
-                TmuxWindow(
-                    4,
-                    false,
-                    9,
-                    TmuxWindowLayout(81, 23, listOf(TmuxPaneRect(8, 0, 0, 40, 23), TmuxPaneRect(9, 41, 0, 40, 23))),
-                ),
+                TmuxWindow(4, false, 9, TmuxWindowLayout(81, 23, listOf(TmuxPaneRect(8, 0, 0, 40, 23), TmuxPaneRect(9, 41, 0, 40, 23))), 0, "vim"),
+                TmuxWindow(0, true, 0, TmuxWindowLayout.single(0, TmuxPaneSize(40, 6)), 1, ""),
+                TmuxWindow(3, false, 7, TmuxWindowLayout.single(7, TmuxPaneSize(80, 23)), 2, "build logs"),
             ),
             TmuxControlCommands.parseWindows(
                 listOf(
-                    "@0 1 %0 40 6",
-                    "@3 0 %7 80 23 broken",
-                    "@4 0 %9 40 23 b25d,81x23,0,0{40x23,0,0,8,40x23,41,0,9}",
+                    "@0 1 1 %0 40 6 broken ",
+                    "@3 2 0 %7 80 23 broken build logs",
+                    "@4 0 0 %9 40 23 b25d,81x23,0,0{40x23,0,0,8,40x23,41,0,9} vim",
                     "garbage",
                 ),
             ),
         )
         assertEquals(1, TmuxControlCommands.parseNewWindow(listOf("@1")))
         assertNull(TmuxControlCommands.parseNewWindow(emptyList()))
+    }
+
+    @Test
+    fun aWindowIsLabelledAsTmuxsStatusLineShowsIt() {
+        assertEquals("2:build logs", TmuxWindow(3, false, 7, TmuxWindowLayout.single(7, TmuxPaneSize(80, 23)), 2, "build logs").label)
+    }
+
+    @Test
+    fun renamingAWindowQuotesTheNameAndKeepsTmuxFromExpandingIt() {
+        assertEquals("rename-window -t @2 'it'\\''s ##1 now'", TmuxControlCommands.renameWindow(2, " it's #1\nnow "))
+    }
+
+    @Test
+    fun paneCommandsNameThePane() {
+        assertEquals("split-window -h -t %3", TmuxControlCommands.splitPane(3, sideBySide = true))
+        assertEquals("split-window -v -t %3", TmuxControlCommands.splitPane(3, sideBySide = false))
+        assertEquals("kill-pane -t %3", TmuxControlCommands.killPane(3))
+        assertEquals("resize-pane -Z -t %3", TmuxControlCommands.toggleZoom(3))
     }
 
     @Test

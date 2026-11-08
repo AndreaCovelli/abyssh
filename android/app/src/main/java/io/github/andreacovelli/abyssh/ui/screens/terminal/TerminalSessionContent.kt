@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableFloatState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -57,6 +59,8 @@ import io.github.andreacovelli.abyssh.service.terminal.SessionState
 import io.github.andreacovelli.abyssh.service.terminal.SessionStatus
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 import io.github.andreacovelli.abyssh.ui.HoldEscapeKey
+import io.github.andreacovelli.abyssh.ui.components.AbyssButton
+import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
@@ -96,6 +100,7 @@ internal fun TerminalSessionContent(
         input.tabMode = host.settings.tabMode
         input.allTabs = tabs
         input.routeTabs = host.routeTabs
+        input.tmuxPrefix.enabled = host.settings.tmuxPrefixKeys && activeTab?.spec?.usesTmuxControlMode == true
     }
     TerminalSessionEffects(vm, input, host.settings.ghosttyTheme, sessionState, activeTabId)
     val files = rememberFilesShortcut(vm, filesSupported = activeTab?.spec?.transport != Transport.LocalShell)
@@ -248,6 +253,17 @@ private fun TerminalPane(
         }
         Box(modifier = Modifier.weight(1f)) {
             var pinchZoomSteps by remember { mutableIntStateOf(0) }
+            SideEffect {
+                input.onViewKey = { viewKey ->
+                    when (viewKey) {
+                        is TerminalViewKey.ScrollPages -> vm.input.scrollPages(viewKey.pages)
+                        is TerminalViewKey.FontSize -> stepFontSize(host.fontSize, viewKey.step.toFloat())
+                        TerminalViewKey.ResetFontSize -> host.fontSize.floatValue = SettingsRepository.DEFAULT_TERMINAL_FONT_SIZE
+                    }
+                    // Shows the new size, as pinch zoom does.
+                    if (viewKey !is TerminalViewKey.ScrollPages) pinchZoomSteps++
+                }
+            }
             TerminalZoomFrame(zoom = host.overlay.zoom, snapshot = snapshot, onTap = input::requestFocus) {
                 TerminalCanvas(
                     snapshot = snapshot,
@@ -295,6 +311,7 @@ private fun TerminalPane(
             TerminalStatusBadges(
                 sessionState = sessionState,
                 preparingMultiplexer = multiplexer.duplicateLoading,
+                onCancelReconnect = vm::cancelConnect,
                 modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
             )
             // Its handles and menu sit at unzoomed positions, which zoom mode moves away from.
@@ -311,21 +328,31 @@ private fun TerminalPane(
                 onRelease = input::releaseInputView,
             )
             val settings = host.settings
-            if (settings.customKeyGroups.isNotEmpty() &&
+            val showActionsFab = settings.customKeyGroups.isNotEmpty() &&
                 (settings.showCustomActionsFab || host.overlay.fabFilteredActions != null)
+            // The jump chip sits above the custom actions button, and above its menu when it is open.
+            Column(
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 12.dp),
+                horizontalAlignment = Alignment.End,
             ) {
-                TerminalCustomActionsFab(
-                    groups = settings.customKeyGroups,
-                    expanded = host.overlay.fabExpanded,
-                    onExpandedChange = { host.overlay.fabExpanded = it },
-                    onActionClick = { action ->
-                        vm.input.sendCustomAction(action)
-                        input.requestFocus()
-                    },
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 12.dp),
-                    filteredActions = host.overlay.fabFilteredActions,
-                    onClearFilter = { host.overlay.fabFilteredActions = null },
+                TerminalJumpToBottom(
+                    scrolledBack = { snapshot().scrolledBack },
+                    onClick = vm.input::scrollToBottom,
+                    modifier = Modifier.padding(bottom = if (showActionsFab) 8.dp else 0.dp),
                 )
+                if (showActionsFab) {
+                    TerminalCustomActionsFab(
+                        groups = settings.customKeyGroups,
+                        expanded = host.overlay.fabExpanded,
+                        onExpandedChange = { host.overlay.fabExpanded = it },
+                        onActionClick = { action ->
+                            vm.input.sendCustomAction(action)
+                            input.requestFocus()
+                        },
+                        filteredActions = host.overlay.fabFilteredActions,
+                        onClearFilter = { host.overlay.fabFilteredActions = null },
+                    )
+                }
             }
             AbysshShortcutMenu(host.abysshKeys, Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 8.dp))
         }
@@ -383,7 +410,12 @@ private fun openLink(context: Context, url: String) {
 }
 
 @Composable
-private fun TerminalStatusBadges(sessionState: SessionState, preparingMultiplexer: Boolean, modifier: Modifier = Modifier) {
+private fun TerminalStatusBadges(
+    sessionState: SessionState,
+    preparingMultiplexer: Boolean,
+    onCancelReconnect: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
     Row(
@@ -399,6 +431,15 @@ private fun TerminalStatusBadges(sessionState: SessionState, preparingMultiplexe
                 style = typography.labelSmall,
                 color = colors.error,
             )
+            // The old screen stays up while it reconnects, so this is the only way to stop.
+            AbyssButton(
+                onClick = onCancelReconnect,
+                variant = AbyssButtonVariant.Ghost,
+                borderColor = colors.textMuted,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+            ) {
+                AbyssText(stringResource(R.string.action_cancel), style = typography.labelSmall, color = colors.textMuted)
+            }
         }
         if (preparingMultiplexer) {
             AbyssText(
@@ -456,6 +497,7 @@ private fun TerminalFooter(
             abysshKeyActive = host.abysshKeys.isPrefixActive,
             onOpenFiles = { files.open() },
             onEndSession = host.onEndSession,
+            endSessionLabel = activeTab?.let { stringResource(endTabLabel(it, tabs)) },
             useSingleRow = host.settings.singleRowAccessoryBar,
             modifier = Modifier.padding(bottom = 2.dp),
         )
@@ -505,6 +547,14 @@ private fun TerminalPaletteSheet(
                 modifier = barModifier,
             )
         },
-        multiplexerPanel = { TerminalMultiplexerPanel(vm, onDismiss = { overlay.showTabSheet = false }) },
+        multiplexerPanel = {
+            TmuxWindowActionsPanel(vm, overlay, onDismiss = { overlay.showTabSheet = false })
+            TerminalMultiplexerPanel(vm, onDismiss = { overlay.showTabSheet = false })
+        },
     )
+}
+
+private fun stepFontSize(fontSize: MutableFloatState, step: Float) {
+    fontSize.floatValue = (fontSize.floatValue.roundToInt() + step)
+        .coerceIn(SettingsRepository.MIN_TERMINAL_FONT_SIZE, SettingsRepository.MAX_TERMINAL_FONT_SIZE)
 }

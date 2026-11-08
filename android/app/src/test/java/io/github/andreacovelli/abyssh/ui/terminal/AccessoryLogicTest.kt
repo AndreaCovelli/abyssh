@@ -9,7 +9,7 @@ import org.junit.Test
 
 /**
  * Focused tests for pure accessory-bar logic:
- * sticky modifier persistence, catalog entries, and dispatch behavior.
+ * one-shot and locked modifiers, catalog entries, and dispatch behavior.
  *
  * These test only Kotlin/non-Android APIs so they run as plain JUnit.
  */
@@ -29,15 +29,39 @@ class AccessoryLogicTest {
         assertFalse(s1.cmd)
         assertTrue(s1.hasActiveModifiers())
 
-        val s2 = s1.toggle(TerminalModifier.Ctrl)
-        assertFalse(s2.ctrl)
-        assertFalse(s2.hasActiveModifiers())
+        val s2 = s1.toggle(TerminalModifier.Alt).toggle(TerminalModifier.Shift)
+        assertTrue(s2.alt)
+        assertTrue(s2.shift)
+        assertTrue(s2.ctrl)
+        assertFalse(s2.cmd)
+        assertTrue(s2.locked.isEmpty())
+    }
 
-        val s3 = s2.toggle(TerminalModifier.Alt).toggle(TerminalModifier.Shift)
-        assertTrue(s3.alt)
-        assertTrue(s3.shift)
-        assertFalse(s3.ctrl)
-        assertFalse(s3.cmd)
+    @Test
+    fun `a second tap locks a modifier and a third releases it`() {
+        val held = ModifierState().toggle(TerminalModifier.Ctrl)
+        assertFalse(held.isLocked(TerminalModifier.Ctrl))
+
+        val locked = held.toggle(TerminalModifier.Ctrl)
+        assertTrue(locked.ctrl)
+        assertTrue(locked.isLocked(TerminalModifier.Ctrl))
+
+        val released = locked.toggle(TerminalModifier.Ctrl)
+        assertFalse(released.ctrl)
+        assertFalse(released.isLocked(TerminalModifier.Ctrl))
+        assertFalse(released.hasActiveModifiers())
+    }
+
+    @Test
+    fun `a key spends the modifiers held for one key and keeps the locked ones`() {
+        val state = ModifierState().toggle(TerminalModifier.Ctrl).toggle(TerminalModifier.Ctrl).toggle(TerminalModifier.Alt)
+
+        val after = state.afterKey()
+
+        assertTrue(after.ctrl)
+        assertTrue(after.isLocked(TerminalModifier.Ctrl))
+        assertFalse(after.alt)
+        assertEquals(after, after.afterKey())
     }
 
     @Test
@@ -120,13 +144,13 @@ class AccessoryLogicTest {
     }
 
     @Test
-    fun `dispatch SendSpecialKey preserves modifiers and sets suppressImeInput`() {
+    fun `dispatch SendSpecialKey spends one-shot modifiers and sets suppressImeInput`() {
         val s = ModifierState(shift = true)
         val r = TerminalAccessoryDispatcher.dispatch(
             AccessoryAction.SendSpecialKey(TerminalSpecialKey.Tab),
             s,
         )
-        assertTrue(r.modifierState.shift) // sticky — preserved
+        assertFalse(r.modifierState.shift) // held for one key, now spent
         assertEquals(TerminalSpecialKey.Tab, r.specialKey)
         assertTrue(r.suppressImeInput)
         assertNull(r.text)
@@ -140,20 +164,20 @@ class AccessoryLogicTest {
             AccessoryAction.SendText("a"),
             s,
         )
-        assertTrue(r.modifierState.ctrl) // sticky — preserved
+        assertFalse(r.modifierState.ctrl) // held for one key, now spent
         assertEquals(0x01.toChar().toString(), r.text)
         assertNull(r.specialKey)
         assertFalse(r.shouldPaste)
     }
 
     @Test
-    fun `dispatch Paste returns shouldPaste and preserves modifiers`() {
-        val s = ModifierState(alt = true)
+    fun `dispatch Paste returns shouldPaste and keeps locked modifiers`() {
+        val s = ModifierState(alt = true, locked = setOf(TerminalModifier.Alt))
         val r = TerminalAccessoryDispatcher.dispatch(
             AccessoryAction.Paste,
             s,
         )
-        assertTrue(r.modifierState.alt) // sticky — preserved
+        assertTrue(r.modifierState.alt) // locked — kept
         assertTrue(r.shouldPaste)
         assertNull(r.specialKey)
         assertNull(r.text)

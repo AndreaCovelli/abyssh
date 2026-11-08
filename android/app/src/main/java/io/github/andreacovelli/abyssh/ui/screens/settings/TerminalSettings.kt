@@ -107,13 +107,19 @@ internal fun TerminalSettings(
             title = stringResource(R.string.settings_ctrl_v_pastes),
             hint = stringResource(R.string.settings_ctrl_v_pastes_hint),
             checked = state.ctrlVPastes,
-            onCheckedChange = actions::setCtrlVPastes,
+            onCheckedChange = actions.keys::setCtrlVPastes,
+        )
+        SettingSwitchCard(
+            title = stringResource(R.string.settings_tmux_prefix_keys),
+            hint = stringResource(R.string.settings_tmux_prefix_keys_hint),
+            checked = state.tmuxPrefixKeys,
+            onCheckedChange = actions.keys::setTmuxPrefixKeys,
         )
         SettingSwitchCard(
             title = stringResource(R.string.settings_volume_keys_as_arrows),
             hint = stringResource(R.string.settings_volume_keys_as_arrows_hint),
             checked = state.volumeKeysAsArrows,
-            onCheckedChange = actions::setVolumeKeysAsArrows,
+            onCheckedChange = actions.keys::setVolumeKeysAsArrows,
         )
         SettingSwitchCard(
             title = stringResource(R.string.settings_keep_screen_awake),

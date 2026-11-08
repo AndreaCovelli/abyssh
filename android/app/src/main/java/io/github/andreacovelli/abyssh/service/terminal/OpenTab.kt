@@ -47,3 +47,15 @@ private fun neighbourOf(tabs: List<OpenTab>, id: String): String? {
     val index = tabs.indexOfFirst { it.id == id }
     return (tabs.getOrNull(index + 1) ?: tabs.getOrNull(index - 1))?.id
 }
+
+/**
+ * [tabs] with the tabs in [ordered] put in that order, in the places they held, and every
+ * other tab where it was; tabs in [ordered] that aren't in [tabs] are left out.
+ */
+internal fun <T : OpenTab> reorderedTabs(tabs: List<T>, ordered: List<T>): List<T> {
+    val present = ordered.filter { tab -> tabs.any { it === tab } }
+    val slots = tabs.indices.filter { index -> present.any { it === tabs[index] } }
+    val result = tabs.toMutableList()
+    slots.zip(present).forEach { (index, tab) -> result[index] = tab }
+    return result
+}

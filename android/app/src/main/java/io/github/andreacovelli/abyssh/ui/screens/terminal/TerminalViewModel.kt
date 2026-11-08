@@ -16,6 +16,7 @@ import io.github.andreacovelli.abyssh.service.terminal.SessionState
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
 import io.github.andreacovelli.abyssh.service.terminal.TabSpec
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionRepository
+import io.github.andreacovelli.abyssh.service.terminal.TmuxWindowAction
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.SharedFlow
 import io.github.andreacovelli.abyssh.model.UiText
@@ -129,8 +130,13 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         if (tab.spec.usesRuntimeMultiplexer) {
             multiplexer.reconnect(tab)
         } else {
-            sessionRepository.reconnectActive()
+            sessionRepository.reconnectTab(tab)
         }
+    }
+
+    /** Runs [action] on the active tab's tmux window. */
+    fun runTmuxAction(action: TmuxWindowAction) {
+        sessionRepository.runTmuxAction(action)
     }
 
     fun cancelConnect() {

@@ -9,6 +9,10 @@ private const val MIN_MAJOR = 3
 private const val MIN_MINOR = 2
 private const val HEX = "0123456789abcdef"
 private val VERSION_NUMBER = Regex("(\\d+)\\.(\\d+)")
+private val CONTROL_CHARS = Regex("\\p{Cntrl}")
+
+// The fields of a line of TmuxControlCommands.LIST_WINDOWS.
+private const val WINDOW_FIELDS = 8
 
 /*
  * The TERM tmux records for the control-mode client, as #{client_termname}. A control
@@ -25,8 +29,21 @@ internal const val TMUX_PAUSE_AFTER_SECONDS = 30
 /** How many history lines a pane's terminal gets when it is filled in from tmux. */
 internal const val TMUX_HISTORY_LINES = 5000
 
-/** A window in the attached session, its active pane, and where each of its panes sits. */
-internal data class TmuxWindow(val id: Int, val active: Boolean, val paneId: Int, val layout: TmuxWindowLayout)
+/**
+ * A window in the attached session: its number in the session's list, its name, its
+ * active pane, and where each of its panes sits.
+ */
+internal data class TmuxWindow(
+    val id: Int,
+    val active: Boolean,
+    val paneId: Int,
+    val layout: TmuxWindowLayout,
+    val index: Int = 0,
+    val name: String = "",
+) {
+    /** The window as tmux's status line shows it: `0:zsh`. */
+    val label: String get() = "$index:$name"
+}
 
 /** The commands Abyssh sends to tmux in control mode, one per line, and readers for their replies. */
 internal object TmuxControlCommands {
@@ -72,24 +89,30 @@ internal object TmuxControlCommands {
     /** Stops tmux sending [paneId]'s output to this client; tmux still reads the pane, so its program runs on. */
     fun pausePane(paneId: Int): String = "refresh-client -A '%$paneId:pause'"
 
-    /** Lists the windows with the layout they show, which has only the zoomed pane while one is zoomed. */
+    /**
+     * Lists the windows with the layout they show, which has only the zoomed pane while
+     * one is zoomed, and their name last, since a name can hold spaces.
+     */
     const val LIST_WINDOWS =
-        "list-windows -F '#{window_id} #{window_active} #{pane_id} #{pane_width} #{pane_height} #{window_visible_layout}'"
+        "list-windows -F '#{window_id} #{window_index} #{window_active} #{pane_id} #{pane_width} #{pane_height} " +
+            "#{window_visible_layout} #{window_name}'"
 
-    /** Reads [LIST_WINDOWS]; a window whose layout can't be read shows just its active pane. */
+    /** Reads [LIST_WINDOWS] in window order; a window whose layout can't be read shows just its active pane. */
     fun parseWindows(lines: List<String>): List<TmuxWindow> = lines.mapNotNull { line ->
-        val parts = line.trim().split(' ')
-        if (parts.size !in 5..6) return@mapNotNull null
-        val paneId = paneId(parts[2]) ?: return@mapNotNull null
-        val size = TmuxPaneSize(parts[3].toIntOrNull() ?: return@mapNotNull null, parts[4].toIntOrNull() ?: return@mapNotNull null)
-        val layout = parts.getOrNull(5)?.let(TmuxLayout::parse)?.takeIf { it.pane(paneId) != null }
+        val parts = line.trimStart().split(' ', limit = WINDOW_FIELDS)
+        if (parts.size < WINDOW_FIELDS - 1) return@mapNotNull null
+        val paneId = paneId(parts[3]) ?: return@mapNotNull null
+        val size = TmuxPaneSize(parts[4].toIntOrNull() ?: return@mapNotNull null, parts[5].toIntOrNull() ?: return@mapNotNull null)
+        val layout = TmuxLayout.parse(parts[6])?.takeIf { it.pane(paneId) != null }
         TmuxWindow(
             id = windowId(parts[0]) ?: return@mapNotNull null,
-            active = parts[1] == "1",
+            active = parts[2] == "1",
             paneId = paneId,
             layout = layout ?: TmuxWindowLayout.single(paneId, size),
+            index = parts[1].toIntOrNull() ?: return@mapNotNull null,
+            name = parts.getOrNull(WINDOW_FIELDS - 1).orEmpty(),
         )
-    }
+    }.sortedBy { it.index }
 
     /** Lists every session on the tmux server, in the lines that [TmuxMultiplexer.parseSessions] reads. */
     const val LIST_SESSIONS = "list-sessions -F '${TmuxMultiplexer.LIST_SESSIONS_FORMAT}'"
@@ -99,6 +122,22 @@ internal object TmuxControlCommands {
     fun parseNewWindow(lines: List<String>): Int? = lines.firstNotNullOfOrNull { windowId(it.trim()) }
 
     fun killWindow(windowId: Int): String = "kill-window -t @$windowId"
+
+    /**
+     * Names window [windowId] [name]. Line breaks and other control characters become
+     * spaces, so the name stays one command, and `#` is doubled, since tmux expands
+     * formats in the name.
+     */
+    fun renameWindow(windowId: Int, name: String): String =
+        "rename-window -t @$windowId ${shellQuote(name.replace(CONTROL_CHARS, " ").trim().replace("#", "##"))}"
+
+    /** Splits pane [paneId] in two, side by side when [sideBySide], else one above the other; the new pane becomes active. */
+    fun splitPane(paneId: Int, sideBySide: Boolean): String = "split-window ${if (sideBySide) "-h" else "-v"} -t %$paneId"
+
+    fun killPane(paneId: Int): String = "kill-pane -t %$paneId"
+
+    /** Zooms pane [paneId] to fill its window, or unzooms it. */
+    fun toggleZoom(paneId: Int): String = "resize-pane -Z -t %$paneId"
 
     /**
      * Makes [windowId] the session's current window. With `aggressive-resize`, tmux sizes

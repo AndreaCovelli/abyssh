@@ -42,6 +42,9 @@ internal class TmuxWindowPanes(
     private var layout: TmuxWindowLayout? = null
     private var activePane: Int? = null
 
+    // The window's number and name, which the tab shows as its title instead of the pane's.
+    private var windowLabel: String? = null
+
     // Bells the panes rang since the window was last composed, and when that was.
     private var pendingBells = 0
     private var lastComposeAtMs = 0L
@@ -55,6 +58,12 @@ internal class TmuxWindowPanes(
     private var viewers = 0
     private var isDark: Boolean? = null
     private var colors: TerminalColors? = null
+
+    /** Titles the tab [label], the window's number and name, such as `0:zsh`. */
+    fun nameWindow(label: String) {
+        windowLabel = label
+        state.update { it.copy(title = label) }
+    }
 
     /** Shows [layout] with [activePane] active: panes it leaves out close, and new ones wait for [showPane]. */
     fun showLayout(layout: TmuxWindowLayout, activePane: Int) {
@@ -246,7 +255,7 @@ internal class TmuxWindowPanes(
         state.update {
             it.copy(
                 snapshot = snapshot,
-                title = activeState?.title,
+                title = windowLabel ?: activeState?.title,
                 pwd = activeState?.pwd,
                 bellCount = bellCount,
                 nativeVersion = nativeVersion,
