@@ -137,11 +137,13 @@ internal fun rememberAbysshKeys(
     repo: SettingsRepository,
     settings: TerminalUiSettings,
     overlay: TerminalOverlayState,
+    endSession: TerminalEndSession,
     onOpenSettings: () -> Unit,
 ): AbysshKeyBindings {
     val openSettings by rememberUpdatedState(onOpenSettings)
     return remember(
         vm,
+        endSession,
         settings.tabMode,
         settings.customKeyGroups,
         settings.builtinShortcuts,
@@ -154,7 +156,8 @@ internal fun rememberAbysshKeys(
                 vm.files.selectPane(ConnectionTab.Terminal)
                 overlay.showTabSheet = false
             },
-            BuiltinCommand.Close to { vm.activeTabId.value?.let(vm::closeTab) },
+            // Asks first when closing would end a live tmux window, as the tab strip does.
+            BuiltinCommand.Close to { vm.activeTabId.value?.let(endSession::requestClose) },
             BuiltinCommand.Actions to { repo.setShowCustomActionsFab(!settings.showCustomActionsFab) },
             BuiltinCommand.Settings to { openSettings() },
             BuiltinCommand.Search to {

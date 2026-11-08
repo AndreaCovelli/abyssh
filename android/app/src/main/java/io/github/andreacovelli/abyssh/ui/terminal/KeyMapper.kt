@@ -26,7 +26,7 @@ object KeyMapper {
             KeyEvent.KEYCODE_DEL -> MappedKey(key = GhosttyKey.backspace, codepoint = 0, mods = mods)
             KeyEvent.KEYCODE_TAB -> MappedKey(key = TerminalSpecialKey.Tab.engineKey, codepoint = 0, mods = mods)
             KeyEvent.KEYCODE_ESCAPE -> MappedKey(key = TerminalSpecialKey.Escape.engineKey, codepoint = 0, mods = mods)
-            KeyEvent.KEYCODE_ENTER -> MappedKey(key = GhosttyKey.enter, codepoint = 0, mods = mods)
+            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> MappedKey(key = GhosttyKey.enter, codepoint = 0, mods = mods)
             KeyEvent.KEYCODE_SPACE -> MappedKey(key = GhosttyKey.space, codepoint = 0, mods = mods)
 
             // Function keys

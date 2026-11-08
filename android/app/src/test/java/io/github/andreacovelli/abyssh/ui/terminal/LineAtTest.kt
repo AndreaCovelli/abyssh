@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
 import io.github.andreacovelli.abyssh.service.terminal.TerminalCellArea
+import io.github.andreacovelli.abyssh.service.terminal.TerminalPane
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -46,10 +47,16 @@ class LineAtTest {
     }
 
     @Test
-    fun `a split tab keeps the line inside the active pane`() {
-        val snapshot = screen("left pane │ right pane").copy(activeArea = TerminalCellArea(col = 12, row = 0, cols = 10, rows = 1))
+    fun `a split tab keeps the line inside the pane tapped`() {
+        val snapshot = screen("left pane │ right pane").copy(
+            panes = listOf(
+                TerminalPane(TerminalCellArea(0, 0, 10, 1), 0, appHandlesSelectionDrag = false, appTracksMouse = false),
+                TerminalPane(TerminalCellArea(12, 0, 10, 1), 0, appHandlesSelectionDrag = false, appTracksMouse = false),
+            ),
+        )
 
         assertEquals(12..21, snapshot.lineAt(14))
-        assertEquals(0..21, snapshot.lineAt(2))
+        assertEquals(0..8, snapshot.lineAt(2))
+        assertEquals(0..21, snapshot.lineAt(10))
     }
 }

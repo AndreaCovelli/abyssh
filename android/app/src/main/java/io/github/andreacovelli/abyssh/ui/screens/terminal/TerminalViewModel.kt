@@ -44,7 +44,7 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     val activeTab: StateFlow<TabSession?> = sessionRepository.activeTab
     val sessionState: StateFlow<SessionState> = sessionRepository.sessionState
     val hostKeyPrompt: StateFlow<HostKeyPrompt?> = sessionRepository.hostKeyPrompt
-    val notices: SharedFlow<UiText> = sessionRepository.notices
+    val notices: SharedFlow<UiText> = sessionRepository.notices.messages
     val hosts: StateFlow<List<HostProfile>> =
         hostRepository.observeAll().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
@@ -75,6 +75,9 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun openTab(spec: TabSpec): TabSession = sessionRepository.openTab(spec)
+
+    /** Whether opening the local shell asks the user to verify first. */
+    val localShellRequiresVerification: Boolean get() = settingsRepository.requireAuthOnConnect.value
 
     data class PreparedTabOpen(
         val spec: TabSpec,
@@ -115,9 +118,10 @@ class TerminalViewModel(application: Application) : AndroidViewModel(application
         sessionRepository.selectTab(id)
     }
 
-    fun closeTab(id: String) {
+    /** Closes tab [id]; a tmux window's tab kills its window, so ask first as [TerminalEndSession] does. */
+    fun endTab(id: String) {
         files.forget(id)
-        sessionRepository.closeTab(id)
+        sessionRepository.endTab(id)
     }
 
     fun reconnect() {

@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class MultiplexerUiState(
+    /** Why the pending open or reconnect failed; it is only set while one is pending, so Retry has something to do. */
     val preflightError: UiText? = null,
     val preflightLoading: Boolean = false,
     val preflightHostLabel: String? = null,
@@ -33,11 +34,18 @@ data class MultiplexerUiState(
     val sessions: List<RemoteMultiplexerSession> = emptyList(),
     val sessionsLoading: Boolean = false,
     val sessionsError: UiText? = null,
+    /** The session panel is creating a session. */
+    val sessionCreating: Boolean = false,
     val sessionsSourceTabId: String? = null,
     val sessionsSourceHostId: Long? = null,
     val reconnectRecovery: Boolean = false,
+    /** The tab a pending reconnect is for; its error shows on that tab only. */
+    val recoveryTabId: String? = null,
     val sessionChoice: MultiplexerSessionChoice? = null,
-)
+) {
+    /** [preflightError] when it belongs on tab [tabId]'s screen. */
+    fun preflightErrorFor(tabId: String?): UiText? = preflightError?.takeIf { recoveryTabId == null || recoveryTabId == tabId }
+}
 
 /**
  * The sessions a tab can attach to on a host that asks which one to use when it
@@ -96,7 +104,7 @@ class TerminalMultiplexer internal constructor(
             return
         }
         duplicateInFlight = true
-        _state.update { it.copy(duplicateLoading = true, preflightError = null) }
+        _state.update { it.copy(duplicateLoading = true) }
         val duplicateSpec = spec.withNewSession()
         scope.launch(Dispatchers.IO) {
             try {
@@ -104,10 +112,9 @@ class TerminalMultiplexer internal constructor(
                 withContext(Dispatchers.Main) {
                     result.fold(
                         onSuccess = { name -> sessionRepository.openTab(duplicateSpec.copy(multiplexerSessionName = name)) },
+                        // Nothing waits to be retried, so the failure is a notice rather than a recovery screen.
                         onFailure = { error ->
-                            _state.update {
-                                it.copy(preflightError = error.toUiText(UiText.Resource(R.string.multiplexer_create_failed)))
-                            }
+                            sessionRepository.notices.notify(error.toUiText(UiText.Resource(R.string.multiplexer_create_failed)))
                         },
                     )
                 }
@@ -202,15 +209,21 @@ class TerminalMultiplexer internal constructor(
         pendingAction = prepared
         val spec = prepared.spec
         val reconnectRecovery = prepared is PendingAction.Reconnect
+        val recoveryTabId = (prepared as? PendingAction.Reconnect)?.tabId
         val unsupported = unsupportedReason(spec)
         if (unsupported != null) {
-            _state.value = MultiplexerUiState(preflightError = unsupported, reconnectRecovery = reconnectRecovery)
+            _state.value = MultiplexerUiState(
+                preflightError = unsupported,
+                reconnectRecovery = reconnectRecovery,
+                recoveryTabId = recoveryTabId,
+            )
             return
         }
         _state.value = MultiplexerUiState(
             preflightLoading = true,
             preflightHostLabel = spec.tabLabel,
             reconnectRecovery = reconnectRecovery,
+            recoveryTabId = recoveryTabId,
         )
         if (prepared is PendingAction.Open && prepared.choosesSession) {
             listChoices(generation, prepared)
@@ -315,10 +328,7 @@ class TerminalMultiplexer internal constructor(
             is PendingAction.Open -> sessionRepository.openTab(nextSpec)
             is PendingAction.Reconnect -> {
                 if (!reconnectTabWithSpec(action.tabId, nextSpec)) {
-                    _state.value = MultiplexerUiState(
-                        preflightError = UiText.Resource(R.string.terminal_session_unavailable),
-                        reconnectRecovery = true,
-                    )
+                    sessionRepository.notices.notify(UiText.Resource(R.string.terminal_session_unavailable))
                 }
             }
         }
@@ -333,10 +343,7 @@ class TerminalMultiplexer internal constructor(
                     preflightError = UiText.Resource(R.string.terminal_preparation_cancelled),
                 )
             }
-            pendingAction == null -> _state.value = MultiplexerUiState(
-                preflightError = UiText.Resource(R.string.terminal_preparation_superseded),
-                reconnectRecovery = action is PendingAction.Reconnect,
-            )
+            pendingAction == null -> sessionRepository.notices.notify(UiText.Resource(R.string.terminal_preparation_superseded))
         }
     }
 
@@ -397,17 +404,24 @@ class TerminalMultiplexer internal constructor(
         }
     }
 
-    /** Opens a tab in a new session on the active tab's host. */
-    fun createNextSession() {
+    /**
+     * Opens a tab in a new session on the active tab's host, then runs [onOpened]. A
+     * failure shows in [MultiplexerUiState.sessionsError] instead.
+     */
+    fun createNextSession(onOpened: () -> Unit = {}) {
+        if (_state.value.sessionCreating) return
         val tab = sessionRepository.activeTab.value ?: return
         val nextSpec = tab.spec.withNewSession()
+        _state.update { it.copy(sessionCreating = true, sessionsError = null) }
         scope.launch(Dispatchers.IO) {
             val result = runCatching { sessionRepository.multiplexerSessions.resolveName(nextSpec) }
             withContext(Dispatchers.Main) {
+                _state.update { it.copy(sessionCreating = false) }
                 result.fold(
                     onSuccess = { name ->
                         sessionRepository.openTab(nextSpec.copy(multiplexerSessionName = name))
                         listSessionsForActiveHost()
+                        onOpened()
                     },
                     onFailure = { error ->
                         _state.update {

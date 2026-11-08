@@ -73,8 +73,6 @@ class TerminalSessionRepository private constructor(application: Application) {
         DisplayFrameInterval(appContext, settingsRepository.matchDisplayRefreshRate, scope)
     private var attachedClients = 0
 
-    private val _notices = MutableSharedFlow<UiText>(extraBufferCapacity = 4)
-
     private val _multiplexerSessionsChanged = MutableSharedFlow<String>(extraBufferCapacity = 8)
 
     /**
@@ -83,8 +81,8 @@ class TerminalSessionRepository private constructor(application: Application) {
      */
     val multiplexerSessionsChanged: SharedFlow<String> = _multiplexerSessionsChanged.asSharedFlow()
 
-    /** Messages for the user about how tabs opened, such as a host falling back from tmux control mode. */
-    val notices: SharedFlow<UiText> = _notices.asSharedFlow()
+    /** Messages for the user about tabs, such as a host falling back from tmux control mode. */
+    val notices = TerminalNotices()
 
     private val _tabs = MutableStateFlow<List<TabSession>>(emptyList())
     val tabs: StateFlow<List<TabSession>> = _tabs.asStateFlow()
@@ -211,12 +209,26 @@ class TerminalSessionRepository private constructor(application: Application) {
     fun openTab(spec: TabSpec): TabSession {
         if (!spec.usesTmuxControlMode) return addTab(spec)
         if (!TmuxControlSupport.isUnsupported(spec)) return tmuxTabs.open(spec)
-        _notices.tryEmit(UiText.Resource(R.string.tmux_control_unsupported))
+        notices.notify(UiText.Resource(R.string.tmux_control_unsupported))
         return addTab(spec.copy(tmuxControlMode = false))
     }
 
-    /** Opens a new tmux window, and so a tab, on the control session for [spec]'s host; false when there is none. */
-    fun openTmuxWindow(spec: TabSpec): Boolean = spec.usesTmuxControlMode && tmuxTabs.openWindow(spec)
+    /**
+     * Opens a new tmux window, and so a tab, on the control session for [spec]'s host;
+     * false when there is none. While that session isn't attached, it opens nothing and
+     * tells the user why.
+     */
+    fun openTmuxWindow(spec: TabSpec): Boolean {
+        if (!spec.usesTmuxControlMode) return false
+        return when (tmuxTabs.openWindow(spec)) {
+            TmuxControlTabs.OpenWindowResult.Opened -> true
+            TmuxControlTabs.OpenWindowResult.Offline -> {
+                notices.notify(UiText.Resource(R.string.tmux_window_needs_connection))
+                true
+            }
+            TmuxControlTabs.OpenWindowResult.NoSession -> false
+        }
+    }
 
     private fun addTab(
         spec: TabSpec,
@@ -237,7 +249,7 @@ class TerminalSessionRepository private constructor(application: Application) {
                 hostKeyStore = hostKeyStore,
                 localNetwork = localNetwork,
                 network = network,
-                onShellExited = { scope.launch { closeTab(id) } },
+                onShellExited = { scope.launch { endTab(id) } },
                 tmuxControl = tmuxControl,
                 tmuxWindowId = tmuxWindowId,
             )
@@ -253,11 +265,16 @@ class TerminalSessionRepository private constructor(application: Application) {
     }
 
     /**
-     * Closes tab [id]. A tmux window's tab ends its window, unless it is the session's
-     * last tab, which detaches and leaves the session running.
+     * Closes tab [id] and ends what it runs. A tmux window's tab kills its window and the
+     * programs in it, unless it is the session's last tab, which detaches and leaves the
+     * session running; the UI asks the user before a kill ([disconnectTabs] never kills).
      */
-    fun closeTab(id: String) {
+    fun endTab(id: String) {
         val tab = _tabs.value.firstOrNull { it.id == id } ?: return
+        if (tmuxTabs.closeNeedsConnection(tab)) {
+            notices.notify(UiText.Resource(R.string.tmux_window_needs_connection))
+            return
+        }
         val windowId = tab.engine.tmuxWindowId
         removeTab(tab)
         tmuxTabs.tabClosed(tab, windowId)
@@ -297,12 +314,12 @@ class TerminalSessionRepository private constructor(application: Application) {
     /**
      * Closes tabs [ids] without ending anything on the server. A tmux control-mode tab
      * detaches its whole session, which closes the session's other tabs too and leaves
-     * every window running; [closeTab] would end the tab's window instead.
+     * every window running; [endTab] would end the tab's window instead.
      */
     fun disconnectTabs(ids: Collection<String>) {
         val tabs = _tabs.value.filter { it.id in ids }
         tabs.mapNotNull { it.engine.tmuxControl }.distinct().forEach(tmuxTabs::end)
-        tabs.filter { it.engine.tmuxControl == null }.forEach { closeTab(it.id) }
+        tabs.filter { it.engine.tmuxControl == null }.forEach { endTab(it.id) }
     }
 
     /**

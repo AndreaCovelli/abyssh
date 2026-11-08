@@ -385,6 +385,7 @@
         <item quantity="one">This closes %1$d session on this host.</item>
         <item quantity="other">This closes %1$d sessions on this host.</item>
     </plurals>
+    <string name="server_list_disconnect_body_tmux">This detaches from the tmux session. It keeps running on the host.</string>
     <string name="server_list_empty_title">No hosts configured</string>
     <string name="server_list_empty_hint">Add your first host to connect quickly.</string>
     <string name="server_list_local_shell">Local shell</string>
@@ -431,6 +432,7 @@
     <string name="custom_actions_key_label">Key</string>
     <string name="custom_actions_shortcut_label">Shortcut</string>
     <string name="custom_actions_shortcut_placeholder">Single key for an Abyssh command</string>
+    <string name="custom_actions_shortcut_taken">Already used by %1$s</string>
     <string name="custom_actions_no_modifiers">No modifiers</string>
     <string name="custom_actions_modifiers">Modifiers: %1$s</string>
     <string name="custom_actions_value_label">Value</string>
@@ -468,6 +470,7 @@
     <string name="multiplexer_sessions_on">%1$s sessions on %2$s</string>
     <string name="action_refresh">Refresh</string>
     <string name="multiplexer_new_session">New session</string>
+    <string name="multiplexer_creating_session">Creating…</string>
     <string name="multiplexer_choose_title">Choose a %1$s session</string>
     <string name="multiplexer_choose_empty">No sessions on %1$s yet.</string>
     <string name="multiplexer_open_in_tab">Open in a tab</string>
@@ -559,6 +562,8 @@
     <string name="error_connection_lost">Connection lost: %1$s</string>
     <string name="error_connection_interrupted">Connection interrupted</string>
     <string name="tmux_control_not_started">tmux did not start in control mode</string>
+    <string name="tmux_window_needs_connection">Wait for tmux to reconnect before opening or closing windows</string>
+    <string name="tmux_control_session_gone">The tmux session %1$s ended while disconnected</string>
     <string name="tmux_control_unsupported">This host\'s tmux is older than 3.2, so it opened without control mode</string>
     <string name="error_connection_interrupted_reason">Connection interrupted: %1$s</string>
     <string name="error_local_shell_failed">Local shell failed: %1$s</string>

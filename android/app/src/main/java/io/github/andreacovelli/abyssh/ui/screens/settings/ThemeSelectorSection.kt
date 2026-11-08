@@ -1,5 +1,8 @@
 package io.github.andreacovelli.abyssh.ui.screens.settings
 
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.produceState
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.size
@@ -73,8 +76,16 @@ internal fun ThemeSelectorSection(
     val typography = AbyssTypography.current
     val context = LocalContext.current
     val availableThemes = remember { GhosttyThemeRegistry.availableThemeNames }
-    val themeByName = remember(context, availableThemes) {
-        availableThemes.associateWith { themeName -> GhosttyThemeRegistry.getTheme(context, themeName) }
+    // Reading every theme takes too long for the main thread, so the rows start with the
+    // themes already read and fill in the rest when they load.
+    val themeByName by produceState(
+        initialValue = availableThemes.associateWith(GhosttyThemeRegistry::cachedTheme),
+        context,
+        availableThemes,
+    ) {
+        value = withContext(Dispatchers.IO) {
+            availableThemes.associateWith { themeName -> GhosttyThemeRegistry.getTheme(context, themeName) }
+        }
     }
 
     AbyssSectionHeader(stringResource(R.string.settings_section_theme))

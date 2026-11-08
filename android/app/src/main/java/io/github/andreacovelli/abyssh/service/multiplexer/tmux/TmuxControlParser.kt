@@ -30,9 +30,12 @@ internal sealed interface TmuxControlEvent {
     /** This client is now attached to session [sessionId], named [name]. */
     data class SessionChanged(val sessionId: Int, val name: String) : TmuxControlEvent
 
+    /** Session [sessionId] is now named [name]; the server's sessions changed with it. */
+    data class SessionRenamed(val sessionId: Int, val name: String) : TmuxControlEvent
+
     /**
-     * The server's sessions changed: one was created, ended, or renamed, or another client
-     * attached to one or detached.
+     * The server's sessions changed: one was created or ended, or another client attached
+     * to one or detached.
      */
     data object SessionsChanged : TmuxControlEvent
 
@@ -139,7 +142,13 @@ internal class TmuxControlParser {
                 val sessionId = args.getOrNull(1)?.removePrefix("$")?.toIntOrNull() ?: return null
                 TmuxControlEvent.SessionChanged(sessionId, text.substringAfter(' ').substringAfter(' ', ""))
             }
-            "%sessions-changed", "%session-renamed", "%client-session-changed", "%client-detached" ->
+            "%session-renamed" -> {
+                // `%session-renamed $id name`; a name can hold spaces.
+                val sessionId = args.getOrNull(1)?.takeIf { it.startsWith("$") }?.removePrefix("$")?.toIntOrNull()
+                    ?: return TmuxControlEvent.SessionsChanged
+                TmuxControlEvent.SessionRenamed(sessionId, text.substringAfter(' ').substringAfter(' ', ""))
+            }
+            "%sessions-changed", "%client-session-changed", "%client-detached" ->
                 TmuxControlEvent.SessionsChanged
             "%exit" -> TmuxControlEvent.Exit(text.substringAfter(' ', "").ifEmpty { null })
             else -> null

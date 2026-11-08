@@ -28,7 +28,7 @@ internal class TerminalEndSession(private val vm: TerminalViewModel) {
 
     fun request() {
         val tab = vm.activeTab.value ?: return
-        if (tab.sessionState.value.status.isLive) pendingTabId = tab.id else vm.closeTab(tab.id)
+        if (tab.sessionState.value.status.isLive) pendingTabId = tab.id else vm.endTab(tab.id)
     }
 
     /**
@@ -38,11 +38,11 @@ internal class TerminalEndSession(private val vm: TerminalViewModel) {
     fun requestClose(id: String) {
         val tabs = vm.tabs.value
         val tab = tabs.firstOrNull { it.id == id } ?: return
-        if (tab.sessionState.value.status.isLive && closeKillsTmuxWindow(tab, tabs)) pendingTabId = id else vm.closeTab(id)
+        if (tab.sessionState.value.status.isLive && closeKillsTmuxWindow(tab, tabs)) pendingTabId = id else vm.endTab(id)
     }
 
     fun confirm() {
-        pendingTabId?.let(vm::closeTab)
+        pendingTabId?.let(vm::endTab)
         pendingTabId = null
     }
 

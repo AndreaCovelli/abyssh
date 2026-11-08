@@ -90,7 +90,8 @@ fun FileBrowserScreen(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var optionsEntryPath by remember { mutableStateOf<String?>(null) }
 
-    // At the top of the tree, going up returns to the terminal.
+    // Back returns to the terminal from the home folder, as from the top of the tree; the
+    // Up button goes on above home, up to the root.
     val goUpOrBack = {
         if (state.currentPath == "/" || state.currentPath == state.resolvedHomePath) actions.onBackToTerminal() else actions.onGoUp()
     }
@@ -156,7 +157,7 @@ fun FileBrowserScreen(
         FileBrowserBottomBar(
             currentPath = state.currentPath,
             sort = state.sort,
-            onGoUp = goUpOrBack,
+            onGoUp = actions.onGoUp,
             actions = actions,
         )
     }
@@ -313,6 +314,7 @@ private fun FileBrowserBottomBar(
                 icon = R.drawable.ic_arrow_back,
                 contentDescription = stringResource(R.string.files_go_up),
                 onClick = onGoUp,
+                enabled = currentPath != "/",
             )
             SortButton(selected = sort, onSelect = actions.onSelectSort)
             AbyssIconButton(

@@ -54,7 +54,7 @@ fun TerminalScreen(
     val overlay = remember { TerminalOverlayState() }
     val launcher = rememberTerminalTabLauncher(vm)
     val endSession = rememberTerminalEndSession(vm)
-    val abysshKeys = rememberAbysshKeys(vm, repo, settings, overlay, onOpenSettings)
+    val abysshKeys = rememberAbysshKeys(vm, repo, settings, overlay, endSession, onOpenSettings)
     KeepFocusOnMouseClickEffect()
 
     val tabs by vm.tabs.collectAsStateWithLifecycle()
@@ -148,7 +148,8 @@ fun TerminalScreen(
         )
     }
 
-    BackHandler(enabled = overlay.showTabManager) { overlay.showTabManager = false }
+    // Closes the tab manager in strip mode and the command palette in list mode.
+    BackHandler(enabled = overlay.isSwitcherOpen) { overlay.closeSwitcher() }
     // Outside the status branches, so the manager opens from every state.
     if (stripMode) {
         TerminalStripTabManager(vm, overlay, tabs, activeTabId, abysshKeys, onNewConnection, endSession::requestClose)
@@ -227,20 +228,36 @@ private fun TerminalRouteEffects(
     val currentOnBack by rememberUpdatedState(onBack)
     // Saved, so recreating the activity doesn't open the new session again.
     var newSessionPending by rememberSaveable(route) { mutableStateOf(newSession) }
+    // Saved, so a route restored after process death knows it has opened before. The
+    // navigation graph verified the user before the first open, but not on the restore.
+    var openedBefore by rememberSaveable(route) { mutableStateOf(false) }
     LaunchedEffect(route) {
         launcher.reset()
         val routeHostId = route.hostId
         val opensNew = newSessionPending
+        val restored = openedBefore
         newSessionPending = false
+        openedBefore = true
         when {
-            route.localShell -> if (vm.selectLocalShellTab() == null) vm.openTab(TerminalRoute.localShellSpec)
+            route.localShell -> if (vm.selectLocalShellTab() == null) {
+                launcher.open(
+                    TerminalRoute.localShellSpec,
+                    requiresVerification = restored && vm.localShellRequiresVerification,
+                    onCancel = currentOnBack,
+                )
+            }
             routeHostId != null -> {
                 // The host's current tab shows until the new one opens.
                 val hasTab = vm.selectTabForHost(routeHostId) != null
                 if (hasTab && !opensNew) return@LaunchedEffect
                 val prepared = vm.prepareTabOpenForHost(routeHostId) ?: return@LaunchedEffect
-                // The navigation graph verified the user before opening this route.
-                launcher.open(prepared.spec, requiresVerification = false, leaveOnCancel = !hasTab, newSession = hasTab)
+                launcher.open(
+                    prepared.spec,
+                    requiresVerification = restored && prepared.requiresVerification,
+                    leaveOnCancel = !hasTab,
+                    newSession = hasTab,
+                    onCancel = { if (!hasTab) currentOnBack() },
+                )
             }
         }
     }

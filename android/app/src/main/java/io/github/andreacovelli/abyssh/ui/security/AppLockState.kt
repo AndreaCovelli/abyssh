@@ -24,6 +24,24 @@ class AppLockState : ViewModel() {
     private val _value = MutableStateFlow(Value())
     val value: StateFlow<Value> = _value.asStateFlow()
 
+    // A system picker the app opened is about to cover it; its stop doesn't lock.
+    private var pickerOpening = false
+
+    /** The app is opening a system picker, such as a file chooser. */
+    fun pickerOpening() {
+        pickerOpening = true
+    }
+
+    /** Opening the picker failed, so the next stop locks again. */
+    fun pickerFailed() {
+        pickerOpening = false
+    }
+
+    /** The app stopped: locks it unless the stop is the picker it just opened. */
+    fun stopped() {
+        if (pickerOpening) pickerOpening = false else lock()
+    }
+
     /** The app went to the background: ask again when it returns. */
     fun lock() {
         _value.value = Value()

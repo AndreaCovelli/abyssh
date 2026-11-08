@@ -45,14 +45,39 @@ internal class TmuxControlTabs(
         return tab
     }
 
-    /** Opens a new window on the control session for [spec]'s host; returns false when there is none. */
-    fun openWindow(spec: TabSpec): Boolean {
+    /** What [openWindow] did. */
+    enum class OpenWindowResult {
+        Opened,
+
+        /** The control session is reconnecting; tmux would never hear of the window. */
+        Offline,
+
+        /** No control session runs on the host. */
+        NoSession,
+    }
+
+    /** Opens a new window on the control session for [spec]'s host, if one is attached. */
+    fun openWindow(spec: TabSpec): OpenWindowResult {
         val hostSessions = sessions.filter { it.spec.sessionKey == spec.sessionKey }
         val control = hostSessions.firstOrNull { it.sessionName == spec.multiplexerSessionName }
             ?: hostSessions.firstOrNull()
-            ?: return false
+            ?: return OpenWindowResult.NoSession
+        if (control.status.value.status != SessionStatus.Connected) return OpenWindowResult.Offline
         control.newWindow()
-        return true
+        return OpenWindowResult.Opened
+    }
+
+    /**
+     * Whether closing [tab] would kill its window while its control session is
+     * reconnecting. tmux would never hear of it, and the window would come back as a tab
+     * once the session is back, so such a close waits for that. A session that gave up
+     * lets its tabs close.
+     */
+    fun closeNeedsConnection(tab: TabSession): Boolean {
+        val control = tab.engine.tmuxControl ?: return false
+        val status = control.status.value.status
+        val reconnecting = status == SessionStatus.Connecting || status == SessionStatus.Reconnecting
+        return reconnecting && tabsOf(control).any { it !== tab }
     }
 
     /**

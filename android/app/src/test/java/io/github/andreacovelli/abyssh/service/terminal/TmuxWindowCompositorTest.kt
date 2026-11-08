@@ -53,6 +53,22 @@ class TmuxWindowCompositorTest {
     }
 
     @Test
+    fun `each pane keeps its own scroll and mouse modes`() {
+        val vim = pane("xyz", "uvw").copy(appTracksMouse = true, appHandlesSelectionDrag = true, viewportScrollY = 9)
+        val window = TmuxWindowCompositor().compose(sideBySide, mapOf(1 to pane("abc", "def"), 2 to vim), activePane = 1)!!
+
+        assertEquals(
+            listOf(
+                TerminalPane(TerminalCellArea(0, 0, 3, 2), 0, appHandlesSelectionDrag = false, appTracksMouse = false),
+                TerminalPane(TerminalCellArea(4, 0, 3, 2), 9, appHandlesSelectionDrag = true, appTracksMouse = true),
+            ),
+            window.panes,
+        )
+        assertFalse(window.tracksMouseAt(1))
+        assertTrue(window.tracksMouseAt(5))
+    }
+
+    @Test
     fun `borders join where splits meet and light up around the active pane`() {
         val window = TmuxWindowCompositor().compose(
             nested,

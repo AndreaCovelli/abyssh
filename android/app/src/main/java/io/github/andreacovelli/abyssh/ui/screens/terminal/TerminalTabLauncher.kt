@@ -18,6 +18,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.AuthMethod
+import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.service.terminal.TabSpec
 import io.github.andreacovelli.abyssh.ui.components.AbyssDialog
 import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
@@ -54,17 +55,27 @@ internal class TerminalTabLauncher(
     /**
      * Opens a tab on [spec]. With [newSession], a multiplexer host gets a new multiplexer
      * session, as when duplicating a tab, rather than attaching to a detached one, unless
-     * the host asks which session to use.
+     * the host asks which session to use. [onCancel] runs when the user cancels verification.
      */
-    fun open(spec: TabSpec, requiresVerification: Boolean, leaveOnCancel: Boolean = false, newSession: Boolean = false) {
+    fun open(
+        spec: TabSpec,
+        requiresVerification: Boolean,
+        leaveOnCancel: Boolean = false,
+        newSession: Boolean = false,
+        onCancel: () -> Unit = {},
+    ) {
         if (!requiresVerification) {
             openOrPrompt(spec, leaveOnCancel, newSession)
             return
         }
+        val localShell = spec.transport == Transport.LocalShell
         verifyThen(
             context = context,
-            title = resources.getString(R.string.terminal_verify_title),
-            subtitle = resources.getString(R.string.terminal_verify_subtitle),
+            title = resources.getString(if (localShell) R.string.nav_verify_local_shell_title else R.string.terminal_verify_title),
+            subtitle = resources.getString(
+                if (localShell) R.string.nav_verify_local_shell_subtitle else R.string.terminal_verify_subtitle,
+            ),
+            onCancel = onCancel,
         ) {
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
                 openOrPrompt(spec, leaveOnCancel, newSession)

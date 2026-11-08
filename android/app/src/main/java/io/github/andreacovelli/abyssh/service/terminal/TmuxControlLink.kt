@@ -26,13 +26,16 @@ internal class TmuxControlLink(hostKeyPolicy: HostKeyPolicy, private val outputW
     private val pacer = ReadPacer()
     private val replies = ArrayDeque<(TmuxControlEvent.Reply) -> Unit>()
 
-    /** Logs in and starts tmux in control mode on [sessionName], replacing any earlier channel. */
-    fun open(spec: TabSpec, sessionName: String, geometry: TerminalGeometry) {
+    /**
+     * Logs in and starts tmux in control mode on [sessionName], replacing any earlier
+     * channel; [createIfMissing] creates the session when it doesn't exist.
+     */
+    fun open(spec: TabSpec, sessionName: String, createIfMissing: Boolean, geometry: TerminalGeometry) {
         close()
         check(ssh.isAvailable()) { "Native SSH unavailable" }
         ssh.connect(spec)
         ssh.openExecPty(
-            TmuxControlCommands.attach(sessionName, spec.multiplexerCreateIfMissing),
+            TmuxControlCommands.attach(sessionName, createIfMissing),
             geometry.cols,
             geometry.rows,
             geometry.ptyWidthPx,

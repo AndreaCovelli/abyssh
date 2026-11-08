@@ -6,7 +6,7 @@ import io.github.andreacovelli.abyssh.R
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
+import io.github.andreacovelli.abyssh.ui.security.rememberPickerLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -90,13 +90,13 @@ internal fun SshBackupSheet(
     var showDetails by remember { mutableStateOf(false) }
 
     // A cancelled file picker clears the passphrase it was going to use.
-    val exportLauncher = rememberLauncherForActivityResult(
+    val exportLauncher = rememberPickerLauncher(
         contract = ActivityResultContracts.CreateDocument(ABYSSH_BACKUP_MIME_TYPE),
     ) { uri ->
         if (uri != null) viewModel.performExport(uri) else viewModel.clearExportPassphrase()
         localStep = SheetStep.Overview
     }
-    val importLauncher = rememberLauncherForActivityResult(
+    val importLauncher = rememberPickerLauncher(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri != null) viewModel.performImport(uri) else viewModel.clearImportPassphrase()

@@ -44,13 +44,16 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
  * The multiplexer sessions on one host: [title] names the multiplexer and host. Each row
  * attaches the active tab to its session, or ends the session after asking;
  * [openTabCount] says how many tabs show a session, for that question. While [loading],
- * the count shows "…" and the rows already loaded stay.
+ * the count shows "…" and the rows already loaded stay. [onNew] creates a session and
+ * closes the panel once it opens; while [creating], its button waits, and a failure
+ * shows in [error].
  */
 @Composable
 internal fun MultiplexerSessionPanel(
     title: String,
     rows: List<MultiplexerSessionRowState>,
     loading: Boolean,
+    creating: Boolean,
     error: String?,
     openTabCount: (String) -> Int,
     onRefresh: () -> Unit,
@@ -116,11 +119,9 @@ internal fun MultiplexerSessionPanel(
         ) {
             PanelButton(stringResource(R.string.action_refresh), onClick = onRefresh)
             PanelButton(
-                stringResource(R.string.multiplexer_new_session),
-                onClick = {
-                    onNew()
-                    onDismiss()
-                },
+                stringResource(if (creating) R.string.multiplexer_creating_session else R.string.multiplexer_new_session),
+                onClick = onNew,
+                enabled = !creating,
             )
         }
     }
@@ -210,9 +211,11 @@ private fun PanelButton(
     onClick: () -> Unit,
     contentDescription: String? = null,
     color: Color = AbyssColors.current.textSecondary,
+    enabled: Boolean = true,
 ) {
     AbyssButton(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier.defaultMinSize(minHeight = 48.dp, minWidth = 48.dp),
         variant = AbyssButtonVariant.Outlined,
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
@@ -268,10 +271,11 @@ internal fun TerminalMultiplexerPanel(vm: TerminalViewModel, onDismiss: () -> Un
         title = stringResource(R.string.multiplexer_sessions_on, type.label, spec.tabLabel),
         rows = multiplexerSessionRows(state.sessions, spec.multiplexerSessionName),
         loading = state.sessionsLoading,
+        creating = state.sessionCreating,
         error = state.sessionsError?.asString(),
         openTabCount = vm.multiplexer::openTabCount,
         onRefresh = vm.multiplexer::listSessionsForActiveHost,
-        onNew = vm.multiplexer::createNextSession,
+        onNew = { vm.multiplexer.createNextSession(onOpened = onDismiss) },
         onAttach = { name -> vm.multiplexer.switchToSession(name, state.sessionsSourceTabId) },
         onEnd = { name -> vm.multiplexer.endSession(name, state.sessionsSourceTabId) },
         onDismiss = onDismiss,

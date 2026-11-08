@@ -17,9 +17,9 @@ private val BORDER_GLYPHS = intArrayOf(
 )
 
 /**
- * Draws a split tmux window as one snapshot: each pane's rows in its place, the cursor
- * and mouse modes of the active pane, and the cells between panes as box-drawing lines,
- * brighter around the active pane. A window row whose pane rows are the same objects as
+ * Draws a split tmux window as one snapshot: each pane's rows in its place, with its own
+ * scroll and mouse modes, the cursor of the active pane, and the cells between panes as
+ * box-drawing lines, brighter around the active pane. A window row whose pane rows are the same objects as
  * last time keeps its row object, so the renderer's per-row caches keep working.
  */
 internal class TmuxWindowCompositor {
@@ -103,6 +103,15 @@ internal class TmuxWindowCompositor {
             appHandlesSelectionDrag = active?.appHandlesSelectionDrag == true,
             appTracksMouse = active?.appTracksMouse == true,
             activeArea = activeRect?.let { TerminalCellArea(it.x, it.y, it.cols, it.rows) },
+            panes = layout.panes.map { rect ->
+                val pane = panes[rect.paneId]
+                TerminalPane(
+                    area = TerminalCellArea(rect.x, rect.y, rect.cols, rect.rows),
+                    viewportScrollY = pane?.viewportScrollY ?: 0,
+                    appHandlesSelectionDrag = pane?.appHandlesSelectionDrag == true,
+                    appTracksMouse = pane?.appTracksMouse == true,
+                )
+            },
         )
     }
 

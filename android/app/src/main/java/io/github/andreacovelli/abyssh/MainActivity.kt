@@ -22,11 +22,13 @@ import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.ui.ApplicationNavController
 import io.github.andreacovelli.abyssh.ui.EscapeKeyBack
 import io.github.andreacovelli.abyssh.ui.LocalEscapeKeyBack
+import io.github.andreacovelli.abyssh.ui.screens.terminal.clearRemoteFileCache
 import io.github.andreacovelli.abyssh.ui.terminal.hasPhysicalKeyboard
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTheme
 import io.github.andreacovelli.abyssh.ui.theme.GhosttyThemeRegistry
 import io.github.andreacovelli.abyssh.ui.theme.resolveActiveThemeName
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
@@ -43,6 +45,7 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         updateSoftInputState(resources.configuration)
         val settings = SettingsRepository.getInstance(this)
+        lifecycleScope.launch(Dispatchers.IO) { clearRemoteFileCache(cacheDir) }
         lifecycleScope.launch {
             // With app lock on, the recents thumbnail would show what the lock screen hides.
             combine(settings.hideScreenContents, settings.appLockEnabled) { hide, locked -> hide || locked }

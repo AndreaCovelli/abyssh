@@ -94,7 +94,20 @@ class TerminalRow(
 }
 
 /** A rectangle of cells, from its top left cell. */
-data class TerminalCellArea(val col: Int, val row: Int, val cols: Int, val rows: Int)
+data class TerminalCellArea(val col: Int, val row: Int, val cols: Int, val rows: Int) {
+    fun contains(col: Int, row: Int): Boolean = col in this.col until this.col + cols && row in this.row until this.row + rows
+}
+
+/**
+ * One terminal in a snapshot that shows several, as a split tmux window does: where it
+ * sits, how far it is scrolled, and the mouse modes its app turned on.
+ */
+data class TerminalPane(
+    val area: TerminalCellArea,
+    val viewportScrollY: Int,
+    val appHandlesSelectionDrag: Boolean,
+    val appTracksMouse: Boolean,
+)
 
 /**
  * The visible terminal: its size, cursor, default colors, and [rowData], one
@@ -134,12 +147,32 @@ data class TerminalSnapshot(
      * split tmux window does. Search results come from that terminal and stay inside it.
      */
     val activeArea: TerminalCellArea? = null,
+    /** Each terminal the snapshot shows, when it shows several; empty when it shows one. */
+    val panes: List<TerminalPane> = emptyList(),
 ) {
     init {
         require(rowData.size == rows) { "Snapshot has ${rowData.size} rows, expected $rows" }
     }
 
     val cellCount: Int get() = cols * rows
+
+    /** The pane that cell [cellIndex] is in, or null on a border or when the snapshot shows one terminal. */
+    fun paneAt(cellIndex: Int): TerminalPane? {
+        if (panes.isEmpty() || cols <= 0 || cellIndex !in 0 until cellCount) return null
+        return panes.firstOrNull { it.area.contains(cellIndex % cols, cellIndex / cols) }
+    }
+
+    /** Whether the app at cell [cellIndex] takes long-press drags; see [appHandlesSelectionDrag]. */
+    fun handlesSelectionDragAt(cellIndex: Int?): Boolean =
+        if (panes.isEmpty() || cellIndex == null) appHandlesSelectionDrag else paneAt(cellIndex)?.appHandlesSelectionDrag == true
+
+    /** Whether the app at cell [cellIndex] gets taps as clicks; see [appTracksMouse]. */
+    fun tracksMouseAt(cellIndex: Int?): Boolean =
+        if (panes.isEmpty() || cellIndex == null) appTracksMouse else paneAt(cellIndex)?.appTracksMouse == true
+
+    /** How far the terminal at [area] is scrolled: [viewportScrollY] for the whole snapshot, null for a pane it no longer shows. */
+    fun scrollYOf(area: TerminalCellArea?): Int? =
+        if (area == null) viewportScrollY else panes.firstOrNull { it.area == area }?.viewportScrollY
 
     fun codepointAt(cellIndex: Int): Int = rowData[cellIndex / cols].codepoints[cellIndex % cols]
 

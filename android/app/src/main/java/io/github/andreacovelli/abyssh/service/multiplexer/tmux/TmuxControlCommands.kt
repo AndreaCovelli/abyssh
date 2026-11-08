@@ -115,9 +115,14 @@ internal object TmuxControlCommands {
     fun switchClient(name: String): String = "switch-client -t ${shellQuote("=$name")}"
 
     /** Sends [data] to pane [paneId] as raw bytes, in commands short enough for tmux's line reader. */
-    fun sendKeys(paneId: Int, data: ByteArray): List<String> =
+    fun sendKeys(paneId: Int, data: ByteArray): List<String> = hexKeys("send-keys -t %$paneId -H ", data)
+
+    /** Sends [data] to the active pane of the session's current window, as [sendKeys] does. */
+    fun sendKeysToActivePane(data: ByteArray): List<String> = hexKeys("send-keys -H ", data)
+
+    private fun hexKeys(prefix: String, data: ByteArray): List<String> =
         data.asList().chunked(SEND_KEYS_CHUNK_BYTES).map { chunk ->
-            chunk.joinToString(separator = " ", prefix = "send-keys -t %$paneId -H ") { byte ->
+            chunk.joinToString(separator = " ", prefix = prefix) { byte ->
                 val value = byte.toInt() and 0xff
                 "${HEX[value shr 4]}${HEX[value and 0xf]}"
             }

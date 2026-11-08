@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -71,12 +73,14 @@ internal fun TerminalDisconnectedContent(
     modifier: Modifier = Modifier,
     onEndSession: (() -> Unit)? = null,
 ) {
+    val activeTabId by vm.activeTabId.collectAsStateWithLifecycle()
     TerminalStatusFrame(tabStrip = tabStrip, modifier = modifier) {
-        val message = (multiplexer.preflightError ?: error)?.asString()
+        val preflightError = multiplexer.preflightErrorFor(activeTabId)
+        val message = (preflightError ?: error)?.asString()
         when {
             message != null -> TerminalRecoveryActions(
                 message = message,
-                isMultiplexerPreflight = multiplexer.preflightError != null,
+                isMultiplexerPreflight = preflightError != null,
                 dismissMultiplexerLabel = stringResource(
                     if (multiplexer.reconnectRecovery) R.string.action_dismiss else R.string.action_back,
                 ),

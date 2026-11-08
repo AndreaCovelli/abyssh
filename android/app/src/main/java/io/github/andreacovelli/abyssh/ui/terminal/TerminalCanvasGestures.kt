@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.github.andreacovelli.abyssh.service.terminal.TerminalMouseAction
 import io.github.andreacovelli.abyssh.service.terminal.TerminalMouseButton
+import io.github.andreacovelli.abyssh.service.terminal.TerminalCellArea
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 import kotlin.math.abs
 import kotlin.math.round
@@ -111,6 +112,23 @@ internal class TerminalGestureEnv(
 
     /** The cell under a point in snapshot pixels. */
     fun cellAt(position: Offset): Int? = snapshot.cellAt(position.x, position.y, cell.width, cell.height)
+
+    /** The area of the split window's pane at [cell], or null on a border or with one terminal. */
+    fun paneArea(cell: Int?): TerminalCellArea? = cell?.let { snapshot.paneAt(it)?.area }
+
+    /** A new selection from [cell] to [cell], kept to the pane it is in. */
+    fun selectionAt(cell: Int, rectangle: Boolean = false) = TerminalSelection(cell, cell, rectangle, paneArea(cell))
+
+    /** [position], in snapshot pixels, moved to the nearest point inside [area], or as it is without one. */
+    fun keepIn(area: TerminalCellArea?, position: Offset): Offset {
+        if (area == null || cell.width <= 0f || cell.height <= 0f) return position
+        val left = area.col * cell.width
+        val top = area.row * cell.height
+        return Offset(
+            position.x.coerceIn(left, left + area.cols * cell.width - 1f),
+            position.y.coerceIn(top, top + area.rows * cell.height - 1f),
+        )
+    }
 
     fun appDrag(action: Int, mods: Int, position: Offset) =
         callbacks.onAppSelectionDrag(action, mods, position.x, position.y)
@@ -312,10 +330,10 @@ internal class TerminalCanvasGestures(
      */
     private suspend fun AwaitPointerEventScope.mouseLeftButton(down: PointerInputChange, held: HeldModifiers) {
         val start = env.value
-        val toApp = start.snapshot.appHandlesSelectionDrag && !held.shift
+        val downCell = start.cellAt(start.toSnapshot(down.position))
+        val toApp = start.snapshot.handlesSelectionDragAt(downCell) && !held.shift
         if (toApp) start.appDrag(TerminalMouseAction.Press, held.primary, start.toSnapshot(down.position))
         down.consume()
-        val downCell = start.cellAt(start.toSnapshot(down.position))
         var selecting = false
         while (true) {
             val event = awaitPointerEvent()
@@ -339,11 +357,11 @@ internal class TerminalCanvasGestures(
                     val cell = current.cellAt(pos)
                     if (!selecting && cell != null && downCell != null && cell != downCell) {
                         selecting = true
-                        current.callbacks.onSelectionChange(TerminalSelection(downCell, downCell, rectangle = held.alt))
+                        current.callbacks.onSelectionChange(current.selectionAt(downCell, rectangle = held.alt))
                         if (held.alt) current.callbacks.onRectangleSelectionStart()
                     }
                     if (selecting && cell != null) {
-                        updateSelectionDrag(current.selection, cell, current.callbacks.onSelectionChange)
+                        updateSelectionDrag(current, cell)
                     }
                 }
             }
@@ -365,13 +383,17 @@ internal class TerminalCanvasGestures(
 
     /**
      * A tap or click that didn't move: a double tap selects a word and a triple tap its
-     * line; otherwise it clears the selection or clicks.
+     * line; otherwise it clears the selection or clicks. An app that tracks the mouse gets
+     * every tap as a click and counts double and triple clicks itself, unless Shift is held.
      */
     private fun tap(position: Offset, time: Long, held: HeldModifiers) {
         val current = env.value
         val tapPos = current.toSnapshot(position)
         val count = taps.register(tapPos, time, config.doubleTapTimeoutMs, config.doubleTapSlopPx)
+        val toApp = current.snapshot.tracksMouseAt(current.cellAt(tapPos)) && !held.shift
         when {
+            toApp && current.selection != null -> current.callbacks.onSelectionChange(null)
+            toApp -> click(current, tapPos, held)
             count == 2 -> select(current, tapPos) { current.snapshot.wordAt(it, current.wordSeparators) }
             count == MAX_TAPS_IN_A_ROW -> select(current, tapPos) { current.snapshot.lineAt(it) }
             current.selection != null -> current.callbacks.onSelectionChange(null)
@@ -383,7 +405,7 @@ internal class TerminalCanvasGestures(
     private fun select(current: TerminalGestureEnv, position: Offset, range: (cell: Int) -> IntRange?) {
         val cell = current.cellAt(position) ?: return
         val cells = range(cell) ?: return
-        current.callbacks.onSelectionChange(TerminalSelection(cells.first, cells.last))
+        current.callbacks.onSelectionChange(TerminalSelection(cells.first, cells.last, area = current.paneArea(cell)))
         current.longPressHaptic()
     }
 
@@ -395,14 +417,15 @@ internal class TerminalCanvasGestures(
             callbacks.onTap()
         }
         val cell = current.cellAt(position)
-        if (cell == null || (snapshot.appTracksMouse && !held.shift)) {
+        val tracksMouse = snapshot.tracksMouseAt(cell)
+        if (cell == null || (tracksMouse && !held.shift)) {
             click()
             return
         }
-        if (snapshot.appTracksMouse) callbacks.onShiftSelectionStart()
+        if (tracksMouse) callbacks.onShiftSelectionStart()
         callbacks.onLinkTap(cell % snapshot.cols, cell / snapshot.cols, snapshot.urlAt(cell)) {
             // Shift+tap is for links only; the app doesn't see it.
-            if (snapshot.appTracksMouse) callbacks.onTap() else click()
+            if (tracksMouse) callbacks.onTap() else click()
         }
     }
 
@@ -434,6 +457,10 @@ internal class TerminalCanvasGestures(
         private var lastSinglePointerId = down.id
         private var lastEventUptime = down.uptimeMillis
         private val longPressDeadline = down.uptimeMillis + config.longPressTimeoutMs
+
+        // In a split window, the pane the finger went down on: scrolling stays with it when the
+        // finger crosses a border, and so does the fling after it.
+        private val scrollArea = env.value.let { it.paneArea(it.cellAt(it.toSnapshot(down.position))) }
         private var lastPointerPos = down.position
         private var autoScrollDir = 0
         private val velocity = VelocityTracker()
@@ -486,20 +513,21 @@ internal class TerminalCanvasGestures(
 
         private fun startLongPress() {
             val current = env.value
-            val snapshot = current.snapshot
             val downPos = current.toSnapshot(down.position)
-            if (snapshot.appHandlesSelectionDrag && !held.shift) {
+            val downCell = current.cellAt(downPos)
+            val appDrags = current.snapshot.handlesSelectionDragAt(downCell)
+            if (appDrags && !held.shift) {
                 current.appDrag(TerminalMouseAction.Press, held.primary, downPos)
                 current.longPressHaptic()
                 didDragGesture = true
                 dragMode = DragMode.AppMouseDrag
                 return
             }
-            val cell = current.cellAt(downPos) ?: return
-            current.callbacks.onSelectionChange(TerminalSelection(cell, cell, rectangle = held.alt))
+            val cell = downCell ?: return
+            current.callbacks.onSelectionChange(current.selectionAt(cell, rectangle = held.alt))
             if (held.alt) current.callbacks.onRectangleSelectionStart()
             current.longPressHaptic()
-            if (snapshot.appHandlesSelectionDrag) current.callbacks.onShiftSelectionStart()
+            if (appDrags) current.callbacks.onShiftSelectionStart()
             dragMode = DragMode.ClientSelectionDrag
         }
 
@@ -513,7 +541,8 @@ internal class TerminalCanvasGestures(
                 edge - pos.y
             }.coerceAtLeast(0f)
             val rows = (depth / current.cell.height).toInt().coerceIn(1, AUTO_SCROLL_MAX_ROWS)
-            scroll(TerminalScrollDelta(autoScrollDir * rows, pos.x, pos.y))
+            val at = current.keepIn(current.selection?.area, current.toSnapshot(pos))
+            scroll(TerminalScrollDelta(autoScrollDir * rows, at.x, at.y))
         }
 
         private fun onRelease() {
@@ -548,7 +577,8 @@ internal class TerminalCanvasGestures(
             val v = velocity.calculateVelocity()
             val vy = v.y.coerceIn(-max, max)
             if (abs(vy) < config.minFlingVelocityPx || abs(v.y) <= abs(v.x)) return
-            startFling(flingScope, vy, env.value.toSnapshot(lastPointerPos))
+            val current = env.value
+            startFling(flingScope, vy, current.keepIn(scrollArea, current.toSnapshot(lastPointerPos)))
         }
 
         private fun onPinch(pressed: List<PointerInputChange>) {
@@ -597,7 +627,7 @@ internal class TerminalCanvasGestures(
 
         private fun selectionDragMove(current: TerminalGestureEnv, change: PointerInputChange, cell: Int) {
             lastPointerPos = change.position
-            updateSelectionDrag(current.selection, cell, current.callbacks.onSelectionChange)
+            updateSelectionDrag(current, cell)
             val edge = config.autoScrollEdgePx
             autoScrollDir = when {
                 change.position.y < edge -> -1
@@ -629,7 +659,8 @@ internal class TerminalCanvasGestures(
                 val delta = dragRemainder.toInt()
                 dragRemainder -= delta
                 didScroll = true
-                scroll(TerminalScrollDelta(-delta, pos.x, pos.y))
+                val at = current.keepIn(scrollArea, pos)
+                scroll(TerminalScrollDelta(-delta, at.x, at.y))
             }
             if (change.position != change.previousPosition) change.consume()
         }
@@ -641,14 +672,11 @@ internal class TerminalCanvasGestures(
     }
 }
 
-private fun updateSelectionDrag(
-    existing: TerminalSelection?,
-    selectedCell: Int,
-    onSelectionChange: (TerminalSelection?) -> Unit,
-) {
-    if (existing == null || existing.focusIndex != selectedCell) {
-        onSelectionChange((existing ?: TerminalSelection(selectedCell, selectedCell)).copy(focusIndex = selectedCell))
-    }
+/** Moves the selection's focus to [selectedCell], kept to the selection's pane, or starts one there. */
+private fun updateSelectionDrag(current: TerminalGestureEnv, selectedCell: Int) {
+    val existing = current.selection ?: current.selectionAt(selectedCell)
+    val moved = existing.withFocus(selectedCell, current.snapshot.cols)
+    if (moved != current.selection) current.callbacks.onSelectionChange(moved)
 }
 
 /** Ghostty button for a right or middle mouse press, or null for the left button. */
