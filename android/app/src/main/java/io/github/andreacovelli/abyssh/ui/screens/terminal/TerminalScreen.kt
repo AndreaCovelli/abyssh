@@ -56,6 +56,7 @@ fun TerminalScreen(
     val endSession = rememberTerminalEndSession(vm)
     val abysshKeys = rememberAbysshKeys(vm, repo, settings, overlay, endSession, onOpenSettings)
     KeepFocusOnMouseClickEffect()
+    TerminalOnScreenEffect(vm)
 
     val tabs by vm.tabs.collectAsStateWithLifecycle()
     val activeTabId by vm.activeTabId.collectAsStateWithLifecycle()
