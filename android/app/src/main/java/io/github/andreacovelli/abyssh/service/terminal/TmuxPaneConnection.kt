@@ -115,6 +115,10 @@ internal class TmuxPaneConnection(
         this.windowId = windowId
     }
 
+    override fun nameWindow(label: String) {
+        onSessionThread { panes.nameWindow(label) }
+    }
+
     override fun showLayout(layout: TmuxWindowLayout, activePane: Int) {
         onSessionThread { panes.showLayout(layout, activePane) }
     }

@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import io.github.andreacovelli.abyssh.service.terminal.ScrollUnit
 import io.github.andreacovelli.abyssh.service.terminal.TerminalMouseAction
 import io.github.andreacovelli.abyssh.service.terminal.TerminalMouseButton
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionEngine
@@ -34,9 +35,19 @@ class TerminalInput internal constructor(
         activeEngine?.scroll(delta, x, y, momentum)
     }
 
+    /** Brings the view back to the live output. */
+    fun scrollToBottom() {
+        activeEngine?.scrollToActive()
+    }
+
+    /** Scrolls the scrollback [pages] pages up (negative) or down, without sending the program anything. */
+    fun scrollPages(pages: Int) {
+        activeEngine?.scrollBy(pages, ScrollUnit.Page)
+    }
+
     /** Scrolls [delta] shell prompts up (negative) or down. */
     fun scrollToPrompt(delta: Int) {
-        activeEngine?.scrollToPrompt(delta)
+        activeEngine?.scrollBy(delta, ScrollUnit.Prompt)
     }
 
     fun onPrimaryMouseClick(mods: Int, x: Float, y: Float) {

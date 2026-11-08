@@ -154,6 +154,9 @@ internal class TerminalEmulator(
     /** How many rows the view is scrolled up from the bottom, 0 while it follows the output. */
     fun rowsAboveBottom(): Int = if (isOpen) bridge.nativeViewportRowsAboveBottom(handle) else 0
 
+    /** Whether the alternate screen, which full-screen programs use and which has no scrollback, is up. */
+    fun isAlternateScreen(): Boolean = isOpen && bridge.nativeIsAlternateScreen(handle)
+
     /** Scrolls the view to [rows] rows above the bottom, or as far up as the history goes. */
     fun scrollToRowsAboveBottom(rows: Int) {
         if (isOpen) bridge.nativeScrollToRowsAboveBottom(handle, rows)
@@ -251,6 +254,7 @@ internal class TerminalEmulator(
             imageBitmaps = images.associate { it.generation to it.bitmap }
             val snapshot = traceSection("Terminal.parseSnapshot") {
                 TerminalSnapshot.fromByteBuffer(raw, images, previous)
+                    .copy(scrolledBack = rowsAboveBottom() > 0, alternateScreen = isAlternateScreen())
             }
             lastSnapshot = snapshot
             val bellCount = pollMetadata()

@@ -43,6 +43,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.foundation.gestures.Orientation
@@ -90,6 +91,7 @@ fun KeyboardAccessoryBar(
     abysshKeyActive: Boolean = false,
     onOpenFiles: (() -> Unit)? = null,
     onEndSession: (() -> Unit)? = null,
+    endSessionLabel: String? = null,
     useSingleRow: Boolean = false,
     horizontalPadding: Dp = 8.dp,
     verticalPadding: Dp = 6.dp,
@@ -100,7 +102,8 @@ fun KeyboardAccessoryBar(
     // A shared minimum width keeps one-glyph keys (arrows, icons) as wide as Esc or Tab.
     val keyModifier = Modifier.widthIn(min = 40.dp)
     // Shift lights up while Caps Lock is on, though it sends no Shift of its own.
-    val shownModifiers = if (capsLockOn) modifierState.copy(shift = true) else modifierState
+    val shownModifiers =
+        if (capsLockOn) modifierState.copy(shift = true, locked = modifierState.locked + TerminalModifier.Shift) else modifierState
     var expandedGroupId by remember { mutableStateOf<String?>(null) }
     val onChildAction: (AccessoryAction) -> Unit = { action ->
         onAction(action)
@@ -169,6 +172,7 @@ fun KeyboardAccessoryBar(
             add {
                 EndSessionButton(
                     onEndSession = onEndSession,
+                    label = endSessionLabel ?: stringResource(R.string.terminal_disconnect),
                     buttonHeight = buttonHeight,
                     buttonPadding = buttonPadding,
                     modifier = Modifier.padding(start = END_SESSION_GAP).then(keyModifier),
@@ -404,10 +408,20 @@ private fun AccessoryButton(
             modifier = modifier,
         )
     } else {
+        val locked = toggleModifier != null && modifierState.isLocked(toggleModifier)
+        val armed = toggleModifier != null && modifierState.isEnabled(toggleModifier)
+        val state = when {
+            locked -> stringResource(R.string.accessory_modifier_locked)
+            armed -> stringResource(R.string.accessory_modifier_next_key)
+            else -> null
+        }
         AbyssKey(
             onClick = { onAction(item.action) },
-            active = toggleModifier != null && modifierState.isEnabled(toggleModifier),
-            modifier = modifier.heightIn(min = buttonHeight),
+            active = locked,
+            armed = armed,
+            modifier = modifier
+                .heightIn(min = buttonHeight)
+                .then(if (state != null) Modifier.semantics { stateDescription = state } else Modifier),
             contentPadding = buttonPadding,
         ) {
             AbyssText(item.label, style = AbyssTypography.current.label)
@@ -482,6 +496,7 @@ private fun ZoomButton(
 @Composable
 private fun EndSessionButton(
     onEndSession: (() -> Unit)?,
+    label: String,
     buttonHeight: Dp,
     buttonPadding: PaddingValues,
     modifier: Modifier = Modifier,
@@ -489,7 +504,7 @@ private fun EndSessionButton(
     if (onEndSession == null) return
     AccessoryIconKey(
         icon = R.drawable.ic_close,
-        contentDescription = stringResource(R.string.terminal_end_session),
+        contentDescription = label,
         onClick = onEndSession,
         buttonHeight = buttonHeight,
         buttonPadding = buttonPadding,

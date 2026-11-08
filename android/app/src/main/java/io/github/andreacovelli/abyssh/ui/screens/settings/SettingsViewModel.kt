@@ -38,6 +38,7 @@ data class TerminalSettingsState(
     val localShellEnabled: Boolean = true,
     val remoteClipboardWriteEnabled: Boolean = true,
     val ctrlVPastes: Boolean = true,
+    val tmuxPrefixKeys: Boolean = false,
     val volumeKeysAsArrows: Boolean = false,
     val keepScreenAwake: Boolean = false,
     val matchDisplayRefreshRate: Boolean = false,
@@ -79,13 +80,19 @@ interface TerminalSettingsActions {
     fun setBuiltinShortcuts(shortcuts: Map<String, String>)
     fun setLocalShellEnabled(enabled: Boolean)
     fun setRemoteClipboardWriteEnabled(enabled: Boolean)
-    fun setCtrlVPastes(enabled: Boolean)
-    fun setVolumeKeysAsArrows(enabled: Boolean)
     fun setKeepScreenAwake(enabled: Boolean)
     fun setMatchDisplayRefreshRate(enabled: Boolean)
     fun setHideScreenContents(enabled: Boolean)
     fun setDisableAutocorrect(enabled: Boolean)
+    val keys: TerminalKeyActions
     val text: TerminalTextActions
+}
+
+/** How the terminal reads keys from a hardware keyboard. */
+interface TerminalKeyActions {
+    fun setCtrlVPastes(enabled: Boolean)
+    fun setTmuxPrefixKeys(enabled: Boolean)
+    fun setVolumeKeysAsArrows(enabled: Boolean)
 }
 
 interface TerminalTextActions {
@@ -112,6 +119,7 @@ class SettingsViewModel(
                 settings.terminalTabMode, settings.accessoryLayoutIds, settings.accessoryBarSingleRow,
                 settings.terminalCustomKeyGroups, settings.showCustomActionsFab, settings.builtinShortcuts,
                 settings.localShellEnabled, settings.remoteClipboardWriteEnabled, settings.ctrlVPastes,
+                settings.tmuxPrefixKeys,
                 settings.keepScreenAwake, settings.matchDisplayRefreshRate, settings.hideScreenContents,
                 settings.disableAutocorrect, settings.volumeKeysAsArrows,
                 settings.text.wordSeparators, settings.text.ligatures, settings.text.cursorBlink,
@@ -141,6 +149,7 @@ class SettingsViewModel(
             localShellEnabled = settings.localShellEnabled.value,
             remoteClipboardWriteEnabled = settings.remoteClipboardWriteEnabled.value,
             ctrlVPastes = settings.ctrlVPastes.value,
+            tmuxPrefixKeys = settings.tmuxPrefixKeys.value,
             volumeKeysAsArrows = settings.volumeKeysAsArrows.value,
             keepScreenAwake = settings.keepScreenAwake.value,
             matchDisplayRefreshRate = settings.matchDisplayRefreshRate.value,
@@ -172,12 +181,16 @@ class SettingsViewModel(
     override fun setBuiltinShortcuts(shortcuts: Map<String, String>) = settings.setBuiltinShortcuts(shortcuts)
     override fun setLocalShellEnabled(enabled: Boolean) = settings.setLocalShellEnabled(enabled)
     override fun setRemoteClipboardWriteEnabled(enabled: Boolean) = settings.setRemoteClipboardWriteEnabled(enabled)
-    override fun setCtrlVPastes(enabled: Boolean) = settings.setCtrlVPastes(enabled)
-    override fun setVolumeKeysAsArrows(enabled: Boolean) = settings.setVolumeKeysAsArrows(enabled)
     override fun setKeepScreenAwake(enabled: Boolean) = settings.setKeepScreenAwake(enabled)
     override fun setMatchDisplayRefreshRate(enabled: Boolean) = settings.setMatchDisplayRefreshRate(enabled)
     override fun setHideScreenContents(enabled: Boolean) = settings.setHideScreenContents(enabled)
     override fun setDisableAutocorrect(enabled: Boolean) = settings.setDisableAutocorrect(enabled)
+
+    override val keys = object : TerminalKeyActions {
+        override fun setCtrlVPastes(enabled: Boolean) = settings.setCtrlVPastes(enabled)
+        override fun setTmuxPrefixKeys(enabled: Boolean) = settings.setTmuxPrefixKeys(enabled)
+        override fun setVolumeKeysAsArrows(enabled: Boolean) = settings.setVolumeKeysAsArrows(enabled)
+    }
 
     override val text = object : TerminalTextActions {
         override fun setWordSeparators(value: String) = settings.text.setWordSeparators(value)

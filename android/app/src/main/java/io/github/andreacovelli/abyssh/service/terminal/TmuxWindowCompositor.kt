@@ -102,6 +102,8 @@ internal class TmuxWindowCompositor {
             viewportScrollY = active?.viewportScrollY ?: 0,
             appHandlesSelectionDrag = active?.appHandlesSelectionDrag == true,
             appTracksMouse = active?.appTracksMouse == true,
+            scrolledBack = active?.scrolledBack == true,
+            alternateScreen = active?.alternateScreen == true,
             activeArea = activeRect?.let { TerminalCellArea(it.x, it.y, it.cols, it.rows) },
             panes = layout.panes.map { rect ->
                 val pane = panes[rect.paneId]

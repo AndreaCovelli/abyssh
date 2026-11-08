@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -9,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import io.github.andreacovelli.abyssh.R
+import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
 import io.github.andreacovelli.abyssh.service.terminal.sessionLabel
 import io.github.andreacovelli.abyssh.ui.components.AbyssDialog
@@ -65,7 +67,7 @@ internal fun TerminalEndSessionDialog(endSession: TerminalEndSession, tabs: List
     if (tab == null) return
     AbyssDialog(
         title = stringResource(R.string.terminal_end_session_title, tab.sessionLabel(tabs)),
-        confirmLabel = stringResource(R.string.terminal_end_session),
+        confirmLabel = stringResource(endTabLabel(tab, tabs)),
         onConfirm = endSession::confirm,
         onDismiss = endSession::dismiss,
     ) {
@@ -75,6 +77,14 @@ internal fun TerminalEndSessionDialog(endSession: TerminalEndSession, tabs: List
             color = AbyssColors.current.textSecondary,
         )
     }
+}
+
+/** The action that ending live [tab] takes: it kills its tmux window, detaches from tmux, disconnects, or ends the local shell. */
+@StringRes
+internal fun endTabLabel(tab: TabSession, tabs: List<TabSession>): Int = when {
+    tab.engine.tmuxControl != null -> if (closeKillsTmuxWindow(tab, tabs)) R.string.terminal_kill_window else R.string.action_detach
+    tab.spec.transport == Transport.LocalShell -> R.string.terminal_end_shell
+    else -> R.string.terminal_disconnect
 }
 
 /** What ending [tab] does: a tmux window's tab ends the window, or detaches when it is the session's last tab. */

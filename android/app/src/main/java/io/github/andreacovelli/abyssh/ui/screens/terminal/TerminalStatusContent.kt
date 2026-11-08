@@ -74,6 +74,7 @@ internal fun TerminalDisconnectedContent(
     onEndSession: (() -> Unit)? = null,
 ) {
     val activeTabId by vm.activeTabId.collectAsStateWithLifecycle()
+    val activeTab by vm.activeTab.collectAsStateWithLifecycle()
     TerminalStatusFrame(tabStrip = tabStrip, modifier = modifier) {
         val preflightError = multiplexer.preflightErrorFor(activeTabId)
         val message = (preflightError ?: error)?.asString()
@@ -91,6 +92,10 @@ internal fun TerminalDisconnectedContent(
                 onBack = { vm.multiplexer.dismissRecovery(onBack) },
                 onReconnect = vm::reconnect,
                 onEndSession = onEndSession,
+                // A tmux tab attaches to its tmux session again, which may still be running.
+                reconnectLabel = stringResource(
+                    if (activeTab?.spec?.usesTmuxControlMode == true) R.string.action_reattach else R.string.action_retry,
+                ),
             )
             showNoSessions -> TerminalNoSessions(onNewConnection, Modifier.align(Alignment.Center))
         }

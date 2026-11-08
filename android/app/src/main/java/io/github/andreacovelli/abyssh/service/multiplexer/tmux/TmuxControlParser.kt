@@ -24,6 +24,9 @@ internal sealed interface TmuxControlEvent {
     /** Windows were added to or removed from the session, or a window's active pane changed. */
     data object WindowsChanged : TmuxControlEvent
 
+    /** Window [windowId] is now named [name]. */
+    data class WindowRenamed(val windowId: Int, val name: String) : TmuxControlEvent
+
     /** Window [windowId] has a new layout, so its panes may have new sizes. */
     data class LayoutChanged(val windowId: Int, val layout: String) : TmuxControlEvent
 
@@ -41,6 +44,13 @@ internal sealed interface TmuxControlEvent {
 
     /** The client is leaving control mode: detached, or its session ended. */
     data class Exit(val reason: String?) : TmuxControlEvent
+
+    /**
+     * A line outside control mode's protocol, or the output of the command tmux was
+     * started with when that failed: the errors a shell or tmux prints when tmux can't
+     * start, such as "command not found" or "can't find session".
+     */
+    data class Text(val line: String) : TmuxControlEvent
 }
 
 /**
@@ -105,14 +115,21 @@ internal class TmuxControlParser {
         // its end, so only one that repeats every field of its %begin closes it.
         if (guard != null && (guard.name == "%end" || guard.name == "%error") && guard.matches(open.begin)) {
             block = null
-            if (open.begin.fromClient) onEvent(TmuxControlEvent.Reply(open.lines, failed = guard.name == "%error"))
+            val failed = guard.name == "%error"
+            if (open.begin.fromClient) {
+                onEvent(TmuxControlEvent.Reply(open.lines, failed))
+            } else if (failed) {
+                // The command tmux was started with failed, as when its session doesn't exist.
+                open.lines.forEach { onEvent(TmuxControlEvent.Text(it)) }
+            }
             return
         }
         open.lines += text
     }
 
     private fun parseNotification(bytes: ByteArray): TmuxControlEvent? {
-        if (bytes.isEmpty() || bytes[0] != '%'.code.toByte()) return null
+        if (bytes.isEmpty()) return null
+        if (bytes[0] != '%'.code.toByte()) return TmuxControlEvent.Text(String(bytes, Charsets.UTF_8))
         val nameEnd = bytes.indexOf(' '.code.toByte()).let { if (it < 0) bytes.size else it }
         val name = String(bytes, 0, nameEnd, Charsets.US_ASCII)
         return when (name) {
@@ -132,6 +149,11 @@ internal class TmuxControlParser {
             "%pause" -> args.getOrNull(1)?.let(::paneId)?.let(TmuxControlEvent::Pause)
             "%window-add", "%window-close", "%unlinked-window-close", "%window-pane-changed" ->
                 TmuxControlEvent.WindowsChanged
+            "%window-renamed" -> {
+                // `%window-renamed @id name`; a name can hold spaces.
+                val windowId = args.getOrNull(1)?.let(::windowId) ?: return null
+                TmuxControlEvent.WindowRenamed(windowId, text.substringAfter(' ').substringAfter(' ', ""))
+            }
             "%layout-change" -> {
                 val windowId = args.getOrNull(1)?.let(::windowId) ?: return null
                 // The visible layout, which shows a zoomed pane at its zoomed size.

@@ -234,14 +234,25 @@ class TerminalSessionEngine internal constructor(
     }
 
     /**
-     * Scrolls the focused terminal [delta] shell prompts up (negative) or down, by the
-     * OSC 133 marks its shell writes. Nothing happens when the shell sends none.
+     * Scrolls the scrollback of the terminal keys go to [delta] [unit]s up (negative) or
+     * down, never sending its program anything: shell prompts, by the OSC 133 marks its
+     * shell writes, of which there may be none, or pages, as Shift+Page Up does in desktop
+     * terminals.
      */
-    fun scrollToPrompt(delta: Int) {
+    fun scrollBy(delta: Int, unit: ScrollUnit) {
         if (delta == 0) return
         scope.launch(dispatcher) {
             val target = terminals.focused() ?: return@launch
-            if (bridge.nativeScrollToPrompt(target.emulator.handle, delta)) target.emulator.requestSnapshot(force = true)
+            val emulator = target.emulator
+            val moved = when (unit) {
+                ScrollUnit.Prompt -> bridge.nativeScrollToPrompt(emulator.handle, delta)
+                ScrollUnit.Page -> {
+                    val page = (emulator.geometry.rows - 1).coerceAtLeast(1)
+                    emulator.scrollToRowsAboveBottom((emulator.rowsAboveBottom() - delta * page).coerceAtLeast(0))
+                    true
+                }
+            }
+            if (moved) emulator.requestSnapshot(force = true)
         }
     }
 
@@ -329,3 +340,6 @@ class TerminalSessionEngine internal constructor(
         }
     }
 }
+
+/** What [TerminalSessionEngine.scrollBy] counts in. */
+enum class ScrollUnit { Prompt, Page }

@@ -12,6 +12,7 @@ import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlComman
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlEvent
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSize
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneState
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxStartupOutput
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxWindowLayout
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
 import io.github.andreacovelli.abyssh.service.network.NetworkWaiter
@@ -51,6 +52,9 @@ internal interface TmuxPaneView {
     /** The tab now shows window [windowId]. */
     fun bindWindow(windowId: Int)
 
+    /** The tab's window is now labelled [label], its number and name: `0:zsh`. */
+    fun nameWindow(label: String)
+
     /** The window's panes and where they sit, and [activePane], which keys go to. Panes left out are gone. */
     fun showLayout(layout: TmuxWindowLayout, activePane: Int)
 
@@ -84,7 +88,13 @@ internal interface TmuxControlHost {
 
     fun selectWindowTab(control: TmuxControlSession, view: TmuxPaneView)
 
-    /** tmux left control mode, because the session ended or another client detached this one. */
+    /** Puts the tabs that show [views] in that order. */
+    fun orderWindowTabs(control: TmuxControlSession, views: List<TmuxPaneView>)
+
+    /**
+     * tmux left control mode, because the session ended, another client detached this
+     * one, or the server stopped; the session's status says so, and it can attach again.
+     */
     fun controlEnded(control: TmuxControlSession)
 
     /** The client now shows session [name], so new connections should attach to it. */
@@ -148,6 +158,9 @@ internal class TmuxControlSession(
     private val attempts = ReconnectAttempts()
     private var sentClientSize: TmuxPaneSize? = null
 
+    // What the shell and tmux printed before tmux attached, which says why it didn't.
+    private val startupOutput = TmuxStartupOutput()
+
     private val windows =
         TmuxWindowBindings(
             link = link,
@@ -157,10 +170,15 @@ internal class TmuxControlSession(
                 override fun close(view: TmuxPaneView) = post { closeWindowTab(this@TmuxControlSession, view) }
 
                 override fun select(view: TmuxPaneView) = post { selectWindowTab(this@TmuxControlSession, view) }
+
+                override fun order(views: List<TmuxPaneView>) = post { orderWindowTabs(this@TmuxControlSession, views) }
             },
             attached = { attached },
             onThread = ::onThread,
         )
+
+    /** Commands on the session's windows and their panes. */
+    val windowControl = TmuxWindowControl(link, windows, attached = { attached }, onThread = ::onThread)
 
     fun start() = onThread {
         attempts.reset()
@@ -230,14 +248,6 @@ internal class TmuxControlSession(
         if (attached) windows.selectPane(view, paneId)
     }
 
-    /** Creates a window in the session; its tab opens and becomes the active one. */
-    fun newWindow() = onThread {
-        if (!attached) return@onThread
-        link.send(TmuxControlCommands.NEW_WINDOW) { reply ->
-            TmuxControlCommands.parseNewWindow(reply.lines)?.let(windows::created)
-        }
-    }
-
     /** Shows session [name] instead; its windows replace this session's tabs. */
     fun switchSession(name: String) = onThread {
         if (attached) link.send(TmuxControlCommands.switchClient(name))
@@ -256,10 +266,6 @@ internal class TmuxControlSession(
         val result = withTimeoutOrNull(LIST_SESSIONS_TIMEOUT_MS) { reply.await() }
         if (result == null || result.failed) return null
         return TmuxMultiplexer.parseSessions(result.lines.joinToString("\n"))
-    }
-
-    fun killWindow(windowId: Int) = onThread {
-        if (attached) link.send(TmuxControlCommands.killWindow(windowId))
     }
 
     /** Detaches from tmux, leaving the session running, and stops the session's thread. */
@@ -285,6 +291,7 @@ internal class TmuxControlSession(
         attached = false
         exited = false
         val reconnectAttempt = attempts.current
+        startupOutput.clear()
         _status.value = TmuxControlStatus(
             status = if (reconnectAttempt > 0) SessionStatus.Reconnecting else SessionStatus.Connecting,
             reconnectAttempt = reconnectAttempt,
@@ -355,13 +362,7 @@ internal class TmuxControlSession(
         if (exited) return
         if (!wasAttached && failure == null) {
             // The channel closed before tmux came up, so trying again would fail the same way.
-            // After an earlier attach, that is because the session is gone.
-            val error = if (identity.attachedOnce) {
-                UiText.Resource(R.string.tmux_control_session_gone, sessionName)
-            } else {
-                UiText.Resource(R.string.tmux_control_not_started)
-            }
-            _status.value = TmuxControlStatus(SessionStatus.Error, error)
+            _status.value = TmuxControlStatus(SessionStatus.Error, startFailure())
             return
         }
         val reason = failure?.let { UiText.Resource(R.string.error_connection_interrupted_reason, it.reason()) }
@@ -395,17 +396,43 @@ internal class TmuxControlSession(
                 post { sessionsChanged(this@TmuxControlSession) }
             }
             TmuxControlEvent.WindowsChanged -> if (attached) windows.listWindows()
+            is TmuxControlEvent.WindowRenamed -> windows.windowRenamed(event.windowId, event.name)
             is TmuxControlEvent.LayoutChanged -> windows.layoutChanged(event.windowId, event.layout)
             is TmuxControlEvent.Pause -> windows.paused(event.paneId)
             TmuxControlEvent.SessionsChanged -> post { sessionsChanged(this@TmuxControlSession) }
-            is TmuxControlEvent.Exit -> {
-                exited = true
-                if (!disposed) {
-                    _status.value = TmuxControlStatus(SessionStatus.Disconnected)
-                    post { controlEnded(this@TmuxControlSession) }
-                }
-            }
+            is TmuxControlEvent.Exit -> onExit()
+            is TmuxControlEvent.Text -> if (!attached) startupOutput.add(event.line)
             is TmuxControlEvent.Reply -> Unit
+        }
+    }
+
+    /**
+     * tmux left control mode. Before it attached, that is because it couldn't, as when
+     * the session doesn't exist. After, tmux says nothing of why: a detach from another
+     * client, the session ending, and the server stopping all look the same.
+     */
+    private fun onExit() {
+        exited = true
+        if (disposed) return
+        if (!attached) {
+            _status.value = TmuxControlStatus(SessionStatus.Error, startFailure())
+            return
+        }
+        windows.forgetWindows()
+        _status.value = TmuxControlStatus(SessionStatus.Disconnected, UiText.Resource(R.string.tmux_control_ended, sessionName))
+        post { controlEnded(this@TmuxControlSession) }
+    }
+
+    /**
+     * Why tmux didn't attach: what it or the shell printed, or else, after an earlier
+     * attach, that the session is gone.
+     */
+    private fun startFailure(): UiText {
+        startupOutput.text()?.let { return UiText.Resource(R.string.tmux_control_not_started_output, it) }
+        return if (identity.attachedOnce) {
+            UiText.Resource(R.string.tmux_control_session_gone, sessionName)
+        } else {
+            UiText.Resource(R.string.tmux_control_not_started)
         }
     }
 
@@ -432,7 +459,6 @@ internal class TmuxControlSession(
             }
         }
     }
-
 
     private fun sendClientSize() {
         val geometry = clientGeometry ?: return

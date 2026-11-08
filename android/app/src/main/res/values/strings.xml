@@ -48,7 +48,7 @@
     <string name="server_choose_session">Choose session on connect</string>
     <string name="server_choose_session_description">Lists the sessions on the host when you connect, so you pick one or start a new one. No session is created until you do.</string>
     <string name="server_tmux_control_mode">tmux control mode</string>
-    <string name="server_tmux_control_mode_description">Shows each tmux window as a tab with local scrollback, search, and selection. Needs tmux 3.2 or later.</string>
+    <string name="server_tmux_control_mode_description">Shows each tmux window as a tab with local scrollback, search, and selection. Split, zoom, and rename from the tab switcher or the shortcut menu. Ctrl+B reaches the shell unless tmux prefix keys is on in settings. Needs tmux 3.2 or later.</string>
     <string name="connection_test">Test connection</string>
     <string name="connection_testing">Testing…</string>
     <string name="connection_connected">Connected</string>
@@ -188,6 +188,8 @@
     <string name="settings_word_separators">Word separators</string>
     <string name="settings_word_separators_hint">Characters that end a word when you double-tap to select one, besides spaces.</string>
     <string name="settings_ctrl_v_pastes">Ctrl+V pastes</string>
+    <string name="settings_tmux_prefix_keys">tmux prefix keys</string>
+    <string name="settings_tmux_prefix_keys_hint" formatted="false">In a tmux window\'s tab, Ctrl+B and then a tmux key run its command: c new window, % split right, \" split down, x close pane, z zoom pane, n and p next and previous window, d detach, and , rename window. Ctrl+B twice sends Ctrl+B. When this is off, Ctrl+B reaches the shell.</string>
     <string name="settings_ctrl_v_pastes_hint">Ctrl+Shift+V always pastes. Turn this off to send Ctrl+V to the shell (e.g. vim block select).</string>
     <string name="settings_volume_keys_as_arrows">Volume keys as arrows</string>
     <string name="settings_volume_keys_as_arrows_hint">Volume Up and Down send the Up and Down arrows while the terminal has focus.</string>
@@ -219,6 +221,24 @@
     <string name="command_previous_prompt_description">Scroll to the previous shell prompt</string>
     <string name="command_next_prompt">Next prompt</string>
     <string name="command_next_prompt_description">Scroll to the next shell prompt</string>
+    <string name="tmux_window_actions">tmux window</string>
+    <string name="tmux_window_name">Window name</string>
+    <string name="command_split_right">Split right</string>
+    <string name="command_split_right_description">Split the tmux pane, with the new one on the right</string>
+    <string name="command_split_down">Split down</string>
+    <string name="command_split_down_description">Split the tmux pane, with the new one below</string>
+    <string name="command_close_pane">Close pane</string>
+    <string name="command_close_pane_description">Kill the active tmux pane</string>
+    <string name="command_zoom_pane">Zoom pane</string>
+    <string name="command_zoom_pane_description">Show the active tmux pane across its whole window, or put it back</string>
+    <string name="command_rename_window">Rename window</string>
+    <string name="command_rename_window_description">Rename the tmux window</string>
+    <string name="command_previous_window">Previous window</string>
+    <string name="command_previous_window_description">Show the previous tmux window</string>
+    <string name="command_next_window">Next window</string>
+    <string name="command_next_window_description">Show the next tmux window</string>
+    <string name="command_detach">Detach</string>
+    <string name="command_detach_description">Detach from the tmux session, which keeps running</string>
     <string name="action_reset">Reset</string>
     <string name="settings_tab_mode_palette">Palette</string>
     <string name="settings_tab_mode_strip">Tab strip</string>
@@ -260,7 +280,7 @@
         <item quantity="one">%1$d server using this key will need auth updated before connecting again.</item>
         <item quantity="other">%1$d servers using this key will need auth updated before connecting again.</item>
     </plurals>
-    <string name="terminal_new_session_on">New session on %1$s</string>
+    <string name="terminal_new_session_on">New connection to %1$s</string>
     <string name="terminal_verify_title">Verify to connect</string>
     <string name="terminal_verify_subtitle">Authenticate to open this server session</string>
     <string name="terminal_current_host">Current host</string>
@@ -326,6 +346,7 @@
     <string name="terminal_reconnecting">Reconnecting</string>
     <string name="terminal_reconnecting_attempt">Reconnecting (%1$d)</string>
     <string name="terminal_preparing_multiplexer">Preparing new multiplexer session…</string>
+    <string name="terminal_jump_to_bottom">Jump to bottom</string>
     <string name="terminal_zoom_font_size">Font size %1$d</string>
     <string name="terminal_zoom_scale">Zoom %1$.1f×</string>
     <string name="action_paste">Paste</string>
@@ -336,6 +357,7 @@
     <string name="terminal_retry_multiplexer">Retry multiplexer</string>
     <string name="terminal_connect_without_multiplexer">Connect without multiplexer</string>
     <string name="action_retry">Retry</string>
+    <string name="action_reattach">Reattach</string>
     <string name="server_list_filter">Filter</string>
     <string name="server_list_settings">Settings</string>
     <string name="server_list_filter_placeholder">Filter hosts</string>
@@ -497,8 +519,8 @@
     <string name="tab_manager_close">Close tab manager</string>
     <string name="tab_manager_title">Tabs</string>
     <plurals name="tab_manager_session_count">
-        <item quantity="one">%1$d session</item>
-        <item quantity="other">%1$d sessions</item>
+        <item quantity="one">%1$d tab</item>
+        <item quantity="other">%1$d tabs</item>
     </plurals>
     <string name="tab_manager_row_active">%1$s — %2$s, active</string>
     <string name="tab_manager_row_inactive">%1$s — %2$s, inactive</string>
@@ -536,9 +558,13 @@
     <string name="notification_channel_sessions_description">Keeps active terminal sessions alive</string>
     <string name="notification_connected_title">Abyssh connected</string>
     <string name="accessory_shortcuts">Shortcuts</string>
+    <string name="accessory_modifier_next_key">Held for the next key</string>
+    <string name="accessory_modifier_locked">Locked</string>
     <string name="accessory_open_files">Open files</string>
     <string name="accessory_zoom">Zoom</string>
-    <string name="terminal_end_session">End session</string>
+    <string name="terminal_kill_window">Kill window</string>
+    <string name="terminal_disconnect">Disconnect</string>
+    <string name="terminal_end_shell">End shell</string>
     <string name="terminal_end_session_title">End %1$s?</string>
     <string name="terminal_end_session_body">This closes the session. To leave it running, go back instead.</string>
     <string name="terminal_end_session_body_tmux_window">This closes the tmux window and the programs running in it.</string>
@@ -562,7 +588,10 @@
     <string name="error_connection_lost">Connection lost: %1$s</string>
     <string name="error_connection_interrupted">Connection interrupted</string>
     <string name="tmux_control_not_started">tmux did not start in control mode</string>
+    <string name="tmux_control_not_started_output">tmux did not start in control mode:\n%1$s</string>
+    <string name="tmux_control_ended">tmux closed the session %1$s here: another client detached it, it ended, or the tmux server stopped</string>
     <string name="tmux_window_needs_connection">Wait for tmux to reconnect before opening or closing windows</string>
+    <string name="tmux_action_needs_connection">Wait for tmux to reconnect</string>
     <string name="tmux_control_session_gone">The tmux session %1$s ended while disconnected</string>
     <string name="tmux_control_unsupported">This host\'s tmux is older than 3.2, so it opened without control mode</string>
     <string name="error_connection_interrupted_reason">Connection interrupted: %1$s</string>

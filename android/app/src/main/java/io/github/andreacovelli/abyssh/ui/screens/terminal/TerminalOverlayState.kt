@@ -22,7 +22,7 @@ internal fun switcherKeyFor(engineKey: Int): SwitcherKey? = when (engineKey) {
 /**
  * What floats over the terminal: the tab switcher (the command palette in list mode, the
  * tab manager in strip mode), the new-tab host picker, the custom actions offered
- * for a shortcut bound to several of them, and zoom mode.
+ * for a shortcut bound to several of them, the tmux window rename dialog, and zoom mode.
  */
 @Stable
 internal class TerminalOverlayState {
@@ -32,6 +32,9 @@ internal class TerminalOverlayState {
     var focusedTabIndex by mutableIntStateOf(0)
     var fabFilteredActions by mutableStateOf<List<TerminalCustomAction>?>(null)
     var fabExpanded by mutableStateOf(false)
+
+    /** The name the rename dialog starts from while it asks for a tmux window's new name, else null. */
+    var renamingWindow by mutableStateOf<String?>(null)
     val zoom = TerminalZoomState()
 
     val isSwitcherOpen: Boolean get() = showTabSheet || showTabManager

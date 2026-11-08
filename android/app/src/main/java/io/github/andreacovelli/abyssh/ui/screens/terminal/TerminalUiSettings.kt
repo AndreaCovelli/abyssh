@@ -41,6 +41,7 @@ internal data class TerminalUiSettings(
     val disableAutocorrect: Boolean,
     val volumeKeysAsArrows: Boolean,
     val ctrlVPastes: Boolean,
+    val tmuxPrefixKeys: Boolean,
     val showCustomActionsFab: Boolean,
     val wordSeparators: String,
     val ligatures: Boolean,
@@ -68,6 +69,7 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
     val disableAutocorrect by repo.disableAutocorrect.collectAsStateWithLifecycle()
     val volumeKeysAsArrows by repo.volumeKeysAsArrows.collectAsStateWithLifecycle()
     val ctrlVPastes by repo.ctrlVPastes.collectAsStateWithLifecycle()
+    val tmuxPrefixKeys by repo.tmuxPrefixKeys.collectAsStateWithLifecycle()
     val showCustomActionsFab by repo.showCustomActionsFab.collectAsStateWithLifecycle()
     val wordSeparators by repo.text.wordSeparators.collectAsStateWithLifecycle()
     val ligatures by repo.text.ligatures.collectAsStateWithLifecycle()
@@ -83,6 +85,7 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
         disableAutocorrect = disableAutocorrect,
         volumeKeysAsArrows = volumeKeysAsArrows,
         ctrlVPastes = ctrlVPastes,
+        tmuxPrefixKeys = tmuxPrefixKeys,
         showCustomActionsFab = showCustomActionsFab,
         wordSeparators = wordSeparators,
         ligatures = ligatures,
@@ -141,6 +144,9 @@ internal fun rememberAbysshKeys(
     onOpenSettings: () -> Unit,
 ): AbysshKeyBindings {
     val openSettings by rememberUpdatedState(onOpenSettings)
+    val activeTab by vm.activeTab.collectAsStateWithLifecycle()
+    // The tmux window commands are in the menu only while the active tab shows a tmux window.
+    val showsTmuxWindow = activeTab?.spec?.usesTmuxControlMode == true
     return remember(
         vm,
         endSession,
@@ -148,8 +154,9 @@ internal fun rememberAbysshKeys(
         settings.customKeyGroups,
         settings.builtinShortcuts,
         settings.showCustomActionsFab,
+        showsTmuxWindow,
     ) {
-        val handlers: Map<BuiltinCommand, () -> Unit> = mapOf(
+        val handlers = mapOf<BuiltinCommand, () -> Unit>(
             BuiltinCommand.Tabs to { overlay.openSwitcher(settings.tabMode) },
             BuiltinCommand.NewTab to {
                 vm.duplicateTab()
@@ -170,7 +177,8 @@ internal fun rememberAbysshKeys(
             },
             BuiltinCommand.PreviousPrompt to { vm.input.scrollToPrompt(-1) },
             BuiltinCommand.NextPrompt to { vm.input.scrollToPrompt(1) },
-        )
+        ) +
+            if (showsTmuxWindow) tmuxCommandHandlers(vm, overlay) else emptyMap()
         AbysshKeyBindings.build(
             builtinShortcuts = settings.builtinShortcuts,
             builtinCommandHandlers = handlers,

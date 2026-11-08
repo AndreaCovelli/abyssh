@@ -12,8 +12,9 @@ import org.junit.Test
  */
 class BuiltinShortcutStoreTest {
 
+    // Only the commands the test saved: parse gives the others their defaults.
     private fun roundTrip(m: Map<String, String>): Map<String, String> =
-        BuiltinShortcutStore.parse(BuiltinShortcutStore.serialize(m))
+        BuiltinShortcutStore.parse(BuiltinShortcutStore.serialize(m)).filterKeys { it in m }
 
     @Test
     fun `keys with delimiter chars survive round-trip`() {
@@ -30,7 +31,17 @@ class BuiltinShortcutStoreTest {
     @Test
     fun `unknown command ids are dropped`() {
         val parsed = BuiltinShortcutStore.parse("{\"tabs\":\"t\",\"bogus\":\"x\"}")
-        assertEquals(mapOf("tabs" to "t"), parsed)
+        assertEquals("t", parsed["tabs"])
+        assertEquals(BuiltinCommand.entries.map { it.id }.toSet(), parsed.keys)
+    }
+
+    @Test
+    fun `commands added since the shortcuts were saved get their default keys when free`() {
+        // Saved before the tmux commands existed, with split down's default key taken.
+        val parsed = BuiltinShortcutStore.parse("{\"tabs\":\"t\",\"close\":\"b\"}")
+        assertEquals("v", parsed[BuiltinCommand.SplitRight.id])
+        assertEquals("", parsed[BuiltinCommand.SplitDown.id])
+        assertEquals("b", parsed[BuiltinCommand.Close.id])
     }
 
     @Test

@@ -238,6 +238,52 @@ class TmuxWindowBindingsTest {
         assertEquals(listOf(2 to true), tabs.opened)
     }
 
+    @Test
+    fun aTabIsLabelledWithItsWindowsNumberAndName() {
+        val view = FakeView()
+        bindings.attach(view, windowId = null, shown = true)
+
+        answerWindows(window(1, active = true, pane = 1, index = 3, name = "build logs"))
+
+        assertEquals(listOf("3:build logs"), view.labels)
+    }
+
+    @Test
+    fun aRenamedWindowRelabelsItsTab() {
+        val view = shownWindow()
+
+        bindings.windowRenamed(1, "editor")
+        bindings.windowRenamed(2, "unknown")
+
+        assertEquals(listOf("1:zsh", "1:editor"), view.labels)
+    }
+
+    @Test
+    fun tabsFollowTheWindowsNumbersOnlyWhenTheOrderChanges() {
+        val first = FakeView()
+        val second = FakeView()
+        bindings.attach(first, windowId = 1, shown = true)
+        bindings.attach(second, windowId = 2, shown = true)
+
+        answerWindows(window(1, active = true, pane = 1, index = 5), window(2, active = false, pane = 2, index = 0))
+        bindings.listWindows()
+        answerWindows(window(1, active = true, pane = 1, index = 5), window(2, active = false, pane = 2, index = 0))
+
+        assertEquals(listOf(listOf<TmuxPaneView>(second, first)), tabs.orders)
+    }
+
+    @Test
+    fun forgettingTheWindowsLetsTheTabsTakeWhatTmuxShowsNext() {
+        val view = shownWindow()
+
+        bindings.forgetWindows()
+        bindings.listWindows()
+        answerWindows(window(7, active = true, pane = 9))
+
+        assertEquals(listOf(1, 7), view.windows)
+        assertTrue(tabs.closed.isEmpty())
+    }
+
     /** A tab showing window 1, an 80x24 pane 1, whose capture is on its way. */
     private fun shownWindow(): FakeView {
         val view = FakeView()
@@ -257,8 +303,15 @@ class TmuxWindowBindingsTest {
         )
     }
 
-    private fun window(id: Int, active: Boolean, pane: Int, cols: Int = 80, rows: Int = 24): String =
-        "@$id ${if (active) 1 else 0} %$pane $cols $rows ${layout(pane, cols, rows)}"
+    private fun window(
+        id: Int,
+        active: Boolean,
+        pane: Int,
+        cols: Int = 80,
+        rows: Int = 24,
+        index: Int = id,
+        name: String = "zsh",
+    ): String = "@$id $index ${if (active) 1 else 0} %$pane $cols $rows ${layout(pane, cols, rows)} $name"
 
     private fun layout(pane: Int, cols: Int, rows: Int): String = "0000,${cols}x$rows,0,0,$pane"
 
@@ -307,6 +360,12 @@ class TmuxWindowBindingsTest {
         }
 
         override fun select(view: TmuxPaneView) = Unit
+
+        override fun order(views: List<TmuxPaneView>) {
+            orders += listOf(views)
+        }
+
+        val orders = mutableListOf<List<TmuxPaneView>>()
     }
 
     private class FakeView : TmuxPaneView {
@@ -322,6 +381,12 @@ class TmuxWindowBindingsTest {
         override fun bindWindow(windowId: Int) {
             windows += windowId
         }
+
+        override fun nameWindow(label: String) {
+            labels += label
+        }
+
+        val labels = mutableListOf<String>()
 
         override fun showLayout(layout: TmuxWindowLayout, activePane: Int) = Unit
 

@@ -24,7 +24,8 @@ private val KeyShape: Shape = RoundedCornerShape(8.dp)
  * [AbyssButton] it has no minimum size, so short labels like `Esc` stay narrow and
  * keys in a row keep even gaps.
  *
- * [active] fills the key with the accent color, for latched modifiers and open groups.
+ * [active] fills the key with the accent color, for locked modifiers and open groups.
+ * [armed] outlines it in the accent color, for a modifier held for the next key only.
  * Leave [onClick] null when the caller handles touches itself and passes [pressed].
  */
 @Composable
@@ -32,6 +33,7 @@ fun AbyssKey(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     active: Boolean = false,
+    armed: Boolean = false,
     pressed: Boolean = false,
     contentPadding: PaddingValues = PaddingValues(horizontal = 10.dp, vertical = 3.dp),
     content: @Composable () -> Unit,
@@ -40,10 +42,19 @@ fun AbyssKey(
     val container = when {
         active -> colors.accent
         pressed -> lerp(colors.surface, colors.accent, 0.3f)
+        armed -> lerp(colors.surface, colors.accent, 0.16f)
         else -> colors.surface
     }
-    val contentColor = if (active) colors.onAccent else colors.textPrimary
-    val border = if (active) null else BorderStroke(1.dp, colors.border.copy(alpha = 0.6f))
+    val contentColor = when {
+        active -> colors.onAccent
+        armed -> colors.accent
+        else -> colors.textPrimary
+    }
+    val border = when {
+        active -> null
+        armed -> BorderStroke(1.5.dp, colors.accent)
+        else -> BorderStroke(1.dp, colors.border.copy(alpha = 0.6f))
+    }
     val body: @Composable () -> Unit = {
         Box(Modifier.padding(contentPadding), contentAlignment = Alignment.Center) { content() }
     }

@@ -79,6 +79,10 @@ class SettingsRepository(context: Context) {
     private val _ctrlVPastes = MutableStateFlow(prefs.getBoolean(KEY_CTRL_V_PASTES, true))
     val ctrlVPastes: StateFlow<Boolean> = _ctrlVPastes.asStateFlow()
 
+    // Off by default, so Ctrl+B reaches the shell in a tmux window's tab as it does elsewhere.
+    private val _tmuxPrefixKeys = MutableStateFlow(prefs.getBoolean(KEY_TMUX_PREFIX_KEYS, false))
+    val tmuxPrefixKeys: StateFlow<Boolean> = _tmuxPrefixKeys.asStateFlow()
+
     // Off by default, so the volume keys change the volume while the terminal has focus.
     private val _volumeKeysAsArrows = MutableStateFlow(prefs.getBoolean(KEY_VOLUME_KEYS_AS_ARROWS, false))
     val volumeKeysAsArrows: StateFlow<Boolean> = _volumeKeysAsArrows.asStateFlow()
@@ -191,6 +195,11 @@ class SettingsRepository(context: Context) {
         _ctrlVPastes.value = enabled
     }
 
+    fun setTmuxPrefixKeys(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_TMUX_PREFIX_KEYS, enabled) }
+        _tmuxPrefixKeys.value = enabled
+    }
+
     fun setTerminalFontSize(sizeSp: Float) {
         val clamped = sizeSp.coerceIn(MIN_TERMINAL_FONT_SIZE, MAX_TERMINAL_FONT_SIZE)
         prefs.edit {
@@ -255,6 +264,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_VOLUME_KEYS_AS_ARROWS = "volume_keys_as_arrows"
         private const val KEY_REMOTE_CLIPBOARD_WRITE_ENABLED = "remote_clipboard_write_enabled"
         private const val KEY_CTRL_V_PASTES = "ctrl_v_pastes"
+        private const val KEY_TMUX_PREFIX_KEYS = "tmux_prefix_keys"
         private const val KEY_TERMINAL_FONT_SIZE = "terminal_font_size_sp"
         private const val KEY_TERMINAL_FONT_SIZE_CUSTOMIZED = "terminal_font_size_customized"
         private const val KEY_TERMINAL_SCROLLBACK_MB = "terminal_scrollback_mb"

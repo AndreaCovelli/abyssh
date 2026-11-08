@@ -7,17 +7,29 @@ enum class TerminalModifier {
     Cmd,
 }
 
+/**
+ * The accessory bar's modifiers. A tap holds a modifier for the next key only; a second
+ * tap locks it until a third tap releases it. [locked] names the locked ones.
+ */
 data class ModifierState(
     val ctrl: Boolean = false,
     val alt: Boolean = false,
     val shift: Boolean = false,
     val cmd: Boolean = false,
+    val locked: Set<TerminalModifier> = emptySet(),
 ) {
-    fun toggle(modifier: TerminalModifier): ModifierState = when (modifier) {
-        TerminalModifier.Ctrl -> copy(ctrl = !ctrl)
-        TerminalModifier.Alt -> copy(alt = !alt)
-        TerminalModifier.Shift -> copy(shift = !shift)
-        TerminalModifier.Cmd -> copy(cmd = !cmd)
+    /** Off to held for one key, held to locked, and locked to off. */
+    fun toggle(modifier: TerminalModifier): ModifierState = when {
+        !isEnabled(modifier) -> withEnabled(modifier, true)
+        modifier !in locked -> copy(locked = locked + modifier)
+        else -> withEnabled(modifier, false).copy(locked = locked - modifier)
+    }
+
+    private fun withEnabled(modifier: TerminalModifier, enabled: Boolean): ModifierState = when (modifier) {
+        TerminalModifier.Ctrl -> copy(ctrl = enabled)
+        TerminalModifier.Alt -> copy(alt = enabled)
+        TerminalModifier.Shift -> copy(shift = enabled)
+        TerminalModifier.Cmd -> copy(cmd = enabled)
     }
 
     fun isEnabled(modifier: TerminalModifier): Boolean = when (modifier) {
@@ -26,6 +38,17 @@ data class ModifierState(
         TerminalModifier.Shift -> shift
         TerminalModifier.Cmd -> cmd
     }
+
+    fun isLocked(modifier: TerminalModifier): Boolean = modifier in locked
+
+    /** The modifiers left after a key used them: only the locked ones. */
+    fun afterKey(): ModifierState = ModifierState(
+        ctrl = ctrl && TerminalModifier.Ctrl in locked,
+        alt = alt && TerminalModifier.Alt in locked,
+        shift = shift && TerminalModifier.Shift in locked,
+        cmd = cmd && TerminalModifier.Cmd in locked,
+        locked = locked,
+    )
 
     fun hasActiveModifiers(): Boolean = ctrl || alt || shift || cmd
 
@@ -156,18 +179,18 @@ object TerminalAccessoryDispatcher {
         )
 
         is AccessoryAction.SendSpecialKey -> AccessoryDispatchResult(
-            modifierState = modifierState,
+            modifierState = modifierState.afterKey(),
             specialKey = action.key,
             suppressImeInput = true,
         )
 
         is AccessoryAction.SendText -> AccessoryDispatchResult(
-            modifierState = modifierState,
+            modifierState = modifierState.afterKey(),
             text = modifierState.applyToText(action.text),
         )
 
         AccessoryAction.Paste -> AccessoryDispatchResult(
-            modifierState = modifierState,
+            modifierState = modifierState.afterKey(),
             shouldPaste = true,
         )
 

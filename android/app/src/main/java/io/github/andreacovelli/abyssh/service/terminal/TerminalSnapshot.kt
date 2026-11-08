@@ -149,6 +149,10 @@ data class TerminalSnapshot(
     val activeArea: TerminalCellArea? = null,
     /** Each terminal the snapshot shows, when it shows several; empty when it shows one. */
     val panes: List<TerminalPane> = emptyList(),
+    /** Whether the terminal keys go to is scrolled up from its live output. */
+    val scrolledBack: Boolean = false,
+    /** Whether the terminal keys go to shows its alternate screen, which has no scrollback. */
+    val alternateScreen: Boolean = false,
 ) {
     init {
         require(rowData.size == rows) { "Snapshot has ${rowData.size} rows, expected $rows" }
