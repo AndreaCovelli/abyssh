@@ -5,6 +5,7 @@ import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.UiText
 import io.github.andreacovelli.abyssh.model.toUiText
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSize
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneState
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxWindowLayout
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -46,11 +47,15 @@ internal class TmuxPaneConnection(
         sendKeys = { paneId, data -> control.sendKeys(this, paneId, data) },
         selectPane = { paneId -> control.selectPane(this, paneId) },
         snapshotIntervalMs = snapshotIntervalMs,
+        onShown = ::onShown,
     )
 
     private var statusJob: Job? = null
     private var attached = false
     private var quiet = false
+
+    // Whether anything has shown the tab yet; until then tmux sends nothing for its panes.
+    private var shown = false
 
     override fun connect(spec: TabSpec, sessionKey: String) {
         scope.launch(dispatcher) {
@@ -65,8 +70,8 @@ internal class TmuxPaneConnection(
                     state.update { it.copy(status = status.status, error = status.error, reconnectAttempt = status.reconnectAttempt) }
                 }
             }
-            control.attach(this@TmuxPaneConnection, windowId)
-            if (quiet) control.setWindowQuiet(this@TmuxPaneConnection, true)
+            control.attach(this@TmuxPaneConnection, windowId, shown)
+            if (quiet) control.setWindowVisibility(this@TmuxPaneConnection, shown, quiet = true)
         }
     }
 
@@ -97,7 +102,13 @@ internal class TmuxPaneConnection(
     // carries every window.
     override fun setQuiet(quiet: Boolean) {
         this.quiet = quiet
-        if (attached) control.setWindowQuiet(this, quiet)
+        if (attached) control.setWindowVisibility(this, shown, quiet)
+    }
+
+    private fun onShown() {
+        if (shown) return
+        shown = true
+        if (attached) control.setWindowVisibility(this, shown = true, quiet)
     }
 
     override fun bindWindow(windowId: Int) {
@@ -110,6 +121,19 @@ internal class TmuxPaneConnection(
 
     override fun showPane(paneId: Int, size: TmuxPaneSize, seed: ByteArray) {
         onSessionThread { panes.showPane(paneId, size, seed) }
+    }
+
+    override fun resizePane(
+        paneId: Int,
+        state: TmuxPaneState,
+        historyTail: List<String>,
+        normalScreen: List<String>,
+        screen: List<String>,
+        onMismatch: () -> Unit,
+    ) {
+        onSessionThread {
+            if (!panes.resizePane(paneId, state, historyTail, normalScreen, screen)) onMismatch()
+        }
     }
 
     override fun paneOutput(paneId: Int, data: ByteArray) {

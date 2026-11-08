@@ -203,11 +203,13 @@ private fun TerminalKeyboardEffect(vm: TerminalViewModel, input: TerminalInputCo
 }
 
 /**
- * Tells the active tab its terminal is on screen while the pane is shown and the app is
- * started, so it builds snapshots and plays Kitty animations only then.
+ * Tells the active tab its terminal is on screen while the terminal screen is started, so
+ * it builds snapshots and plays Kitty animations only then. This includes the time the tab
+ * is still connecting or preparing: a tmux window captures its panes only once shown, so
+ * waiting for its first snapshot would wait forever.
  */
 @Composable
-private fun TerminalOnScreenEffect(vm: TerminalViewModel) {
+internal fun TerminalOnScreenEffect(vm: TerminalViewModel) {
     val activeTab by vm.activeTab.collectAsStateWithLifecycle()
     val engine = activeTab?.engine
     LifecycleStartEffect(engine) {
@@ -231,7 +233,6 @@ private fun TerminalPane(
     val multiplexer by vm.multiplexer.state.collectAsStateWithLifecycle()
     val activeTab by vm.activeTab.collectAsStateWithLifecycle()
     TerminalKeyboardEffect(vm, input)
-    TerminalOnScreenEffect(vm)
     Column(modifier = modifier) {
         searchState?.let { search ->
             TerminalSearchBar(

@@ -1,6 +1,9 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneResize
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSeed
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSize
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneState
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPassthrough
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxWindowLayout
 import kotlinx.coroutines.CoroutineDispatcher
@@ -27,6 +30,8 @@ internal class TmuxWindowPanes(
     private val selectPane: (paneId: Int) -> Unit,
     // The shortest time between two compositions of the window, read each time one is due.
     private val snapshotIntervalMs: () -> Long = { DEFAULT_SNAPSHOT_INTERVAL_MS },
+    // Runs each time something starts showing the window after nothing did.
+    private val onShown: () -> Unit = {},
 ) : TabTerminals {
     private class Pane(val emulator: TerminalEmulator, val state: MutableStateFlow<SessionState>) {
         val passthrough = TmuxPassthrough()
@@ -61,10 +66,15 @@ internal class TmuxWindowPanes(
         compose()
     }
 
-    /** Replaces pane [paneId]'s terminal with a blank one of [size] and writes [seed] into it. */
+    /**
+     * Replaces pane [paneId]'s terminal with a blank one of [size] and writes [seed] into
+     * it. A pane captured again, as after a resize, stays the same number of rows from
+     * the bottom it was scrolled to.
+     */
     fun showPane(paneId: Int, size: TmuxPaneSize, seed: ByteArray) {
         val pane = panes[paneId] ?: return
         val emulator = pane.emulator
+        val rowsAboveBottom = emulator.rowsAboveBottom()
         pane.passthrough.reset()
         emulator.geometry = paneGeometry(size)
         emulator.open()
@@ -72,8 +82,42 @@ internal class TmuxWindowPanes(
         emulator.applyGeometry()
         emulator.writeRemote(seed)
         emulator.drainPtyWrites()
+        if (rowsAboveBottom > 0) emulator.scrollToRowsAboveBottom(rowsAboveBottom)
         emulator.setMouseEncodingSize()
         emulator.requestSnapshot(force = true)
+    }
+
+    /**
+     * Resizes pane [paneId]'s terminal to [state]'s height and draws its screens again
+     * from [normalScreen] and [screen], keeping the history, which [TmuxPaneResize]
+     * moves as tmux did. Returns false when the terminal can't follow tmux: the pane's
+     * width changed, or its history no longer ends with [historyTail], tmux's last lines
+     * of history. The pane then needs [showPane] with a full capture.
+     */
+    fun resizePane(
+        paneId: Int,
+        state: TmuxPaneState,
+        historyTail: List<String>,
+        normalScreen: List<String>,
+        screen: List<String>,
+    ): Boolean {
+        val pane = panes[paneId] ?: return false
+        val emulator = pane.emulator
+        if (!emulator.isOpen || emulator.geometry.cols != state.size.cols) return false
+        emulator.drainPtyWrites()
+        emulator.writeRemote(TmuxPaneResize.CURSOR_REPORT)
+        val cursorRow = TmuxPaneResize.cursorRow(emulator.drainPtyWrites()) ?: return false
+        val prepare = TmuxPaneResize.prepare(emulator.geometry.rows, cursorRow, state) ?: return false
+        pane.passthrough.reset()
+        emulator.writeRemote(prepare)
+        emulator.geometry = paneGeometry(state.size)
+        emulator.applyGeometry()
+        if (!TmuxPaneResize.historyMatches(historyTail, state.historySize, emulator::historyTail)) return false
+        emulator.writeRemote(TmuxPaneSeed.redraw(state, normalScreen, screen))
+        emulator.drainPtyWrites()
+        emulator.setMouseEncodingSize()
+        emulator.requestSnapshot(force = true)
+        return true
     }
 
     // The terminal's replies are dropped, since tmux already answered the program.
@@ -123,6 +167,7 @@ internal class TmuxWindowPanes(
     override fun addViewer() {
         viewers++
         panes.values.forEach { it.emulator.addViewer() }
+        if (viewers == 1) onShown()
     }
 
     override fun removeViewer() {

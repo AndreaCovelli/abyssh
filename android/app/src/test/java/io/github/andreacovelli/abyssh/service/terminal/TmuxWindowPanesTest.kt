@@ -41,4 +41,30 @@ class TmuxWindowPanesTest {
 
         assertEquals(listOf(2, 1), selected)
     }
+
+    @Test
+    fun `the window reports each time something starts showing it`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        var shown = 0
+        val panes = TmuxWindowPanes(
+            scope = backgroundScope,
+            dispatcher = dispatcher,
+            state = MutableStateFlow(SessionState()),
+            nativeVersion = null,
+            newEmulator = { state, onPublished ->
+                TerminalEmulator(GhosttyBridge(), null, backgroundScope, dispatcher, state, {}, { 0 }, onPublished)
+            },
+            sendKeys = { _, _ -> },
+            selectPane = {},
+            onShown = { shown++ },
+        )
+
+        panes.addViewer()
+        panes.addViewer()
+        panes.removeViewer()
+        panes.removeViewer()
+        panes.addViewer()
+
+        assertEquals(2, shown)
+    }
 }

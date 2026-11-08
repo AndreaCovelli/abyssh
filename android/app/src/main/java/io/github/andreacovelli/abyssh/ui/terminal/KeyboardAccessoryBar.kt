@@ -43,7 +43,20 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Placeable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.ScrollableDefaults
+import androidx.compose.foundation.gestures.ScrollableState
+import androidx.compose.foundation.gestures.scrollable
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.horizontalDrag
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.ScrollAxisRange
+import androidx.compose.ui.semantics.horizontalScrollAxisRange
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -188,34 +201,81 @@ private fun ScrollingKeyRow(keys: List<@Composable () -> Unit>, modifier: Modifi
 
 /**
  * The keys that fit on the first row, and the rest on a second row that scrolls sideways,
- * so a long layout or a large font never hides a key.
+ * so a long layout or a large font never hides a key. Both rows are one layout, which
+ * measures every key to split them, so each key is composed once; only a drag that
+ * starts on the second row scrolls it.
  */
 @Composable
 private fun TwoKeyRows(keys: List<@Composable () -> Unit>, modifier: Modifier = Modifier) {
-    SubcomposeLayout(modifier) { constraints ->
-        // Each key's width, or null for one that shows nothing, such as Files with no handler.
-        val widths = keys.mapIndexed { index, key ->
-            val placeables = subcompose("measure-$index", key).map { it.measure(Constraints()) }
-            if (placeables.isEmpty()) null else placeables.maxOf { it.width }
-        }
-        val split = firstRowKeyCount(widths, constraints.maxWidth, KEY_SPACING.roundToPx())
-        val hasSecondRow = widths.drop(split).any { it != null }
-        val placeables = subcompose("rows") {
-            Column(verticalArrangement = Arrangement.spacedBy(KEY_SPACING)) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(KEY_SPACING),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    keys.take(split).forEach { it() }
-                }
-                if (hasSecondRow) ScrollingKeyRow(keys.drop(split))
+    val scroll = remember { SecondRowScroll() }
+    val reverse = ScrollableDefaults.reverseDirection(LocalLayoutDirection.current, Orientation.Horizontal, false)
+    Layout(
+        contents = keys,
+        modifier = modifier
+            .clipToBounds()
+            .scrollable(scroll.state, Orientation.Horizontal, reverseDirection = reverse)
+            .semantics {
+                horizontalScrollAxisRange = ScrollAxisRange(value = { scroll.offset }, maxValue = { scroll.maxOffset })
             }
-        }.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
+            // Sees each move before the scroll does: a drag that starts on the first row is
+            // taken here once it passes the touch slop, so it scrolls nothing.
+            .pointerInput(scroll) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    if (down.position.y >= scroll.top) return@awaitEachGesture
+                    val drag = awaitHorizontalTouchSlopOrCancellation(down.id) { change, _ -> change.consume() }
+                    if (drag != null) horizontalDrag(drag.id) { it.consume() }
+                }
+            },
+    ) { measurables, constraints ->
+        // Each key's placeables, empty for one that shows nothing, such as Files with no handler.
+        val placeables = measurables.map { key -> key.map { it.measure(Constraints()) } }
+        val widths = placeables.map { key -> key.maxOfOrNull { it.width } }
+        val spacing = KEY_SPACING.roundToPx()
+        val split = firstRowKeyCount(widths, constraints.maxWidth, spacing)
+        val first = placeables.take(split).filter { it.isNotEmpty() }
+        val second = placeables.drop(split).filter { it.isNotEmpty() }
+        val firstHeight = rowHeight(first)
         val width = constraints.maxWidth
-        val height = (placeables.maxOfOrNull { it.height } ?: 0).coerceAtLeast(constraints.minHeight)
-        layout(width, height) {
-            placeables.forEach { it.placeRelative(0, 0) }
+        scroll.top = if (second.isEmpty()) Int.MAX_VALUE else firstHeight + spacing
+        scroll.maxOffset = (rowWidth(second, spacing) - width).coerceAtLeast(0).toFloat()
+        val height = if (second.isEmpty()) firstHeight else scroll.top + rowHeight(second)
+        layout(width, height.coerceAtLeast(constraints.minHeight)) {
+            placeRow(first, 0, 0, firstHeight, spacing)
+            val offset = scroll.offset.coerceAtMost(scroll.maxOffset).roundToInt()
+            placeRow(second, -offset, scroll.top, rowHeight(second), spacing)
         }
+    }
+}
+
+/** How far the second row of [TwoKeyRows] is scrolled. */
+private class SecondRowScroll {
+    var offset by mutableFloatStateOf(0f)
+        private set
+
+    // Set by each measure: how far the row can scroll, and where it starts.
+    var maxOffset = 0f
+    var top = Int.MAX_VALUE
+
+    val state = ScrollableState { delta ->
+        val target = (offset + delta).coerceIn(0f, maxOffset)
+        val consumed = target - offset
+        offset = target
+        consumed
+    }
+}
+
+private fun rowWidth(keys: List<List<Placeable>>, spacing: Int): Int =
+    keys.sumOf { key -> key.maxOf { it.width } } + spacing * (keys.size - 1).coerceAtLeast(0)
+
+private fun rowHeight(keys: List<List<Placeable>>): Int = keys.maxOfOrNull { key -> key.maxOf { it.height } } ?: 0
+
+/** Places [keys] side by side from ([x], [y]), each centered in a row [height] tall. */
+private fun Placeable.PlacementScope.placeRow(keys: List<List<Placeable>>, x: Int, y: Int, height: Int, spacing: Int) {
+    var left = x
+    keys.forEach { key ->
+        key.forEach { it.placeRelative(left, y + (height - it.height) / 2) }
+        left += key.maxOf { it.width } + spacing
     }
 }
 

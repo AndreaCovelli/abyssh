@@ -151,6 +151,23 @@ internal class TerminalEmulator(
 
     fun isImageLoading(): Boolean = isOpen && bridge.nativeIsImageLoading(handle)
 
+    /** How many rows the view is scrolled up from the bottom, 0 while it follows the output. */
+    fun rowsAboveBottom(): Int = if (isOpen) bridge.nativeViewportRowsAboveBottom(handle) else 0
+
+    /** Scrolls the view to [rows] rows above the bottom, or as far up as the history goes. */
+    fun scrollToRowsAboveBottom(rows: Int) {
+        if (isOpen) bridge.nativeScrollToRowsAboveBottom(handle, rows)
+    }
+
+    /**
+     * The text of up to the last [rows] rows of the history above the normal screen,
+     * oldest first, without the spaces around each.
+     */
+    fun historyTail(rows: Int): List<String> {
+        if (!isOpen) return emptyList()
+        return bridge.nativeHistoryTail(handle, rows)?.split('\n')?.dropLast(1).orEmpty()
+    }
+
     /**
      * Something now shows this terminal, such as its pane or a preview. While nothing
      * does, output builds no snapshots and Kitty animations pause on their current frame.

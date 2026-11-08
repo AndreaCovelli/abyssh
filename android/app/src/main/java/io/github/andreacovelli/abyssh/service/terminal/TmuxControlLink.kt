@@ -14,13 +14,22 @@ private const val READ_CHUNK_BYTES = 65536
 private const val DETACH_WAIT_READS = 10
 private const val DETACH_WAIT_MS = 20L
 
+/** Sends commands to tmux, which answers each with a reply block in the order they were sent. */
+internal interface TmuxCommandSink {
+    /** Sends [command]; [onReply] gets tmux's reply. */
+    fun send(command: String, onReply: (TmuxControlEvent.Reply) -> Unit = {})
+
+    /** Sends [commands] in one write, so tmux runs them back to back; [onReplies] gets their replies in order. */
+    fun sendAll(commands: List<String>, onReplies: (List<TmuxControlEvent.Reply>) -> Unit = {})
+}
+
 /**
  * The SSH channel that runs `tmux -CC`. Commands go out one per line, and tmux answers
  * each with a reply block in the order they were sent, so each reply goes to the oldest
  * callback still waiting. Every call must run on the control session's thread, which
  * [outputWaiter] blocks while the read loop waits for output.
  */
-internal class TmuxControlLink(hostKeyPolicy: HostKeyPolicy, private val outputWaiter: OutputWaiter) {
+internal class TmuxControlLink(hostKeyPolicy: HostKeyPolicy, private val outputWaiter: OutputWaiter) : TmuxCommandSink {
     val ssh = NativeSshService(hostKeyPolicy = hostKeyPolicy)
     private val parser = TmuxControlParser()
     private val pacer = ReadPacer()
@@ -45,11 +54,9 @@ internal class TmuxControlLink(hostKeyPolicy: HostKeyPolicy, private val outputW
         ssh.setKeepalive(spec.keepaliveIntervalSeconds)
     }
 
-    /** Sends [command]; [onReply] gets tmux's reply. */
-    fun send(command: String, onReply: (TmuxControlEvent.Reply) -> Unit = {}) = sendAll(listOf(command)) { onReply(it.single()) }
+    override fun send(command: String, onReply: (TmuxControlEvent.Reply) -> Unit) = sendAll(listOf(command)) { onReply(it.single()) }
 
-    /** Sends [commands] in one write, so tmux runs them back to back; [onReplies] gets their replies in order. */
-    fun sendAll(commands: List<String>, onReplies: (List<TmuxControlEvent.Reply>) -> Unit = {}) {
+    override fun sendAll(commands: List<String>, onReplies: (List<TmuxControlEvent.Reply>) -> Unit) {
         if (commands.isEmpty()) return
         val collected = ArrayList<TmuxControlEvent.Reply>(commands.size)
         repeat(commands.size) {

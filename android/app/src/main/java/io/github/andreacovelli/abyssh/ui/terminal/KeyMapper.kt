@@ -178,13 +178,11 @@ object KeyMapper {
     }
 
     private fun translateMods(metaState: Int): Int {
-        // Ghostty KeyMods packed struct layout:
-        //   bit 0 = shift, bit 1 = ctrl, bit 2 = alt, bit 3 = super
         var mods = 0
-        if (metaState and KeyEvent.META_SHIFT_ON != 0) mods = mods or (1 shl 0) // shift
-        if (metaState and KeyEvent.META_CTRL_ON != 0) mods = mods or (1 shl 1) // ctrl
-        if (metaState and KeyEvent.META_ALT_ON != 0) mods = mods or (1 shl 2) // alt
-        if (metaState and KeyEvent.META_META_ON != 0) mods = mods or (1 shl 3) // super
+        if (metaState and KeyEvent.META_SHIFT_ON != 0) mods = mods or GhosttyMods.SHIFT
+        if (metaState and KeyEvent.META_CTRL_ON != 0) mods = mods or GhosttyMods.CTRL
+        if (metaState and KeyEvent.META_ALT_ON != 0) mods = mods or GhosttyMods.ALT
+        if (metaState and KeyEvent.META_META_ON != 0) mods = mods or GhosttyMods.SUPER
         return mods
     }
 }

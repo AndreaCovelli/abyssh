@@ -26,24 +26,12 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 private const val TAG = "TerminalSession"
-private const val MAX_RECONNECT_ATTEMPTS = 8
-private const val RECONNECT_BASE_DELAY_MS = 1_000L
-private const val RECONNECT_MAX_DOUBLINGS = 5
-private const val RECONNECT_MAX_DELAY_MS = 60_000L
 private const val MAX_PTY_DRAINS = 8
-
-// A session that stays up this long starts the next reconnect's backoff over.
-internal const val STABLE_SESSION_MS = 30_000L
 
 // The view's size changes on every frame while the keyboard slides in or out, so the far
 // end hears only the size that settles, as tmux control mode does.
 private const val REMOTE_RESIZE_SETTLE_MS = 150L
 private const val REMOTE_RESIZE_RETRY_MS = 500L
-
-/** How long to wait before reconnect [attempt] (1-based): 1 s, doubling up to 32 s. */
-internal fun reconnectDelayMs(attempt: Int): Long =
-    (RECONNECT_BASE_DELAY_MS shl (attempt - 1).coerceIn(0, RECONNECT_MAX_DOUBLINGS))
-        .coerceAtMost(RECONNECT_MAX_DELAY_MS)
 
 /** How a read loop ended. */
 private class ReadOutcome(
@@ -92,10 +80,7 @@ internal class SessionConnection(
 
     private val reconnectWait = ReconnectWait()
 
-    // Reconnect attempts since a session last stayed up for STABLE_SESSION_MS, and when
-    // the current one opened.
-    private var attemptsSinceStable = 0
-    private var openedAtMs = 0L
+    private val attempts = ReconnectAttempts()
 
     // When the Mosh client last resumed after a network failure.
     private var moshResumedAtMs: Long? = null
@@ -120,7 +105,7 @@ internal class SessionConnection(
             reconnectJob?.cancel()
             reconnectJob = null
             stopReadLoop()
-            attemptsSinceStable = 0
+            attempts.reset()
             state.update {
                 it.copy(status = SessionStatus.Connecting, error = null, reconnectAttempt = 0, sessionKey = sessionKey)
             }
@@ -271,7 +256,7 @@ internal class SessionConnection(
     }
 
     private fun onOpened(spec: TabSpec) {
-        openedAtMs = SystemClock.elapsedRealtime()
+        attempts.opened()
         state.update { it.copy(status = SessionStatus.Connected, error = null, reconnectAttempt = 0) }
         emulator.requestSnapshot(force = true)
         // The view may have changed size while the transport was opening.
@@ -397,12 +382,14 @@ internal class SessionConnection(
 
     private suspend fun reconnect(spec: TabSpec, reason: UiText) {
         stopReadLoop()
-        // A server that drops the session right after login keeps the backoff growing.
-        if (SystemClock.elapsedRealtime() - openedAtMs >= STABLE_SESSION_MS) attemptsSinceStable = 0
+        attempts.dropped()
         var done = false
         while (!done && currentCoroutineContext().isActive && !disconnectRequested) {
-            attemptsSinceStable += 1
-            val attempt = attemptsSinceStable
+            val attempt = attempts.next()
+            if (attempt == null) {
+                state.update { it.copy(status = SessionStatus.Error, error = reason) }
+                return
+            }
             state.update { it.copy(status = SessionStatus.Reconnecting, reconnectAttempt = attempt, error = reason) }
             reconnectWait.awaitAttempt(attempt)
             // An attempt made offline fails at once, so time without a network uses none up.
@@ -425,7 +412,7 @@ internal class SessionConnection(
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Reconnect attempt $attempt failed", e)
-            val exhausted = attempt >= MAX_RECONNECT_ATTEMPTS
+            val exhausted = attempts.exhausted
             if (exhausted) {
                 state.update { it.copy(status = SessionStatus.Error, error = UiText.Resource(R.string.error_reconnect_failed, e.reason())) }
             }

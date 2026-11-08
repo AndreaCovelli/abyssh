@@ -1,6 +1,5 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
-import android.os.SystemClock
 import android.util.Log
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.UiText
@@ -12,6 +11,7 @@ import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TMUX_PAUSE_AFTER_
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlCommands
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlEvent
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneSize
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneState
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxWindowLayout
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
 import io.github.andreacovelli.abyssh.service.network.NetworkWaiter
@@ -31,7 +31,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "TmuxControl"
-private const val MAX_RECONNECT_ATTEMPTS = 8
 
 // The view's size changes on every frame while the keyboard slides in or out, and each
 // size tmux applies captures the pane again, so only the size that settles goes out.
@@ -57,6 +56,20 @@ internal interface TmuxPaneView {
 
     /** Replaces pane [paneId]'s terminal with a blank one of [size] and writes [seed] into it, as when it appears or resizes. */
     fun showPane(paneId: Int, size: TmuxPaneSize, seed: ByteArray)
+
+    /**
+     * Resizes pane [paneId]'s terminal to [state]'s height, keeping its history, and
+     * draws its screens again, as [TmuxWindowPanes.resizePane] does. Calls [onMismatch]
+     * when the terminal can't follow tmux, and the pane needs a full capture.
+     */
+    fun resizePane(
+        paneId: Int,
+        state: TmuxPaneState,
+        historyTail: List<String>,
+        normalScreen: List<String>,
+        screen: List<String>,
+        onMismatch: () -> Unit,
+    )
 
     fun paneOutput(paneId: Int, data: ByteArray)
 }
@@ -132,9 +145,7 @@ internal class TmuxControlSession(
     private val reconnectWait = ReconnectWait()
     private var clientGeometry: TerminalGeometry? = null
 
-    // The attempt that opened the current connection, and when tmux attached on it.
-    private var connectAttempt = 0
-    private var attachedAtMs = 0L
+    private val attempts = ReconnectAttempts()
     private var sentClientSize: TmuxPaneSize? = null
 
     private val windows =
@@ -148,9 +159,13 @@ internal class TmuxControlSession(
                 override fun select(view: TmuxPaneView) = post { selectWindowTab(this@TmuxControlSession, view) }
             },
             attached = { attached },
+            onThread = ::onThread,
         )
 
-    fun start() = onThread { connect(reconnectAttempt = 0) }
+    fun start() = onThread {
+        attempts.reset()
+        connect()
+    }
 
     /** Reconnects now, as when the user taps reconnect. */
     fun reconnect() {
@@ -159,13 +174,17 @@ internal class TmuxControlSession(
             if (_status.value.status == SessionStatus.Connected) return@onThread
             reconnectJob?.cancel()
             reconnectJob = null
-            connect(reconnectAttempt = 0)
+            attempts.reset()
+            connect()
         }
     }
 
-    /** Binds [view] to window [windowId], or to a window that has no tab yet when null. */
-    fun attach(view: TmuxPaneView, windowId: Int?) = onThread {
-        windows.attach(view, windowId)
+    /**
+     * Binds [view] to window [windowId], or to a window that has no tab yet when null.
+     * Unless [shown], its panes are captured only once [setWindowVisibility] says it is.
+     */
+    fun attach(view: TmuxPaneView, windowId: Int?, shown: Boolean) = onThread {
+        windows.attach(view, windowId, shown)
         reconnectWait.setHidden(windows.allQuiet)
     }
 
@@ -185,11 +204,13 @@ internal class TmuxControlSession(
     }
 
     /**
-     * Pauses the panes of [view]'s window while [quiet], and resumes them once it isn't.
-     * While every tab is quiet, the connection sends keepalives less often and a failed
-     * reconnect waits for one to be shown.
+     * Pauses the panes of [view]'s window while [quiet] or until it has been [shown], and
+     * resumes and captures them once it is shown and not quiet. While every tab is quiet,
+     * the connection sends keepalives less often and a failed reconnect waits for one to
+     * be shown.
      */
-    fun setWindowQuiet(view: TmuxPaneView, quiet: Boolean) = onThread {
+    fun setWindowVisibility(view: TmuxPaneView, shown: Boolean, quiet: Boolean) = onThread {
+        if (shown) windows.show(view)
         windows.setQuiet(view, quiet)
         link.ssh.setQuiet(windows.allQuiet)
         reconnectWait.setHidden(windows.allQuiet)
@@ -257,12 +278,13 @@ internal class TmuxControlSession(
         thread.close()
     }
 
-    private fun connect(reconnectAttempt: Int) {
+    /** Makes attempt [ReconnectAttempts.current], which is 0 for the first connect. */
+    private fun connect() {
         readJob?.cancel()
         readJob = null
         attached = false
         exited = false
-        connectAttempt = reconnectAttempt
+        val reconnectAttempt = attempts.current
         _status.value = TmuxControlStatus(
             status = if (reconnectAttempt > 0) SessionStatus.Reconnecting else SessionStatus.Connecting,
             reconnectAttempt = reconnectAttempt,
@@ -270,8 +292,10 @@ internal class TmuxControlSession(
         )
         val failure = open()
         if (failure != null) {
-            if (reconnectAttempt in 1 until MAX_RECONNECT_ATTEMPTS) {
-                scheduleReconnect(failure, reconnectAttempt + 1)
+            // A failed first connect shows its error rather than retrying.
+            val next = if (reconnectAttempt > 0) attempts.next() else null
+            if (next != null) {
+                scheduleReconnect(failure, next)
             } else {
                 _status.value = TmuxControlStatus(SessionStatus.Error, failure)
             }
@@ -342,10 +366,9 @@ internal class TmuxControlSession(
         }
         val reason = failure?.let { UiText.Resource(R.string.error_connection_interrupted_reason, it.reason()) }
             ?: UiText.Resource(R.string.error_connection_interrupted)
-        // A server that drops the session right after attaching keeps the backoff growing.
-        val stable = wasAttached && SystemClock.elapsedRealtime() - attachedAtMs >= STABLE_SESSION_MS
-        val attempt = if (stable) 1 else connectAttempt + 1
-        if (attempt > MAX_RECONNECT_ATTEMPTS) {
+        attempts.dropped()
+        val attempt = attempts.next()
+        if (attempt == null) {
             _status.value = TmuxControlStatus(SessionStatus.Error, reason)
         } else {
             scheduleReconnect(reason, attempt)
@@ -359,7 +382,7 @@ internal class TmuxControlSession(
             reconnectWait.awaitAttempt(attempt)
             // An attempt made offline fails at once, so time without a network uses none up.
             network.awaitNetwork()
-            connect(attempt)
+            connect()
         }
     }
 
@@ -391,7 +414,7 @@ internal class TmuxControlSession(
         attached = true
         identity.attached(id, name)?.let { post { sessionRenamed(this@TmuxControlSession, it) } }
         if (firstAttach) {
-            attachedAtMs = SystemClock.elapsedRealtime()
+            attempts.opened()
             _status.value = TmuxControlStatus(SessionStatus.Connected)
             sentClientSize = null
             sendClientSize()

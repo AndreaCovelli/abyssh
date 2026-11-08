@@ -2032,6 +2032,75 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     update_render_state(terminal);
 }
 
+/// How many rows the viewport sits above the bottom of the screen: 0 while it follows
+/// the output.
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeViewportRowsAboveBottom(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+) callconv(.c) c.jint {
+    _ = env;
+    _ = thiz;
+    const terminal = abysshFromHandle(handle) orelse return 0;
+    const pages = &terminal.terminal.screens.active.pages;
+    if (pages.viewport == .active) return 0;
+    const top = pages.pointFromPin(.screen, pages.getTopLeft(.viewport)) orelse return 0;
+    const active = pages.pointFromPin(.screen, pages.getTopLeft(.active)) orelse return 0;
+    if (active.screen.y <= top.screen.y) return 0;
+    return @intCast(@min(active.screen.y - top.screen.y, std.math.maxInt(c.jint)));
+}
+
+/// The text of the last `rows` rows of the primary screen's history, the rows above its
+/// screen, oldest first, each ended by a newline and without the spaces around it. Fewer
+/// rows when the history is shorter; null without a terminal.
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeHistoryTail(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+    rows: c.jint,
+) callconv(.c) c.jstring {
+    _ = thiz;
+    const terminal = abysshFromHandle(handle) orelse return null;
+    const screen = terminal.terminal.screens.get(.primary) orelse return null;
+    const cols = screen.pages.cols;
+    if (cols == 0) return null;
+    var count: usize = 0;
+    var row = screen.pages.getTopLeft(.active);
+    while (count < @max(0, rows)) : (count += 1) row = row.up(1) orelse break;
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(allocator);
+    for (0..count) |index| {
+        if (index > 0) row = row.down(1) orelse break;
+        var start = row;
+        start.x = 0;
+        var end = row;
+        end.x = cols - 1;
+        const sel = ghostty.Selection.init(start, end, false);
+        defer sel.deinit(screen);
+        const text = screen.selectionString(allocator, .{ .sel = sel, .trim = true }) catch return null;
+        defer allocator.free(text);
+        out.appendSlice(allocator, text) catch return null;
+        out.append(allocator, '\n') catch return null;
+    }
+    return jniNewString(env, out.items);
+}
+
+/// Scrolls the viewport to `rows` rows above the bottom of the screen, or to the top of
+/// the history when it holds fewer.
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeScrollToRowsAboveBottom(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+    rows: c.jint,
+) callconv(.c) void {
+    _ = env;
+    _ = thiz;
+    const terminal = abysshFromHandle(handle) orelse return;
+    terminal.terminal.scrollViewport(.{ .bottom = {} });
+    if (rows > 0) terminal.terminal.scrollViewport(.{ .delta = -@as(isize, rows) });
+    update_render_state(terminal);
+}
+
 /// Scrolls the viewport `delta` shell prompts up (negative) or down (positive), using
 /// the OSC 133 marks the shell wrote. Returns whether the viewport moved; it stays put
 /// when the shell sends no marks or no prompt lies in that direction.
