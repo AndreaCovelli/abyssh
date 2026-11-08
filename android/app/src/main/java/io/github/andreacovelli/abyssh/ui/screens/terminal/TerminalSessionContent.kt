@@ -308,11 +308,6 @@ private fun TerminalPane(
                 modifier = Modifier.align(Alignment.Center),
             )
             TerminalLinkPrompt(vm, Modifier.align(Alignment.BottomCenter))
-            TerminalJumpToBottom(
-                scrolledBack = { snapshot().scrolledBack },
-                onClick = vm.input::scrollToBottom,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-            )
             TerminalStatusBadges(
                 sessionState = sessionState,
                 preparingMultiplexer = multiplexer.duplicateLoading,
@@ -333,21 +328,31 @@ private fun TerminalPane(
                 onRelease = input::releaseInputView,
             )
             val settings = host.settings
-            if (settings.customKeyGroups.isNotEmpty() &&
+            val showActionsFab = settings.customKeyGroups.isNotEmpty() &&
                 (settings.showCustomActionsFab || host.overlay.fabFilteredActions != null)
+            // The jump chip sits above the custom actions button, and above its menu when it is open.
+            Column(
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 12.dp),
+                horizontalAlignment = Alignment.End,
             ) {
-                TerminalCustomActionsFab(
-                    groups = settings.customKeyGroups,
-                    expanded = host.overlay.fabExpanded,
-                    onExpandedChange = { host.overlay.fabExpanded = it },
-                    onActionClick = { action ->
-                        vm.input.sendCustomAction(action)
-                        input.requestFocus()
-                    },
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 12.dp),
-                    filteredActions = host.overlay.fabFilteredActions,
-                    onClearFilter = { host.overlay.fabFilteredActions = null },
+                TerminalJumpToBottom(
+                    scrolledBack = { snapshot().scrolledBack },
+                    onClick = vm.input::scrollToBottom,
+                    modifier = Modifier.padding(bottom = if (showActionsFab) 8.dp else 0.dp),
                 )
+                if (showActionsFab) {
+                    TerminalCustomActionsFab(
+                        groups = settings.customKeyGroups,
+                        expanded = host.overlay.fabExpanded,
+                        onExpandedChange = { host.overlay.fabExpanded = it },
+                        onActionClick = { action ->
+                            vm.input.sendCustomAction(action)
+                            input.requestFocus()
+                        },
+                        filteredActions = host.overlay.fabFilteredActions,
+                        onClearFilter = { host.overlay.fabFilteredActions = null },
+                    )
+                }
             }
             AbysshShortcutMenu(host.abysshKeys, Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 8.dp))
         }
