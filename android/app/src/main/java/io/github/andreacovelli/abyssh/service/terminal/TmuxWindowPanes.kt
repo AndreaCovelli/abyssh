@@ -27,6 +27,8 @@ internal class TmuxWindowPanes(
     private val selectPane: (paneId: Int) -> Unit,
     // The shortest time between two compositions of the window, read each time one is due.
     private val snapshotIntervalMs: () -> Long = { DEFAULT_SNAPSHOT_INTERVAL_MS },
+    // Runs each time something starts showing the window after nothing did.
+    private val onShown: () -> Unit = {},
 ) : TabTerminals {
     private class Pane(val emulator: TerminalEmulator, val state: MutableStateFlow<SessionState>) {
         val passthrough = TmuxPassthrough()
@@ -123,6 +125,7 @@ internal class TmuxWindowPanes(
     override fun addViewer() {
         viewers++
         panes.values.forEach { it.emulator.addViewer() }
+        if (viewers == 1) onShown()
     }
 
     override fun removeViewer() {

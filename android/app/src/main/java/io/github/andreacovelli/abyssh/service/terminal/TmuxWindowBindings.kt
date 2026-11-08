@@ -21,17 +21,18 @@ internal interface TmuxWindowTabs {
  * Which tab shows which tmux window, and where the window's panes sit. Keeps the tabs in
  * step with the session's windows: closes tabs whose window is gone, asks [tabs] to
  * open one for each new window, and fills each pane in from `capture-pane` when it
- * appears or its size changes. A quiet tab's panes are paused, so tmux sends nothing
- * for them, and captured again once the tab is shown. Every call runs on the control
- * session's thread; commands go out only while [attached] says tmux has reported the
- * session.
+ * appears or its size changes. The panes of a quiet tab, and of a tab nothing has shown
+ * yet, are paused, so tmux sends nothing for them, and captured once the tab is shown:
+ * attaching to a session with many windows downloads only the windows the user looks
+ * at. Every call runs on the control session's thread; commands go out only while
+ * [attached] says tmux has reported the session.
  */
 internal class TmuxWindowBindings(
-    private val link: TmuxControlLink,
+    private val link: TmuxCommandSink,
     private val tabs: TmuxWindowTabs,
     private val attached: () -> Boolean,
 ) {
-    private class Binding(val view: TmuxPaneView) {
+    private class Binding(val view: TmuxPaneView, var shown: Boolean) {
         var windowId: Int? = null
         var layout: TmuxWindowLayout? = null
         var activePane: Int? = null
@@ -43,6 +44,9 @@ internal class TmuxWindowBindings(
         // this client paused for it.
         var quiet = false
         val paused = mutableSetOf<Int>()
+
+        // Whether the tab's panes stay paused: it is quiet, or nothing has shown it yet.
+        val held: Boolean get() = quiet || !shown
 
         fun shows(paneId: Int): Boolean = layout?.pane(paneId) != null
     }
@@ -64,9 +68,12 @@ internal class TmuxWindowBindings(
     /** Whether the session has tabs and every one of them is quiet. */
     val allQuiet: Boolean get() = bindings.isNotEmpty() && bindings.all { it.quiet }
 
-    /** Binds [view] to window [windowId], or to a window that has no tab yet when null. */
-    fun attach(view: TmuxPaneView, windowId: Int?) {
-        val binding = Binding(view)
+    /**
+     * Binds [view] to window [windowId], or to a window that has no tab yet when null.
+     * Unless [shown], its panes wait for [show] before they are captured.
+     */
+    fun attach(view: TmuxPaneView, windowId: Int?, shown: Boolean) {
+        val binding = Binding(view, shown)
         bindings += binding
         if (windowId == null) {
             if (attached()) listWindows()
@@ -124,10 +131,24 @@ internal class TmuxWindowBindings(
     fun setQuiet(view: TmuxPaneView, quiet: Boolean) {
         val binding = bindings.firstOrNull { it.view === view } ?: return
         if (binding.quiet == quiet) return
-        binding.quiet = quiet
+        changeHold(binding) { binding.quiet = quiet }
+    }
+
+    /** Something showed [view]'s tab for the first time: its panes resume and are captured. */
+    fun show(view: TmuxPaneView) {
+        val binding = bindings.firstOrNull { it.view === view } ?: return
+        if (binding.shown) return
+        changeHold(binding) { binding.shown = true }
+    }
+
+    /** Runs [change], then pauses the binding's panes if it holds them now, or resumes and captures them if it let them go. */
+    private fun changeHold(binding: Binding, change: () -> Unit) {
+        val wasHeld = binding.held
+        change()
+        if (binding.held == wasHeld) return
         val layout = binding.layout ?: return
         val activePane = binding.activePane ?: return
-        if (quiet) {
+        if (binding.held) {
             layout.panes.forEach { pause(binding, it.paneId) }
             return
         }
@@ -161,11 +182,11 @@ internal class TmuxWindowBindings(
 
     /**
      * tmux paused [paneId], dropping its output, so the pane is captured again after it
-     * continues. A quiet tab's pane stays paused, as when this client paused it.
+     * continues. A held tab's pane stays paused, as when this client paused it.
      */
     fun paused(paneId: Int) {
         val binding = bindings.firstOrNull { it.shows(paneId) }
-        if (binding?.quiet == true) {
+        if (binding?.held == true) {
             binding.paused += paneId
             return
         }
@@ -232,7 +253,7 @@ internal class TmuxWindowBindings(
         // A pane moved to another window must send its output there.
         resume(binding, binding.paused - paneIds)
         layout.panes.forEach { pane ->
-            if (binding.quiet) {
+            if (binding.held) {
                 pause(binding, pane.paneId)
             } else if (binding.captured[pane.paneId] != pane.size) {
                 binding.captured[pane.paneId] = pane.size
@@ -241,7 +262,7 @@ internal class TmuxWindowBindings(
         }
     }
 
-    /** Pauses pane [paneId] of [binding]'s quiet tab, unless it already is. */
+    /** Pauses pane [paneId] of [binding]'s held tab, unless it already is. */
     private fun pause(binding: Binding, paneId: Int) {
         if (!attached() || !binding.paused.add(paneId)) return
         link.send(TmuxControlCommands.pausePane(paneId))
