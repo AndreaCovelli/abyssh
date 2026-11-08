@@ -100,6 +100,10 @@ class GhosttyBridge {
     // end row, end col (inclusive) per match, rows counted from the oldest scrollback row.
     external fun nativeSearch(handle: Long, query: String): IntArray
     external fun nativeScrollToScreenRow(handle: Long, screenRow: Int)
+    // Rows the viewport sits above the bottom of the screen, 0 while it follows the output.
+    external fun nativeViewportRowsAboveBottom(handle: Long): Int
+    // Scrolls to [rows] rows above the bottom, or to the top when the history is shorter.
+    external fun nativeScrollToRowsAboveBottom(handle: Long, rows: Int)
     // Scrolls delta OSC 133 prompts up (negative) or down; false when the view stayed put.
     external fun nativeScrollToPrompt(handle: Long, delta: Int): Boolean
     external fun nativeHyperlinkAt(handle: Long, cellX: Int, cellY: Int): String?

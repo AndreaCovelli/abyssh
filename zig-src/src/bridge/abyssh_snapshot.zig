@@ -2032,6 +2032,40 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     update_render_state(terminal);
 }
 
+/// How many rows the viewport sits above the bottom of the screen: 0 while it follows
+/// the output.
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeViewportRowsAboveBottom(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+) callconv(.c) c.jint {
+    _ = env;
+    _ = thiz;
+    const terminal = abysshFromHandle(handle) orelse return 0;
+    const pages = &terminal.terminal.screens.active.pages;
+    if (pages.viewport == .active) return 0;
+    const top = pages.pointFromPin(.screen, pages.getTopLeft(.viewport)) orelse return 0;
+    const active = pages.pointFromPin(.screen, pages.getTopLeft(.active)) orelse return 0;
+    if (active.screen.y <= top.screen.y) return 0;
+    return @intCast(@min(active.screen.y - top.screen.y, std.math.maxInt(c.jint)));
+}
+
+/// Scrolls the viewport to `rows` rows above the bottom of the screen, or to the top of
+/// the history when it holds fewer.
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeScrollToRowsAboveBottom(
+    env: *c.JNIEnv,
+    thiz: c.jobject,
+    handle: c.jlong,
+    rows: c.jint,
+) callconv(.c) void {
+    _ = env;
+    _ = thiz;
+    const terminal = abysshFromHandle(handle) orelse return;
+    terminal.terminal.scrollViewport(.{ .bottom = {} });
+    if (rows > 0) terminal.terminal.scrollViewport(.{ .delta = -@as(isize, rows) });
+    update_render_state(terminal);
+}
+
 /// Scrolls the viewport `delta` shell prompts up (negative) or down (positive), using
 /// the OSC 133 marks the shell wrote. Returns whether the viewport moved; it stays put
 /// when the shell sends no marks or no prompt lies in that direction.

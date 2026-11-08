@@ -63,10 +63,15 @@ internal class TmuxWindowPanes(
         compose()
     }
 
-    /** Replaces pane [paneId]'s terminal with a blank one of [size] and writes [seed] into it. */
+    /**
+     * Replaces pane [paneId]'s terminal with a blank one of [size] and writes [seed] into
+     * it. A pane captured again, as after a resize, stays the same number of rows from
+     * the bottom it was scrolled to.
+     */
     fun showPane(paneId: Int, size: TmuxPaneSize, seed: ByteArray) {
         val pane = panes[paneId] ?: return
         val emulator = pane.emulator
+        val rowsAboveBottom = emulator.rowsAboveBottom()
         pane.passthrough.reset()
         emulator.geometry = paneGeometry(size)
         emulator.open()
@@ -74,6 +79,7 @@ internal class TmuxWindowPanes(
         emulator.applyGeometry()
         emulator.writeRemote(seed)
         emulator.drainPtyWrites()
+        if (rowsAboveBottom > 0) emulator.scrollToRowsAboveBottom(rowsAboveBottom)
         emulator.setMouseEncodingSize()
         emulator.requestSnapshot(force = true)
     }
