@@ -210,7 +210,9 @@ and `NativeWakeBridge`. Zig implements each one as
   which admits only `main` and `v*` tags; a job that signs must declare
   `environment: release`. Pin actions to a full commit SHA with a version comment, and run
   `mise run check:actions` after editing workflows.
-- Renovate extends AndreaCovelli/renovate-config: one weekly grouped PR that
-  automerges non-breaking updates after CI passes. `forkProcessing` is enabled
-  because GitHub still lists this repository as a fork. Merge pull requests by
-  squash; `main` keeps a linear history.
+- Renovate extends AndreaCovelli/renovate-config: on the first Sunday of each month it
+  opens one grouped PR, which automerges non-breaking updates released at least 7 days
+  earlier once `Validate` passes, and a separate PR for major updates. `forkProcessing`
+  is enabled because GitHub still lists this repository as a fork. Renovate does not
+  update Zig, the dependencies in `build.zig.zon`, or the NDK version; update those by
+  hand. Merge pull requests by squash; `main` keeps a linear history.

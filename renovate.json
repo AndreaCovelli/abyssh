@@ -7,6 +7,12 @@
       "description": "The version is the runtime Robolectric picks for SDK 34; update it by hand with Robolectric.",
       "matchPackageNames": ["org.robolectric:android-all-instrumented"],
       "enabled": false
+    },
+    {
+      "description": "Zig releases moved to Codeberg, so Renovate sees no versions after 0.15.2. Upgrade it by hand: each release changes the standard library and needs code changes.",
+      "matchManagers": ["mise"],
+      "matchDepNames": ["zig"],
+      "enabled": false
     }
   ]
 }
