@@ -2,12 +2,6 @@ package io.github.andreacovelli.abyssh.ui.terminal
 
 import android.view.KeyEvent
 
-// Ghostty KeyMods bits, same layout as KeyMapper and ModifierState.terminalMods().
-private const val MOD_SHIFT = 1 shl 0
-private const val MOD_CTRL = 1 shl 1
-private const val MOD_ALT = 1 shl 2
-private const val MOD_SUPER = 1 shl 3
-
 /**
  * Whether a key press should paste the clipboard instead of reaching the terminal.
  * Ctrl+Shift+V always pastes, like desktop Linux terminals. Plain Ctrl+V pastes
@@ -15,8 +9,8 @@ private const val MOD_SUPER = 1 shl 3
  */
 internal fun isPasteShortcut(key: Int, mods: Int, ctrlVPastes: Boolean): Boolean {
     if (key != GhosttyKey.keyV) return false
-    if (mods and MOD_CTRL == 0 || mods and (MOD_ALT or MOD_SUPER) != 0) return false
-    return mods and MOD_SHIFT != 0 || ctrlVPastes
+    if (mods and GhosttyMods.CTRL == 0 || mods and (GhosttyMods.ALT or GhosttyMods.SUPER) != 0) return false
+    return mods and GhosttyMods.SHIFT != 0 || ctrlVPastes
 }
 
 /**
@@ -27,8 +21,8 @@ internal fun isPasteShortcut(key: Int, mods: Int, ctrlVPastes: Boolean): Boolean
 internal fun isPasteShortcut(text: String, modifierState: ModifierState, ctrlVPastes: Boolean): Boolean {
     val extra = when (text) {
         "v" -> 0
-        "V" -> MOD_SHIFT
-        "\u0016" -> MOD_CTRL
+        "V" -> GhosttyMods.SHIFT
+        "\u0016" -> GhosttyMods.CTRL
         else -> return false
     }
     return isPasteShortcut(GhosttyKey.keyV, modifierState.terminalMods() or extra, ctrlVPastes)
@@ -37,15 +31,15 @@ internal fun isPasteShortcut(text: String, modifierState: ModifierState, ctrlVPa
 /** Ctrl+Shift+F opens the scrollback search, as in desktop terminals. */
 internal fun isSearchShortcut(key: Int, mods: Int): Boolean =
     key == GhosttyKey.keyF &&
-        mods and (MOD_CTRL or MOD_SHIFT) == (MOD_CTRL or MOD_SHIFT) &&
-        mods and (MOD_ALT or MOD_SUPER) == 0
+        mods and (GhosttyMods.CTRL or GhosttyMods.SHIFT) == (GhosttyMods.CTRL or GhosttyMods.SHIFT) &&
+        mods and (GhosttyMods.ALT or GhosttyMods.SUPER) == 0
 
 /**
  * How many shell prompts Ctrl+Shift+Up or Down jumps: -1 for the previous one, 1 for
  * the next, and 0 for any other key. Ghostty and other desktop terminals use the chord.
  */
 internal fun promptJumpShortcut(key: Int, mods: Int): Int {
-    if (mods and (MOD_CTRL or MOD_SHIFT or MOD_ALT or MOD_SUPER) != (MOD_CTRL or MOD_SHIFT)) return 0
+    if (mods and (GhosttyMods.CTRL or GhosttyMods.SHIFT or GhosttyMods.ALT or GhosttyMods.SUPER) != (GhosttyMods.CTRL or GhosttyMods.SHIFT)) return 0
     return when (key) {
         GhosttyKey.arrowUp -> -1
         GhosttyKey.arrowDown -> 1
@@ -60,15 +54,15 @@ internal fun promptJumpShortcut(key: Int, mods: Int): Int {
  */
 internal fun isCopyShortcut(key: Int, mods: Int, hasSelection: Boolean): Boolean {
     if (!hasSelection || key != GhosttyKey.keyC) return false
-    return mods and MOD_CTRL != 0 && mods and (MOD_ALT or MOD_SUPER) == 0
+    return mods and GhosttyMods.CTRL != 0 && mods and (GhosttyMods.ALT or GhosttyMods.SUPER) == 0
 }
 
 /** Same check for soft keyboard text, as in the text [isPasteShortcut]. */
 internal fun isCopyShortcut(text: String, modifierState: ModifierState, hasSelection: Boolean): Boolean {
     val extra = when (text) {
         "c" -> 0
-        "C" -> MOD_SHIFT
-        "\u0003" -> MOD_CTRL
+        "C" -> GhosttyMods.SHIFT
+        "\u0003" -> GhosttyMods.CTRL
         else -> return false
     }
     return isCopyShortcut(GhosttyKey.keyC, modifierState.terminalMods() or extra, hasSelection)

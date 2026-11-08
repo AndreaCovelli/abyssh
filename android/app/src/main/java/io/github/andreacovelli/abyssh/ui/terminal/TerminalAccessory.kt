@@ -31,10 +31,10 @@ data class ModifierState(
 
     fun terminalMods(): Int {
         var mods = 0
-        if (shift) mods = mods or (1 shl 0) // shift
-        if (ctrl) mods = mods or (1 shl 1) // ctrl
-        if (alt) mods = mods or (1 shl 2) // alt
-        if (cmd) mods = mods or (1 shl 3) // super
+        if (shift) mods = mods or GhosttyMods.SHIFT
+        if (ctrl) mods = mods or GhosttyMods.CTRL
+        if (alt) mods = mods or GhosttyMods.ALT
+        if (cmd) mods = mods or GhosttyMods.SUPER
         return mods
     }
 

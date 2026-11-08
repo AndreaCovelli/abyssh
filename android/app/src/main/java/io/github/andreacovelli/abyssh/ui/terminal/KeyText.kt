@@ -1,8 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
-// Ghostty KeyMods bits, same layout as KeyMapper.
-private const val MOD_SHIFT = 1 shl 0
-private const val NON_TEXT_MODS = (1 shl 1) or (1 shl 2) or (1 shl 3) // Ctrl, Alt, Super
+private const val NON_TEXT_MODS = GhosttyMods.CTRL or GhosttyMods.ALT or GhosttyMods.SUPER
 
 /**
  * The text a hardware key types, and which of its modifiers went into typing it.
@@ -24,7 +22,7 @@ internal data class KeyText(val utf8: String?, val consumedMods: Int) {
             if (!printable || mods and NON_TEXT_MODS != 0 || action == GhosttyKeyAction.Release) {
                 return KeyText(utf8 = null, consumedMods = 0)
             }
-            val consumed = if (typed != codepoint) mods and MOD_SHIFT else 0
+            val consumed = if (typed != codepoint) mods and GhosttyMods.SHIFT else 0
             return KeyText(String(Character.toChars(typed)), consumed)
         }
 
