@@ -1,6 +1,5 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
-import android.os.SystemClock
 import android.util.Log
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.UiText
@@ -31,7 +30,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "TmuxControl"
-private const val MAX_RECONNECT_ATTEMPTS = 8
 
 // The view's size changes on every frame while the keyboard slides in or out, and each
 // size tmux applies captures the pane again, so only the size that settles goes out.
@@ -132,9 +130,7 @@ internal class TmuxControlSession(
     private val reconnectWait = ReconnectWait()
     private var clientGeometry: TerminalGeometry? = null
 
-    // The attempt that opened the current connection, and when tmux attached on it.
-    private var connectAttempt = 0
-    private var attachedAtMs = 0L
+    private val attempts = ReconnectAttempts()
     private var sentClientSize: TmuxPaneSize? = null
 
     private val windows =
@@ -150,7 +146,10 @@ internal class TmuxControlSession(
             attached = { attached },
         )
 
-    fun start() = onThread { connect(reconnectAttempt = 0) }
+    fun start() = onThread {
+        attempts.reset()
+        connect()
+    }
 
     /** Reconnects now, as when the user taps reconnect. */
     fun reconnect() {
@@ -159,7 +158,8 @@ internal class TmuxControlSession(
             if (_status.value.status == SessionStatus.Connected) return@onThread
             reconnectJob?.cancel()
             reconnectJob = null
-            connect(reconnectAttempt = 0)
+            attempts.reset()
+            connect()
         }
     }
 
@@ -257,12 +257,13 @@ internal class TmuxControlSession(
         thread.close()
     }
 
-    private fun connect(reconnectAttempt: Int) {
+    /** Makes attempt [ReconnectAttempts.current], which is 0 for the first connect. */
+    private fun connect() {
         readJob?.cancel()
         readJob = null
         attached = false
         exited = false
-        connectAttempt = reconnectAttempt
+        val reconnectAttempt = attempts.current
         _status.value = TmuxControlStatus(
             status = if (reconnectAttempt > 0) SessionStatus.Reconnecting else SessionStatus.Connecting,
             reconnectAttempt = reconnectAttempt,
@@ -270,8 +271,10 @@ internal class TmuxControlSession(
         )
         val failure = open()
         if (failure != null) {
-            if (reconnectAttempt in 1 until MAX_RECONNECT_ATTEMPTS) {
-                scheduleReconnect(failure, reconnectAttempt + 1)
+            // A failed first connect shows its error rather than retrying.
+            val next = if (reconnectAttempt > 0) attempts.next() else null
+            if (next != null) {
+                scheduleReconnect(failure, next)
             } else {
                 _status.value = TmuxControlStatus(SessionStatus.Error, failure)
             }
@@ -342,10 +345,9 @@ internal class TmuxControlSession(
         }
         val reason = failure?.let { UiText.Resource(R.string.error_connection_interrupted_reason, it.reason()) }
             ?: UiText.Resource(R.string.error_connection_interrupted)
-        // A server that drops the session right after attaching keeps the backoff growing.
-        val stable = wasAttached && SystemClock.elapsedRealtime() - attachedAtMs >= STABLE_SESSION_MS
-        val attempt = if (stable) 1 else connectAttempt + 1
-        if (attempt > MAX_RECONNECT_ATTEMPTS) {
+        attempts.dropped()
+        val attempt = attempts.next()
+        if (attempt == null) {
             _status.value = TmuxControlStatus(SessionStatus.Error, reason)
         } else {
             scheduleReconnect(reason, attempt)
@@ -359,7 +361,7 @@ internal class TmuxControlSession(
             reconnectWait.awaitAttempt(attempt)
             // An attempt made offline fails at once, so time without a network uses none up.
             network.awaitNetwork()
-            connect(attempt)
+            connect()
         }
     }
 
@@ -391,7 +393,7 @@ internal class TmuxControlSession(
         attached = true
         identity.attached(id, name)?.let { post { sessionRenamed(this@TmuxControlSession, it) } }
         if (firstAttach) {
-            attachedAtMs = SystemClock.elapsedRealtime()
+            attempts.opened()
             _status.value = TmuxControlStatus(SessionStatus.Connected)
             sentClientSize = null
             sendClientSize()
