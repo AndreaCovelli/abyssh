@@ -175,7 +175,7 @@ internal class TerminalInputController(
         val held = modifierState
         val result = TerminalAccessoryDispatcher.dispatch(action, held)
         modifierState = result.modifierState
-        if (result.suppressImeInput) inputView?.armInputSuppression(action.toString())
+        if (result.suppressImeInput) inputView?.armInputSuppression()
         val switcherKey = result.specialKey?.takeIf { inSwitcher }?.let { switcherKeyFor(it.engineKey) }
         if (switcherKey != null) {
             overlay.applySwitcherKey(switcherKey, routeTabs) { tab -> vm.selectTab(tab.id) }

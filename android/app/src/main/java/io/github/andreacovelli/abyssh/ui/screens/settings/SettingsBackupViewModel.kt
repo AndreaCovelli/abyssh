@@ -17,7 +17,6 @@ import io.github.andreacovelli.abyssh.data.backup.AbysshBackupRepository
 import io.github.andreacovelli.abyssh.data.backup.InvalidBackupPassphraseException
 import io.github.andreacovelli.abyssh.data.backup.UnreadableSecretsException
 import io.github.andreacovelli.abyssh.data.db.AppDatabase
-import io.github.andreacovelli.abyssh.model.HostProfile
 import io.github.andreacovelli.abyssh.model.SshKey
 import io.github.andreacovelli.abyssh.service.backup.AbysshBackupCodec
 import java.io.ByteArrayOutputStream
@@ -53,9 +52,6 @@ class SettingsBackupViewModel(
     private val _keys = MutableStateFlow<List<SshKey>>(emptyList())
     val keys: StateFlow<List<SshKey>> = _keys.asStateFlow()
 
-    private val _hosts = MutableStateFlow<List<HostProfile>>(emptyList())
-    val hosts: StateFlow<List<HostProfile>> = _hosts.asStateFlow()
-
     private val _isBusy = MutableStateFlow(false)
     val isBusy: StateFlow<Boolean> = _isBusy.asStateFlow()
 
@@ -85,9 +81,6 @@ class SettingsBackupViewModel(
     init {
         viewModelScope.launch {
             db.sshKeyDao().observeAll().collect { _keys.value = it }
-        }
-        viewModelScope.launch {
-            db.hostProfileDao().observeAll().collect { _hosts.value = it }
         }
     }
 

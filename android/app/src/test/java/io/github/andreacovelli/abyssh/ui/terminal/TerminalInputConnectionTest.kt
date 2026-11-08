@@ -72,7 +72,7 @@ class TerminalInputConnectionTest {
 
     @Test
     fun `backspace right after an accessory key still reaches the shell`() {
-        view.armInputSuppression("Tab")
+        view.armInputSuppression()
         connection.deleteSurroundingText(1, 0)
 
         assertEquals(BACKSPACE.toString(), sent.toString())

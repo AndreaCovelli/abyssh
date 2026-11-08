@@ -14,7 +14,6 @@ import android.os.SystemClock
 import android.text.Editable
 import android.text.InputType
 import android.text.Selection
-import android.util.Log
 import android.view.KeyEvent
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
@@ -73,8 +72,6 @@ internal fun hasPhysicalKeyboard(keyboard: Int, hardKeyboardHidden: Int): Boolea
 class TerminalInputView(context: Context) : EditText(context) {
 
     companion object {
-        private const val LOG_TAG = "TerminalInput"
-        private const val DEBUG_INPUT_LOGS = false
         private const val SUPPRESSION_CLEANUP_WINDOW_MS = 120L
     }
 
@@ -134,24 +131,6 @@ class TerminalInputView(context: Context) : EditText(context) {
             inputMethodManager?.restartInput(this)
         }
 
-    private fun logInput(message: String) {
-        if (!DEBUG_INPUT_LOGS) return
-        Log.d(LOG_TAG, message)
-    }
-
-    private fun describeText(text: String): String = buildString {
-        text.forEach { char ->
-            when (char) {
-                '\u001b' -> append("<ESC>")
-                '\t' -> append("<TAB>")
-                '\r' -> append("<CR>")
-                '\n' -> append("<LF>")
-                '\u007f' -> append("<BS>")
-                else -> append(char)
-            }
-        }
-    }
-
     /**
      * Keys that should drop the IME mirror buffer when delivered as
      * hardware/Ghostty key events. The terminal handles cursor motion
@@ -174,44 +153,39 @@ class TerminalInputView(context: Context) : EditText(context) {
             keyCode == KeyEvent.KEYCODE_INSERT ||
             keyCode == KeyEvent.KEYCODE_ESCAPE
 
-    private fun emitTerminalText(source: String, text: String) {
-        logInput("emit source=$source text=${describeText(text)}")
+    private fun emitTerminalText(text: String) {
         activeInputConnection?.clearImeCaretAnchor()
         onTerminalText?.invoke(text)
     }
 
-    private fun emitBackspaceText(source: String) {
-        logInput("emit source=$source text=<BS>")
+    private fun emitBackspaceText() {
         activeInputConnection?.clearImeCaretAnchor()
         onTerminalText?.invoke("\u007f")
     }
 
-    private fun emitTerminalTextWithNewlineMapping(source: String, text: String) {
+    private fun emitTerminalTextWithNewlineMapping(text: String) {
         val parts = text.split('\n')
         parts.forEachIndexed { index, part ->
             if (part.isNotEmpty()) {
-                emitTerminalText("$source.part", part)
+                emitTerminalText(part)
             }
             if (index < parts.lastIndex) {
-                emitTerminalText("$source.newline", "\r")
+                emitTerminalText("\r")
             }
         }
     }
 
     /** Sends the terminal the edit that turns the mirror's [before] into [after]. */
-    private fun emitDiff(source: String, before: String, after: String) {
+    private fun emitDiff(before: String, after: String) {
         val commonLen = commonCodePointPrefix(before, after)
         // One Backspace per code point, so an emoji costs one, not one per surrogate.
         val deletes = before.codePointCount(commonLen, before.length)
         val inserted = after.substring(commonLen)
-        logInput(
-            "emitDiff source=$source before=${describeText(before)} after=${describeText(after)} del=$deletes ins=${describeText(inserted)}",
-        )
         repeat(deletes) {
-            emitBackspaceText("$source.diffDelete")
+            emitBackspaceText()
         }
         if (inserted.isNotEmpty()) {
-            emitTerminalTextWithNewlineMapping(source, inserted)
+            emitTerminalTextWithNewlineMapping(inserted)
         }
     }
 
@@ -233,27 +207,22 @@ class TerminalInputView(context: Context) : EditText(context) {
         val end = BaseInputConnection.getComposingSpanEnd(editableText)
         if (start == -1 || end == -1) return false
         if (!needsEnterToConfirm(editableText.substring(minOf(start, end), maxOf(start, end)))) return false
-        logInput("confirmsComposition keyCode=$keyCode")
         activeInputConnection?.invalidateImeMirror()
         compositionEnterKeyCode = keyCode
         return true
     }
 
-    fun armInputSuppression(reason: String) {
+    fun armInputSuppression() {
         suppressInput = true
         suppressionSnapshot = editableText.toString()
         suppressionDeadlineUptimeMs = SystemClock.uptimeMillis() + SUPPRESSION_CLEANUP_WINDOW_MS
-        logInput("armSuppression reason=$reason snapshot=${describeText(suppressionSnapshot)}")
         // No restartInput: it resets the input mode some keyboards let you pick, such as
         // kana or Latin on Japanese ones. Clearing the mirror reports the empty text instead.
         activeInputConnection?.armSuppression()
     }
 
-    private fun clearSuppression(reason: String) {
+    private fun clearSuppression() {
         if (!suppressInput && suppressionSnapshot.isEmpty()) return
-        if (suppressInput) {
-            logInput("clearSuppression reason=$reason")
-        }
         suppressInput = false
         suppressionSnapshot = ""
         suppressionDeadlineUptimeMs = 0L
@@ -339,31 +308,28 @@ class TerminalInputView(context: Context) : EditText(context) {
             is DeadKeyResult.Flush -> result.text
         }
         if (text != null) {
-            clearSuppression("onKeyDown.deadKey keyCode=$keyCode")
-            emitTerminalText("onKeyDown.deadKey", text)
+            clearSuppression()
+            emitTerminalText(text)
         }
         return result is DeadKeyResult.Consume
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        logInput(
-            "onKeyDown keyCode=$keyCode unicode=${event.unicodeChar} meta=${event.metaState} flags=${event.flags}",
-        )
         trackCapsLock(event)
         handleShortcutChordDown(keyCode, event)?.let { return it }
         if (confirmsComposition(event)) return true
         if (composeDeadKey(keyCode, event)) return true
         val altGr = altGrText(event)
         if (altGr != null) {
-            clearSuppression("onKeyDown.altGr keyCode=$keyCode")
-            emitTerminalText("onKeyDown.altGr", altGr)
+            clearSuppression()
+            emitTerminalText(altGr)
             return true
         }
         val ghosttyAction = GhosttyKeyAction.fromAndroid(event.action, event.repeatCount)
         val mapped = KeyMapper.map(keyCode, event.unicodeChar, event.metaState, event.getUnicodeChar(0))
             ?: KeyMapper.volumeArrow(keyCode, event.metaState)?.takeIf { volumeKeysAsArrows }
         if (mapped != null && ghosttyAction != null) {
-            clearSuppression("onKeyDown keyCode=$keyCode")
+            clearSuppression()
             if (ghosttyAction == GhosttyKeyAction.Press && shouldInvalidateImeMirrorForKey(keyCode)) {
                 activeInputConnection?.invalidateImeMirror()
             }
@@ -372,15 +338,14 @@ class TerminalInputView(context: Context) : EditText(context) {
         }
         val unicodeChar = event.unicodeChar
         if (unicodeChar > 0 && Character.isValidCodePoint(unicodeChar)) {
-            clearSuppression("onKeyDown.unicode keyCode=$keyCode")
-            emitTerminalText("onKeyDown.unicode", String(Character.toChars(unicodeChar)))
+            clearSuppression()
+            emitTerminalText(String(Character.toChars(unicodeChar)))
             return true
         }
         return super.onKeyDown(keyCode, event)
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
-        logInput("onKeyUp keyCode=$keyCode flags=${event.flags}")
         trackCapsLock(event)
         handleShortcutChordUp(keyCode)?.let { return it }
         if (confirmsComposition(event)) return true
@@ -410,7 +375,6 @@ class TerminalInputView(context: Context) : EditText(context) {
             // the keyboard's hide and switch buttons.
             if (resources.configuration.hasPhysicalKeyboard()) return@post
             // No restartInput here either, so tapping the terminal keeps the input mode.
-            logInput("showKeyboard")
             // The insets controller replaces showSoftInput(SHOW_IMPLICIT), deprecated in API 37.
             val window = context.findActivity()?.window
             if (window != null) {
@@ -434,15 +398,12 @@ class TerminalInputView(context: Context) : EditText(context) {
 
         val conn = TerminalInputConnection(this)
         activeInputConnection = conn
-        logInput("onCreateInputConnection conn=${conn.connectionId}")
         return conn
     }
 
     private class TerminalInputConnection(
         private val view: TerminalInputView,
     ) : BaseInputConnection(view, true) {
-
-        val connectionId: Int = System.identityHashCode(this)
 
         private val maxImeBufferChars = 1024
         private val maxImeCursorMoveSteps = 32
@@ -458,28 +419,21 @@ class TerminalInputView(context: Context) : EditText(context) {
 
         override fun getEditable(): Editable = view.editableText
 
-        private fun logConn(message: String) {
-            view.logInput("conn=$connectionId $message")
-        }
-
         fun clearImeCaretAnchor() {
             imeCaretAnchor = null
         }
 
         fun armSuppression() {
-            logConn("armSuppression -> clearImeBuffer")
             clearImeBuffer()
         }
 
         fun invalidateImeMirror() {
-            logConn("invalidateImeMirror -> clearImeBuffer")
             clearImeBuffer()
         }
 
         /** Clears the mirror for a change the keyboard didn't make, and tells the keyboard. */
         private fun clearImeBuffer() {
             clearMirrorSilently()
-            logConn("clearImeBuffer")
             reportImeSelection()
         }
 
@@ -501,7 +455,7 @@ class TerminalInputView(context: Context) : EditText(context) {
             )
         }
 
-        private fun consumeSuppressionIfCleanup(source: String, before: String, after: String): Boolean {
+        private fun consumeSuppressionIfCleanup(before: String, after: String): Boolean {
             if (!view.isSuppressionCleanupWindowActive()) return false
 
             val snapshot = view.suppressionSnapshot
@@ -513,24 +467,21 @@ class TerminalInputView(context: Context) : EditText(context) {
 
             if (!isCleanupEvent) return false
 
-            logConn(
-                "consumeSuppressionIfCleanup source=$source before=${view.describeText(before)} after=${view.describeText(after)} snapshot=${view.describeText(snapshot)}",
-            )
             clearImeBuffer()
-            view.clearSuppression("$source cleanup")
+            view.clearSuppression()
             return true
         }
 
-        private fun reconcileAndEmitMutation(source: String, before: String, after: String) {
-            if (consumeSuppressionIfCleanup(source, before, after)) {
+        private fun reconcileAndEmitMutation(before: String, after: String) {
+            if (consumeSuppressionIfCleanup(before, after)) {
                 return
             }
 
             if (view.suppressInput) {
-                view.clearSuppression("$source real input")
+                view.clearSuppression()
             }
 
-            view.emitDiff(source, before, after)
+            view.emitDiff(before, after)
             imeCaretAnchor = null
 
             if (after.contains('\n') || after.contains('\r') || after.length > maxImeBufferChars) {
@@ -538,7 +489,7 @@ class TerminalInputView(context: Context) : EditText(context) {
             }
         }
 
-        private fun mutateEditableAndEmit(source: String, composing: Boolean, op: () -> Boolean): Boolean {
+        private fun mutateEditableAndEmit(composing: Boolean, op: () -> Boolean): Boolean {
             val before = getEditable().toString()
             directMutationDepth += 1
             val ok = try {
@@ -548,15 +499,11 @@ class TerminalInputView(context: Context) : EditText(context) {
             }
             val after = getEditable().toString()
 
-            logConn(
-                "mutate source=$source composing=$composing ok=$ok before=${view.describeText(before)} after=${view.describeText(after)} suppress=${view.suppressInput}",
-            )
-
             if (before != after) {
                 outerBatchHandled = true
             }
 
-            reconcileAndEmitMutation(source, before, after)
+            reconcileAndEmitMutation(before, after)
 
             // Drop committed text from the mirror immediately; a long-lived
             // buffer let one backspace diff into many deletes. Keep only an
@@ -582,32 +529,22 @@ class TerminalInputView(context: Context) : EditText(context) {
                 editable.clear()
             }
             Selection.setSelection(editable, 0)
-            logConn("clearMirrorSilently")
         }
 
-        override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
-            logConn(
-                "commitText text=${view.describeText((text ?: "").toString())} cursor=$newCursorPosition",
-            )
-            return mutateEditableAndEmit("commitText", composing = false) {
+        override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean = mutateEditableAndEmit(composing = false) {
                 super.commitText(text ?: "", newCursorPosition)
             }
-        }
 
         override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
-            logConn(
-                "setComposingText text=${view.describeText((text ?: "").toString())} cursor=$newCursorPosition",
-            )
             // Empty composing text ends composition; treat as a commit so the
             // mirror is dropped instead of holding stale state.
             val stillComposing = !text.isNullOrEmpty()
-            return mutateEditableAndEmit("setComposingText", composing = stillComposing) {
+            return mutateEditableAndEmit(composing = stillComposing) {
                 super.setComposingText(text ?: "", newCursorPosition)
             }
         }
 
         override fun finishComposingText(): Boolean {
-            logConn("finishComposingText")
             imeCaretAnchor = null
             val ok = super.finishComposingText()
             // Composing region is committed; drop the mirror copy so a later
@@ -617,7 +554,6 @@ class TerminalInputView(context: Context) : EditText(context) {
         }
 
         override fun setSelection(start: Int, end: Int): Boolean {
-            logConn("setSelection start=$start end=$end")
             if (
                 start != end ||
                 BaseInputConnection.getComposingSpanStart(getEditable()) != -1 ||
@@ -681,19 +617,16 @@ class TerminalInputView(context: Context) : EditText(context) {
                 selectionStart = Selection.getSelectionStart(editable).coerceAtLeast(0)
                 selectionEnd = Selection.getSelectionEnd(editable).coerceAtLeast(0)
             }
-            logConn(
-                "getExtractedText flags=$flags text=${view.describeText(extracted.text.toString())} sel=${extracted.selectionStart}..${extracted.selectionEnd}",
-            )
             return extracted
         }
 
         override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean =
-            deleteAndEmit("deleteSurroundingText", beforeLength, afterLength, inCodePoints = false) {
+            deleteAndEmit(beforeLength, afterLength, inCodePoints = false) {
                 super.deleteSurroundingText(beforeLength, afterLength)
             }
 
         override fun deleteSurroundingTextInCodePoints(beforeLength: Int, afterLength: Int): Boolean =
-            deleteAndEmit("deleteSurroundingTextInCodePoints", beforeLength, afterLength, inCodePoints = true) {
+            deleteAndEmit(beforeLength, afterLength, inCodePoints = true) {
                 super.deleteSurroundingTextInCodePoints(beforeLength, afterLength)
             }
 
@@ -704,7 +637,6 @@ class TerminalInputView(context: Context) : EditText(context) {
          * keyboard only asks for one when the user pressed a key.
          */
         private fun deleteAndEmit(
-            source: String,
             beforeLength: Int,
             afterLength: Int,
             inCodePoints: Boolean,
@@ -732,19 +664,16 @@ class TerminalInputView(context: Context) : EditText(context) {
                 directMutationDepth -= 1
             }
             val after = editable.toString()
-            logConn(
-                "$source beforeLen=$beforeLength afterLen=$afterLength ok=$ok before=${view.describeText(before)} after=${view.describeText(after)}",
-            )
-            if (view.suppressInput) view.clearSuppression("$source real input")
+            if (view.suppressInput) view.clearSuppression()
             if (before != after) {
                 outerBatchHandled = true
-                view.emitDiff(source, before, after)
+                view.emitDiff(before, after)
             }
             repeat((beforeLength - mirrorBefore).coerceAtLeast(0)) {
-                view.emitBackspaceText("$source.before")
+                view.emitBackspaceText()
             }
             repeat((afterLength - mirrorAfter).coerceAtLeast(0)) {
-                view.emitTerminalText("$source.after", "\u001b[3~")
+                view.emitTerminalText("\u001b[3~")
             }
             reportImeSelection(request = false)
             return ok
@@ -756,14 +685,12 @@ class TerminalInputView(context: Context) : EditText(context) {
                 outerBatchHandled = false
             }
             batchEditDepth += 1
-            logConn("beginBatchEdit depth=$batchEditDepth")
             return super.beginBatchEdit()
         }
 
         override fun endBatchEdit(): Boolean {
             val ok = super.endBatchEdit()
             val editableAfter = getEditable().toString()
-            logConn("endBatchEdit ok=$ok depth=$batchEditDepth editable=${view.describeText(editableAfter)}")
 
             if (batchEditDepth > 0) {
                 batchEditDepth -= 1
@@ -783,10 +710,7 @@ class TerminalInputView(context: Context) : EditText(context) {
                 }
 
                 if (batchBefore != null && batchBefore != editableAfter && !handled && directMutationDepth == 0) {
-                    logConn(
-                        "endBatchEdit reconcile before=${view.describeText(batchBefore)} after=${view.describeText(editableAfter)}",
-                    )
-                    reconcileAndEmitMutation("endBatchEdit", batchBefore, editableAfter)
+                    reconcileAndEmitMutation(batchBefore, editableAfter)
                 }
                 reportImeSelection(request = false)
             }
@@ -795,14 +719,11 @@ class TerminalInputView(context: Context) : EditText(context) {
         }
 
         override fun sendKeyEvent(event: KeyEvent): Boolean {
-            logConn(
-                "sendKeyEvent action=${event.action} keyCode=${event.keyCode} unicode=${event.unicodeChar} meta=${event.metaState} flags=${event.flags}",
-            )
             if (view.confirmsComposition(event)) return true
             val altGr = view.altGrText(event)
             if (altGr != null) {
                 if (event.action == KeyEvent.ACTION_DOWN) {
-                    view.emitTerminalText("sendKeyEvent.altGr", altGr)
+                    view.emitTerminalText(altGr)
                 }
                 return true
             }
