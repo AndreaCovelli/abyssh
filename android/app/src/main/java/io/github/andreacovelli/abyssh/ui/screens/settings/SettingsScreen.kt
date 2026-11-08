@@ -154,6 +154,7 @@ private fun SettingsSheets(
     TerminalCustomActionsEditorSheet(
         visible = openSheet == SettingsSheet.CustomActions,
         initialGroups = terminal.customKeyGroups,
+        builtinShortcuts = terminal.builtinShortcuts,
         onSave = actions::setCustomKeyGroups,
         onDismiss = onDismiss,
     )

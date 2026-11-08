@@ -192,6 +192,7 @@ fun TerminalCanvas(
             colors = colors,
             selection = selection?.normalized(shown.cellCount),
             selectionColumns = selection?.columns(shown.cols),
+            selectionArea = selection?.area,
             searchSpans = searchSpans.get(searchMatches, currentSearchMatch, shown),
             blinkTextHidden = blink.off,
             cursorHidden = blink.off && shown.cursorBlinks(cursorBlinkDefault),
@@ -287,13 +288,15 @@ private fun TerminalSelectionEffects(
         LaunchedEffect(Unit) { currentOnSelectionChanged(null) }
     }
 
-    // Keeps the selection on the same text while the viewport scrolls under it.
+    // Keeps the selection on the same text while the viewport scrolls under it. In a split
+    // window that is the scroll of the pane the selection is in.
     val hasSelection = selection != null
-    LaunchedEffect(hasSelection) {
+    val selectionArea = selection?.area
+    LaunchedEffect(hasSelection, selectionArea) {
         if (!hasSelection) return@LaunchedEffect
-        var baseline = snapshot().viewportScrollY
-        snapshotFlow { snapshot().let { it.viewportScrollY to it.cols } }.collect { (scrollY, cols) ->
-            if (scrollY == baseline) return@collect
+        var baseline = snapshot().scrollYOf(selectionArea) ?: return@LaunchedEffect
+        snapshotFlow { snapshot().let { it.scrollYOf(selectionArea) to it.cols } }.collect { (scrollY, cols) ->
+            if (scrollY == null || scrollY == baseline) return@collect
             val deltaCells = (baseline - scrollY) * max(cols, 1)
             baseline = scrollY
             val sel = currentSelection ?: return@collect

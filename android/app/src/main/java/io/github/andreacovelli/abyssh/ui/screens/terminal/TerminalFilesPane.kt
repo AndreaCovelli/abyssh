@@ -6,7 +6,7 @@ import android.content.res.Resources
 import android.net.Uri
 import android.webkit.MimeTypeMap
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
+import io.github.andreacovelli.abyssh.ui.security.rememberPickerLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -158,8 +158,8 @@ internal fun TerminalFilesPane(vm: TerminalViewModel, modifier: Modifier = Modif
         }
     }
 
-    val uploadLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+    val uploadLauncher = rememberPickerLauncher(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isEmpty()) return@rememberPickerLauncher
         scope.launch(Dispatchers.IO) {
             val plan = runCatching { planUploads(context, vm.files, uris) }
             withContext(Dispatchers.Main) {
@@ -181,7 +181,7 @@ internal fun TerminalFilesPane(vm: TerminalViewModel, modifier: Modifier = Modif
     }
     // The destination comes first: a file of any size then streams straight to it.
     val downloadLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        rememberPickerLauncher(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
             val tabId = pendingDownloadTab
             val path = pendingDownloadPath
             pendingDownloadTab = null

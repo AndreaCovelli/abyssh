@@ -121,7 +121,20 @@ class TmuxControlParserTest {
                 "%client-detached /dev/pts/3\n",
         )
 
-        assertEquals(List(4) { TmuxControlEvent.SessionsChanged }, events)
+        assertEquals(
+            listOf(
+                TmuxControlEvent.SessionsChanged,
+                TmuxControlEvent.SessionRenamed(1, "work"),
+                TmuxControlEvent.SessionsChanged,
+                TmuxControlEvent.SessionsChanged,
+            ),
+            events,
+        )
+    }
+
+    @Test
+    fun readsARenameToANameWithSpaces() {
+        assertEquals(listOf(TmuxControlEvent.SessionRenamed(4, "my work")), parse("%session-renamed \$4 my work\n"))
     }
 
     @Test

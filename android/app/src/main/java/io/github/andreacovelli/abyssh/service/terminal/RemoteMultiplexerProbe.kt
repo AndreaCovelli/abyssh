@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import java.io.ByteArrayOutputStream
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.AuthMethod
 import io.github.andreacovelli.abyssh.model.MultiplexerType
@@ -150,18 +151,19 @@ internal class RemoteMultiplexerProbe(
 
     private fun readExecOutput(running: RunningCommand): MultiplexerCommandResult {
         val ssh = running.ssh
-        val output = StringBuilder()
+        // Decoded once at the end: a read can end inside a multi-byte character.
+        val output = ByteArrayOutputStream()
         val deadline = System.currentTimeMillis() + COMMAND_TIMEOUT_MS
         while (System.currentTimeMillis() < deadline) {
             running.throwIfCancelled()
             val chunk = ssh.read(EXEC_READ_BYTES)
             when {
-                chunk != null && chunk.isNotEmpty() -> output.append(String(chunk, Charsets.UTF_8))
-                ssh.isChannelEof() -> return parseCommandEnvelope(output.toString())
+                chunk != null && chunk.isNotEmpty() -> output.write(chunk)
+                ssh.isChannelEof() -> return parseCommandEnvelope(output.toString(Charsets.UTF_8.name()))
                 else -> Thread.sleep(EXEC_POLL_MS)
             }
         }
-        return MultiplexerCommandResult(EXIT_TIMED_OUT, output.toString(), "Command timed out")
+        return MultiplexerCommandResult(EXIT_TIMED_OUT, output.toString(Charsets.UTF_8.name()), "Command timed out")
     }
 }
 

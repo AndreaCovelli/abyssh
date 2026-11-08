@@ -43,6 +43,11 @@ class TmuxControlCommandsTest {
     }
 
     @Test
+    fun sendKeysToActivePaneHasNoTarget() {
+        assertEquals(listOf("send-keys -H 6c 73 0a"), TmuxControlCommands.sendKeysToActivePane("ls\n".toByteArray()))
+    }
+
+    @Test
     fun parsesWindowsAndNewWindowReplies() {
         assertEquals(
             listOf(

@@ -118,9 +118,10 @@ internal class TmuxControlSession(
 
     @Volatile var spec: TabSpec = spec
 
+    private val identity = TmuxSessionIdentity(spec.multiplexerSessionName.orEmpty())
+
     /** The tmux session the client shows, which can change when someone runs `switch-client`. */
-    @Volatile var sessionName: String = spec.multiplexerSessionName.orEmpty()
-        private set
+    val sessionName: String get() = identity.name
 
     @Volatile private var disposed = false
     private var exited = false
@@ -289,7 +290,10 @@ internal class TmuxControlSession(
             spec.username.isBlank() -> UiText.Resource(R.string.error_username_required)
             localNetwork?.blocks(spec.host) == true -> UiText.Resource(R.string.error_local_network_denied)
             else -> {
-                link.open(spec, sessionName, clientGeometry ?: TerminalGeometry())
+                // Once tmux has attached, a reconnect must find the same session: creating it
+                // again would show an empty session where the user expects theirs.
+                val createIfMissing = spec.multiplexerCreateIfMissing && !identity.attachedOnce
+                link.open(spec, sessionName, createIfMissing, clientGeometry ?: TerminalGeometry())
                 null
             }
         }
@@ -327,7 +331,13 @@ internal class TmuxControlSession(
         if (exited) return
         if (!wasAttached && failure == null) {
             // The channel closed before tmux came up, so trying again would fail the same way.
-            _status.value = TmuxControlStatus(SessionStatus.Error, UiText.Resource(R.string.tmux_control_not_started))
+            // After an earlier attach, that is because the session is gone.
+            val error = if (identity.attachedOnce) {
+                UiText.Resource(R.string.tmux_control_session_gone, sessionName)
+            } else {
+                UiText.Resource(R.string.tmux_control_not_started)
+            }
+            _status.value = TmuxControlStatus(SessionStatus.Error, error)
             return
         }
         val reason = failure?.let { UiText.Resource(R.string.error_connection_interrupted_reason, it.reason()) }
@@ -356,7 +366,11 @@ internal class TmuxControlSession(
     private fun onEvent(event: TmuxControlEvent) {
         when (event) {
             is TmuxControlEvent.Output -> windows.output(event.paneId, event.data)
-            is TmuxControlEvent.SessionChanged -> onSessionChanged(event.name)
+            is TmuxControlEvent.SessionChanged -> onSessionChanged(event.sessionId, event.name)
+            is TmuxControlEvent.SessionRenamed -> {
+                identity.rename(event.sessionId, event.name)?.let { post { sessionRenamed(this@TmuxControlSession, it) } }
+                post { sessionsChanged(this@TmuxControlSession) }
+            }
             TmuxControlEvent.WindowsChanged -> if (attached) windows.listWindows()
             is TmuxControlEvent.LayoutChanged -> windows.layoutChanged(event.windowId, event.layout)
             is TmuxControlEvent.Pause -> windows.paused(event.paneId)
@@ -372,13 +386,10 @@ internal class TmuxControlSession(
         }
     }
 
-    private fun onSessionChanged(name: String) {
+    private fun onSessionChanged(id: Int, name: String) {
         val firstAttach = !attached
         attached = true
-        if (name.isNotEmpty() && name != sessionName) {
-            sessionName = name
-            post { sessionRenamed(this@TmuxControlSession, name) }
-        }
+        identity.attached(id, name)?.let { post { sessionRenamed(this@TmuxControlSession, it) } }
         if (firstAttach) {
             attachedAtMs = SystemClock.elapsedRealtime()
             _status.value = TmuxControlStatus(SessionStatus.Connected)
@@ -387,8 +398,18 @@ internal class TmuxControlSession(
             link.send(TmuxControlCommands.pauseAfter(TMUX_PAUSE_AFTER_SECONDS))
         }
         windows.listWindows()
-        if (firstAttach) windows.selectFocused()
+        if (firstAttach) {
+            windows.selectFocused()
+            // As a plain SSH tab does after each connect, types the host's post-connect
+            // command into the pane the user sees: tmux runs commands in order, so after
+            // select-window.
+            val command = spec.postConnectCommand?.trim().orEmpty()
+            if (command.isNotEmpty()) {
+                link.sendAll(TmuxControlCommands.sendKeysToActivePane("$command\n".toByteArray(Charsets.UTF_8)))
+            }
+        }
     }
+
 
     private fun sendClientSize() {
         val geometry = clientGeometry ?: return
@@ -416,6 +437,34 @@ internal class TmuxControlSession(
 
     private fun post(action: TmuxControlHost.() -> Unit) {
         scope.launch { if (!disposed) host.action() }
+    }
+}
+
+/**
+ * The tmux session a control client shows: the name reconnects attach to, and whether the
+ * client has attached to it yet.
+ */
+private class TmuxSessionIdentity(name: String) {
+    @Volatile var name: String = name
+        private set
+    var attachedOnce = false
+        private set
+
+    // The session's id, which a rename from another client names.
+    private var id: Int? = null
+
+    /** The client attached to session [id], called [name]. Returns the new name if that renames it. */
+    fun attached(id: Int, name: String): String? {
+        this.id = id
+        attachedOnce = true
+        return rename(id, name)
+    }
+
+    /** Session [id] is now called [newName]. Returns that name if it is the client's session, renamed. */
+    fun rename(id: Int, newName: String): String? {
+        if (id != this.id || newName.isEmpty() || newName == name) return null
+        name = newName
+        return newName
     }
 }
 

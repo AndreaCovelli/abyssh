@@ -19,14 +19,17 @@ fun verifyThen(
     title: String,
     subtitle: String,
     @StringRes unavailableMessage: Int = R.string.verify_unavailable,
+    onCancel: () -> Unit = {},
     onVerified: () -> Unit,
 ) {
     requireUserVerification(context = context, title = title, subtitle = subtitle) { result ->
         when (result) {
             VerificationResult.Success -> onVerified()
-            VerificationResult.Unavailable ->
+            VerificationResult.Unavailable -> {
                 Toast.makeText(context, context.getString(unavailableMessage), Toast.LENGTH_LONG).show()
-            VerificationResult.Failed -> Unit
+                onCancel()
+            }
+            VerificationResult.Failed -> onCancel()
         }
     }
 }

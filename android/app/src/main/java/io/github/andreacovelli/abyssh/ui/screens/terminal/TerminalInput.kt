@@ -123,12 +123,20 @@ class TerminalInput internal constructor(
                 onTextInput(modifierState.applyToText(text.substring(index, index + charCount)))
             } else {
                 val keyCodepoint = if (key == GhosttyKey.enter || key == GhosttyKey.tab) 0 else codepoint
-                onHardwareKey(key, keyCodepoint, mods, GhosttyKeyAction.Press)
-                onHardwareKey(key, keyCodepoint, mods, GhosttyKeyAction.Release)
+                val charCode = shiftedLetter(codepoint, modifierState)
+                onHardwareKey(key, keyCodepoint, mods, GhosttyKeyAction.Press, charCode)
+                onHardwareKey(key, keyCodepoint, mods, GhosttyKeyAction.Release, charCode)
             }
             index += charCount
         }
     }
+
+    /**
+     * The capital a sticky Shift types for the letter [codepoint], as a hardware Shift
+     * does, or 0 for other characters, which keep the Shift bit for apps that read it.
+     */
+    private fun shiftedLetter(codepoint: Int, modifierState: ModifierState): Int =
+        if (modifierState.shift && codepoint in 'a'.code..'z'.code) codepoint - ('a' - 'A') else 0
 
     fun sendCustomAction(action: TerminalCustomAction) {
         val input = CustomActionInput.of(action)

@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
+import io.github.andreacovelli.abyssh.service.terminal.TerminalCellArea
 import io.github.andreacovelli.abyssh.service.terminal.TerminalRow
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 
@@ -20,6 +21,8 @@ internal class TerminalFrame(
     val selection: IntRange? = null,
     // The columns of a rectangle selection, which covers them in each row of selection.
     val selectionColumns: IntRange? = null,
+    // The pane a selection keeps to in a split window; its rows stop at the pane's edges.
+    val selectionArea: TerminalCellArea? = null,
     // Flagged true for the current match.
     val searchSpans: Map<Int, List<Pair<SearchSpan, Boolean>>> = emptyMap(),
     // The off half of the blink cycle: blinking text is hidden.
@@ -36,8 +39,13 @@ internal class TerminalFrame(
             val inRows = rowStart + snapshot.cols - 1 >= selection.first && rowStart <= selection.last
             return if (inRows) columns.first..minOf(columns.last, snapshot.cols - 1) else null
         }
-        val first = maxOf(selection.first, rowStart)
-        val last = minOf(selection.last, rowStart + snapshot.cols - 1)
+        val area = selectionArea
+        var first = maxOf(selection.first, rowStart)
+        var last = minOf(selection.last, rowStart + snapshot.cols - 1)
+        if (area != null) {
+            first = maxOf(first, rowStart + area.col)
+            last = minOf(last, rowStart + area.col + area.cols - 1)
+        }
         return if (first <= last) (first - rowStart)..(last - rowStart) else null
     }
 

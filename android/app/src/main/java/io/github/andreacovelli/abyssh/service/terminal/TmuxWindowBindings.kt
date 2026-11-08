@@ -95,7 +95,12 @@ internal class TmuxWindowBindings(
         selectFocused()
     }
 
-    /** Makes the active tab's window tmux's current one, which tmux then sizes to this client. */
+    /**
+     * Makes the active tab's window tmux's current one, which tmux then sizes to this client.
+     * tmux keeps one current window per session, shared by every client attached to it, so
+     * another client on the same session follows along, as it would after `select-window`
+     * typed there.
+     */
     fun selectFocused() {
         if (!attached()) return
         val windowId = bindings.firstOrNull { it.view === focused }?.windowId ?: return

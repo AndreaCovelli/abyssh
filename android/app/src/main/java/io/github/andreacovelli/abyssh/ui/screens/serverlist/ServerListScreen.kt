@@ -37,7 +37,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
+import io.github.andreacovelli.abyssh.ui.security.rememberPickerLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -106,7 +106,7 @@ fun ServerListScreen(
     var pendingDisconnectLocalShell by remember { mutableStateOf(false) }
     var pendingDeleteHostId by rememberSaveable { mutableStateOf<Long?>(null) }
     var showQuickConnect by rememberSaveable { mutableStateOf(false) }
-    val sshConfigPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val sshConfigPicker = rememberPickerLauncher(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(vm::readSshConfig)
     }
     LaunchedEffect(hosts, selectedHostId) {
@@ -138,7 +138,8 @@ fun ServerListScreen(
                 onQuickConnect = { showQuickConnect = true },
                 onImportSshConfig = { sshConfigPicker.launch(arrayOf("*/*")) },
             )
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // The bottom padding keeps the add-host button off the last card.
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 88.dp)) {
                 if (localShellEnabled) {
                     item(key = "local-shell") {
                         LocalShellCard(
@@ -376,7 +377,12 @@ private fun HostDisconnectDialog(
         sessions.size > 1 -> HostSessionsDialog(host.name, sessions, onEnd, onEndAll, onDismiss)
         sessions.size == 1 -> DisconnectDialog(
             name = host.name,
-            body = pluralStringResource(R.plurals.server_list_disconnect_body, 1, 1),
+            // A tmux control-mode session only detaches; its windows keep running.
+            body = if (sessions.single().tmuxWindows > 0) {
+                stringResource(R.string.server_list_disconnect_body_tmux)
+            } else {
+                pluralStringResource(R.plurals.server_list_disconnect_body, 1, 1)
+            },
             onConfirm = onEndAll,
             onDismiss = onDismiss,
         )

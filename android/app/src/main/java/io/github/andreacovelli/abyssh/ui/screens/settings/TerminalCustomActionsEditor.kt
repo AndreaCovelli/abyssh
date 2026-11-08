@@ -54,6 +54,7 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssCard
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
+import io.github.andreacovelli.abyssh.ui.terminal.BuiltinCommand
 import io.github.andreacovelli.abyssh.ui.terminal.CustomActionModifier
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCustomAction
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCustomActionStore
@@ -72,6 +73,15 @@ private data class CustomKeyValueDraft(
     val value: String,
     val shortcut: String? = null,
 )
+
+/**
+ * The builtin command already bound to [shortcut] in [builtinShortcuts], or null. The
+ * builtin wins at runtime, so an action with that shortcut would never fire.
+ */
+internal fun builtinUsing(shortcut: String, builtinShortcuts: Map<String, String>): BuiltinCommand? {
+    val key = shortcut.trim().lowercase().ifEmpty { return null }
+    return BuiltinCommand.entries.firstOrNull { builtinShortcuts[it.id]?.lowercase() == key }
+}
 
 /** The add or edit form below the action list. */
 @Stable
@@ -116,6 +126,8 @@ private class CustomActionForm {
         modifiers = if (modifier in modifiers) modifiers - modifier else modifiers + modifier
     }
 
+    fun shortcutTakenBy(builtinShortcuts: Map<String, String>): BuiltinCommand? = builtinUsing(shortcut, builtinShortcuts)
+
     /** The draft this form describes, or `null` while the key or the value is empty. */
     fun toDraft(id: Long): CustomKeyValueDraft? {
         val trimmedKey = key.trim()
@@ -129,6 +141,7 @@ private class CustomActionForm {
 internal fun TerminalCustomActionsEditorSheet(
     visible: Boolean,
     initialGroups: List<TerminalCustomKeyGroup>,
+    builtinShortcuts: Map<String, String>,
     onSave: (List<TerminalCustomKeyGroup>) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -136,7 +149,12 @@ internal fun TerminalCustomActionsEditorSheet(
         AbyssSheetHeader(title = stringResource(R.string.settings_custom_actions), onClose = onDismiss)
         // The sheet's content leaves composition when it closes, so each opening starts
         // from the saved actions.
-        CustomActionsEditor(initialGroups = initialGroups, onSave = onSave, modifier = Modifier.weight(1f))
+        CustomActionsEditor(
+            initialGroups = initialGroups,
+            builtinShortcuts = builtinShortcuts,
+            onSave = onSave,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
@@ -147,6 +165,7 @@ internal fun TerminalCustomActionsEditorSheet(
 @Composable
 private fun CustomActionsEditor(
     initialGroups: List<TerminalCustomKeyGroup>,
+    builtinShortcuts: Map<String, String>,
     onSave: (List<TerminalCustomKeyGroup>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -164,6 +183,7 @@ private fun CustomActionsEditor(
     }
 
     fun submitForm() {
+        if (form.shortcutTakenBy(builtinShortcuts) != null) return
         val nextId = (draftItems.maxOfOrNull { it.id } ?: 0L) + 1L
         val item = form.toDraft(nextId) ?: return
         val editingId = form.editingId
@@ -201,7 +221,12 @@ private fun CustomActionsEditor(
         )
 
         if (form.visible) {
-            CustomActionFormCard(form = form, onSubmit = ::submitForm, onCancel = form::clear)
+            CustomActionFormCard(
+                form = form,
+                takenBy = form.shortcutTakenBy(builtinShortcuts),
+                onSubmit = ::submitForm,
+                onCancel = form::clear,
+            )
         } else {
             AbyssButton(
                 onClick = form::beginAdd,
@@ -284,6 +309,7 @@ private fun CustomActionList(
 @Composable
 private fun CustomActionFormCard(
     form: CustomActionForm,
+    takenBy: BuiltinCommand?,
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -312,6 +338,13 @@ private fun CustomActionFormCard(
                 singleLine = true,
                 autoFocus = false,
             )
+            if (takenBy != null) {
+                AbyssText(
+                    text = stringResource(R.string.custom_actions_shortcut_taken, stringResource(takenBy.label)),
+                    style = typography.labelSmall,
+                    color = colors.error,
+                )
+            }
             ModifierPicker(form = form)
             AbyssTextField(
                 value = form.value,
@@ -342,6 +375,7 @@ private fun CustomActionFormCard(
                 AbyssButton(
                     onClick = onSubmit,
                     variant = AbyssButtonVariant.Outlined,
+                    enabled = takenBy == null,
                     modifier = Modifier.weight(1f),
                 ) {
                     val label = if (form.editingId != null) R.string.action_save else R.string.action_add

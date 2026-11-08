@@ -7,7 +7,7 @@ import androidx.compose.ui.res.stringResource
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
+import io.github.andreacovelli.abyssh.ui.security.rememberPickerLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -256,8 +256,8 @@ private fun ImportKeyDialog(onConfirm: (String, String) -> Unit, onDismiss: () -
 
     val scope = rememberCoroutineScope()
     val fileLauncher =
-        rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri == null) return@rememberLauncherForActivityResult
+        rememberPickerLauncher(contract = ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri == null) return@rememberPickerLauncher
             scope.launch {
                 val content = withContext(Dispatchers.IO) { readKeyFile(context, uri) }
                 if (content.isNullOrBlank()) {

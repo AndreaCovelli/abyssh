@@ -484,17 +484,18 @@ private fun RepeatableAccessoryButton(
                 awaitEachGesture {
                     awaitFirstDown().consume()
                     pressed = true
-                    currentOnAction(item.action)
 
                     try {
-                        // waitForUpOrCancellation returns null when the press is cancelled,
-                        // as withTimeoutOrNull does on a timeout, so mark an ended press apart.
-                        val endedDuringDelay = withTimeoutOrNull(INITIAL_REPEAT_DELAY_MS) {
-                            waitForUpOrCancellation()
-                            true
-                        } == true
+                        // The key goes out when the finger lifts, or when the repeat delay
+                        // runs out, so a swipe that scrolls the bar presses nothing. Null
+                        // when the delay ran out; false when the scroll took the touch.
+                        val released = withTimeoutOrNull(INITIAL_REPEAT_DELAY_MS) {
+                            waitForUpOrCancellation() != null
+                        }
 
-                        if (!endedDuringDelay) {
+                        if (released == true) {
+                            currentOnAction(item.action)
+                        } else if (released == null) {
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             while (true) {
                                 currentOnAction(item.action)

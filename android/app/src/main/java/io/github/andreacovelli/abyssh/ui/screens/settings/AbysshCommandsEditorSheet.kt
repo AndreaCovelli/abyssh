@@ -46,9 +46,11 @@ internal fun AbysshCommandsEditorSheet(
             onClose = onDismiss,
         )
 
+        // Weighted so the list scrolls and the buttons below stay on screen.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .weight(1f, fill = false)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {

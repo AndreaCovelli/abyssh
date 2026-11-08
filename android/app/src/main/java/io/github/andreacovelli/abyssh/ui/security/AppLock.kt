@@ -16,10 +16,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -39,6 +41,9 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
 private const val APP_CONTENT_KEY = "app"
+
+/** The app lock of the screens inside [AppLockGate], or null outside it. */
+val LocalAppLockState = staticCompositionLocalOf<AppLockState?> { null }
 
 /** Asks the user to verify with a title and subtitle, then reports the result. */
 typealias UserVerifier = (Context, String, String, (VerificationResult) -> Unit) -> Unit
@@ -67,7 +72,7 @@ fun AppLockGate(
     DisposableEffect(lifecycleOwner, state) {
         val observer = LifecycleEventObserver { source, event ->
             val isConfigChange = (source as? Activity)?.isChangingConfigurations == true
-            if (event == Lifecycle.Event.ON_STOP && !isConfigChange) state.lock()
+            if (event == Lifecycle.Event.ON_STOP && !isConfigChange) state.stopped()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -94,7 +99,9 @@ fun AppLockGate(
     if (locked) {
         AppLockScreen(onUnlock = state::retry)
     } else {
-        screens.SaveableStateProvider(APP_CONTENT_KEY, content)
+        CompositionLocalProvider(LocalAppLockState provides state) {
+            screens.SaveableStateProvider(APP_CONTENT_KEY, content)
+        }
     }
 }
 
