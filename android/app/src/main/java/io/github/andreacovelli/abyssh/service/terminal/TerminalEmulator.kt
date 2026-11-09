@@ -95,6 +95,9 @@ internal class TerminalEmulator(
         destroy()
         handle = bridge.nativeCreate(geometry.cols, geometry.rows, scrollbackLimitBytes())
         check(handle != 0L) { "Native terminal creation failed" }
+        // A new terminal knows only its grid. Without the cell size its pixel size is 0,
+        // so wheel events land on the first cell and Kitty images get 1-pixel cells.
+        applyGeometry()
         applyOptions()
     }
 
