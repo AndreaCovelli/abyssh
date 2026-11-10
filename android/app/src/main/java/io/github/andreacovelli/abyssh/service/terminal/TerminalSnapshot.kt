@@ -1,7 +1,6 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
 import android.graphics.Bitmap
-import androidx.core.graphics.createBitmap
 import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -435,11 +434,16 @@ data class TerminalSnapshot(
         }
 
         /**
-         * Parses an image snapshot. A record without pixels reuses the bitmap of an
-         * earlier record with the same generation, or the one in [cached]; the native
-         * side sends each generation's pixels only once and only when [cached] lacks it.
+         * Parses an image snapshot. A record with a buffer index takes its bitmap from
+         * [newBitmaps]; any other reuses the bitmap of an earlier record with the same
+         * generation, or the one in [cached]. The native side sends each generation's
+         * pixels only once and only when [cached] lacks it.
          */
-        fun parseImages(buffer: ByteBuffer?, cached: Map<Long, Bitmap> = emptyMap()): List<ImagePlacement> {
+        fun parseImages(
+            buffer: ByteBuffer?,
+            cached: Map<Long, Bitmap> = emptyMap(),
+            newBitmaps: List<Bitmap?> = emptyList(),
+        ): List<ImagePlacement> {
             if (buffer == null || buffer.capacity() < 4) return emptyList()
             val wrapped = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
             wrapped.position(0)
@@ -461,18 +465,17 @@ data class TerminalSnapshot(
                 val srcY = wrapped.int
                 val srcW = wrapped.int
                 val srcH = wrapped.int
-                val imgW = wrapped.int
-                val imgH = wrapped.int
+                // The image size; the bitmap's own size is used instead.
+                wrapped.position(wrapped.position() + 8)
                 val generation = wrapped.long
-                val dataLen = wrapped.int
+                val bufferIndex = wrapped.int
 
-                if (dataLen != 0) {
-                    // A bad record leaves the position of the next one unknown, so parsing stops.
-                    bitmaps[generation] = readBitmap(wrapped, imgW, imgH, dataLen) ?: break
+                if (bufferIndex >= 0) {
+                    newBitmaps.getOrNull(bufferIndex)?.let { bitmaps[generation] = it }
                 }
                 val bitmap = bitmaps[generation]
                 if (bitmap == null) {
-                    Log.w("TerminalSnapshot", "image record without pixels for unknown generation $generation")
+                    Log.w("TerminalSnapshot", "image record without a bitmap for generation $generation")
                 } else {
                     images += ImagePlacement(
                         cellCol = cellCol,
@@ -493,31 +496,6 @@ data class TerminalSnapshot(
                 }
             }
             return images
-        }
-
-        /** Reads [dataLen] bytes of premultiplied RGBA pixels into a new bitmap, or null when they don't fit. */
-        private fun readBitmap(buffer: ByteBuffer, imgW: Int, imgH: Int, dataLen: Int): Bitmap? {
-            val expectedLen = imgW.toLong() * imgH.toLong() * 4L
-            // Positive dimensions make expectedLen positive, so a matching dataLen is too.
-            if (imgW <= 0 ||
-                imgH <= 0 ||
-                expectedLen > Int.MAX_VALUE ||
-                dataLen != expectedLen.toInt() ||
-                buffer.remaining() < dataLen
-            ) {
-                Log.w(
-                    "TerminalSnapshot",
-                    "bad image record: img=${imgW}x$imgH dataLen=$dataLen expected=$expectedLen remaining=${buffer.remaining()}",
-                )
-                return null
-            }
-
-            val pixelBytes = buffer.slice().order(ByteOrder.nativeOrder())
-            pixelBytes.limit(dataLen)
-            val bitmap = createBitmap(imgW, imgH)
-            bitmap.copyPixelsFromBuffer(pixelBytes)
-            buffer.position(buffer.position() + dataLen)
-            return bitmap
         }
     }
 }

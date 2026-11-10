@@ -221,6 +221,8 @@ fn buildNativeLibrary(
     root_module.linkLibrary(libssh2);
     root_module.linkSystemLibrary("log", .{});
     root_module.linkSystemLibrary("z", .{});
+    // AHardwareBuffer, which holds Kitty images in GPU memory.
+    root_module.linkSystemLibrary("android", .{});
     lib.setVersionScript(b.path("src/bridge/version-script.map"));
 
     b.installArtifact(lib);

@@ -1,5 +1,7 @@
 // C headers used by the JNI bridges. build.zig translates this file into the
 // "c" module, which replaces @cImport (removed in Zig 0.17).
+#include <android/hardware_buffer.h>
+#include <android/hardware_buffer_jni.h>
 #include <android/log.h>
 #include <arpa/inet.h>
 #include <errno.h>

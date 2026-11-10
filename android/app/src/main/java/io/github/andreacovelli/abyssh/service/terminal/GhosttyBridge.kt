@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import android.hardware.HardwareBuffer
 import java.nio.ByteBuffer
 
 // One external fun per JNI export in zig-src/src/bridge.
@@ -78,8 +79,9 @@ class GhosttyBridge {
     ): ByteArray?
     external fun nativeEncodeFocus(handle: Long, focused: Boolean): ByteArray?
     external fun nativeDrainPtyWrites(handle: Long): ByteArray
-    // Pixels are left out for the image generations in [cached], whose bitmaps the caller holds.
-    external fun nativeSnapshotImages(handle: Long, cached: LongArray): ByteBuffer
+    // Each image generation not in [cached], whose bitmaps the caller holds, gets a new
+    // hardware buffer in [buffers], and its record holds the buffer's index.
+    external fun nativeSnapshotImages(handle: Long, cached: LongArray, buffers: Array<HardwareBuffer?>): ByteBuffer
     external fun nativeIsImageLoading(handle: Long): Boolean
     // Advances Kitty animations; the milliseconds until the next frame, or -1 when none plays.
     external fun nativeAnimationTick(handle: Long): Long
