@@ -64,7 +64,7 @@ Mosh, and renders the session with the same terminal engine as
 
 Download the signed APK (`abyssh-<version>-arm64-v8a.apk`) from the
 [latest release](https://github.com/AndreaCovelli/abyssh/releases/latest), or build it
-from source as described below. Abyssh needs Android 7.0 or later. Release builds
+from source as described below. Abyssh needs Android 12 or later. Release builds
 include the native library only for 64-bit ARM phones (`arm64-v8a`), which covers
 nearly all current devices.
 

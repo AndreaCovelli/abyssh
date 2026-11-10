@@ -96,7 +96,7 @@ and `NativeWakeBridge`. Zig implements each one as
 - ViewModels expose `StateFlow`; screens collect it with `collectAsStateWithLifecycle`.
 - Declare every dependency in `android/gradle/libs.versions.toml`. Room uses KSP and
   the Room Gradle plugin.
-- SDK levels: compileSdk 37, targetSdk 37, minSdk 24. Change them only in a dedicated
+- SDK levels: compileSdk 37, targetSdk 37, minSdk 31. Change them only in a dedicated
   commit, and ask before raising minSdk.
 - The version comes from git: release builds pass the tag's numbers in
   `VERSION_MAJOR`, `VERSION_MINOR`, and `VERSION_PATCH`, and other builds use
