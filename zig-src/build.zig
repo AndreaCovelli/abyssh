@@ -302,13 +302,13 @@ pub fn build(b: *std.Build) void {
         }),
     });
     test_step.dependOn(&b.addRunArtifact(scroll_tests).step);
-    const downscale_tests = b.addTest(.{
-        .name = "image-downscale-tests",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/bridge/image_downscale.zig"),
-            .target = host,
-        }),
+    const downscale_module = b.createModule(.{
+        .root_source_file = b.path("src/bridge/image_downscale.zig"),
+        .target = host,
     });
+    // zigimg decodes whole images, the reference for decoding while scaling.
+    downscale_module.addImport("zigimg", b.dependency("zigimg", .{ .target = host }).module("zigimg"));
+    const downscale_tests = b.addTest(.{ .name = "image-downscale-tests", .root_module = downscale_module });
     test_step.dependOn(&b.addRunArtifact(downscale_tests).step);
     const kitty_cache_module = b.createModule(.{
         .root_source_file = b.path("src/bridge/kitty_image_cache.zig"),
