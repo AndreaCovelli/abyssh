@@ -34,12 +34,14 @@ fn logWarn(comptime fmt: []const u8, args: anytype) void {
 }
 
 /// Decodes a PNG buffer into RGBA pixels, with at most `max_pixels` pixels and at most
-/// `max_png_dimension` on either side. A larger PNG is scaled down to fit, keeping its
-/// aspect ratio. Returns null on failure. Caller must free with `freePixels`.
+/// `max_side` on either side, which is held to Ghostty's limit. A larger PNG is scaled
+/// down to fit, keeping its aspect ratio. Returns null on failure. Caller must free with
+/// `freePixels`.
 pub fn decodePng(
     data: [*]const u8,
     len: usize,
     max_pixels: u64,
+    max_side: u32,
     out_w: *u32,
     out_h: *u32,
 ) ?[*]u8 {
@@ -59,7 +61,7 @@ pub fn decodePng(
     }
 
     const src: image_downscale.Size = .{ .width = header.width, .height = header.height };
-    const fitted = image_downscale.fittedSize(header.width, header.height, max_pixels, max_png_dimension);
+    const fitted = image_downscale.fittedSize(header.width, header.height, max_pixels, @min(max_side, image_downscale.ghostty_max_side));
     if (fitted.width == src.width and fitted.height == src.height) return decodeWhole(bytes, out_w, out_h);
 
     if (!header.interlaced) {
@@ -75,7 +77,7 @@ pub fn decodePng(
 
     // An interlaced PNG's rows arrive in seven passes over the whole image, so it is
     // decoded whole and scaled afterwards, which only one within Ghostty's limit allows.
-    if (src.width > max_png_dimension or src.height > max_png_dimension) {
+    if (src.width > image_downscale.ghostty_max_side or src.height > image_downscale.ghostty_max_side) {
         logWarn("interlaced png too large width={} height={}", .{ src.width, src.height });
         return null;
     }
@@ -127,9 +129,6 @@ fn decodeWhole(bytes: []const u8, out_w: *u32, out_h: *u32) ?[*]u8 {
     @memcpy(pixels, img.rawBytes());
     return pixels.ptr;
 }
-
-/// The largest width or height kept, the same limit Ghostty applies to Kitty images.
-const max_png_dimension = 10_000;
 
 /// The largest PNG decoded, scaling it down as it goes. Scaling streams the pixels
 /// through, so the limit bounds the time spent rather than memory: this many pixels

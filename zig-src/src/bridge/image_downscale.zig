@@ -1,8 +1,8 @@
 //! Shrinks decoded Kitty images that are too large to store. The terminal refuses any
 //! image whose pixels exceed its storage limit, or whose width or height exceeds
 //! Ghostty's limit, so a large PNG, such as a diagram exported at 6000 pixels wide,
-//! would show nothing. Scaled down to fit, it shows at a resolution still above most
-//! screens.
+//! would show nothing. Scaled down to fit, and to no more than the display's longest
+//! side (`sideLimit`), it shows as sharply as the screen allows.
 //!
 //! `decodePngScaled` scales a PNG down while decoding it, one row at a time, so a PNG
 //! far too large to decode whole, such as 19366 by 7426 pixels (575 MB of RGBA), needs
@@ -10,6 +10,22 @@
 const std = @import("std");
 
 pub const Size = struct { width: u32, height: u32 };
+
+/// The largest width or height kept, the same limit Ghostty applies to Kitty images.
+pub const ghostty_max_side = 10_000;
+
+/// The smallest side limit `sideLimit` returns, so a display that misreports its size
+/// can't shrink images until they can't be read.
+pub const min_side_limit = 1024;
+
+/// The side limit for images shown on a display whose longest side is `display_side`
+/// pixels. More pixels than the display has only take memory: the image is drawn no
+/// larger than the screen, and drawing it far smaller than it is drops thin lines.
+/// Returns `ghostty_max_side` when the display's size is unknown (zero or less).
+pub fn sideLimit(display_side: i64) u32 {
+    if (display_side <= 0) return ghostty_max_side;
+    return @intCast(std.math.clamp(display_side, min_side_limit, ghostty_max_side));
+}
 
 /// The largest size with the aspect ratio of `width` by `height` that has at most
 /// `max_pixels` pixels and at most `max_side` pixels on either side, or the size
@@ -460,6 +476,14 @@ test "a long thin image keeps one pixel on its short side" {
     try testing.expectEqual(Size{ .width = 100, .height = 1 }, size);
     const tall = fittedSize(3, 10_000, 100, 10_000);
     try testing.expect(tall.width >= 1 and @as(u64, tall.width) * tall.height <= 100);
+}
+
+test "the side limit follows the display within bounds" {
+    try testing.expectEqual(@as(u32, 2960), sideLimit(2960));
+    try testing.expectEqual(@as(u32, ghostty_max_side), sideLimit(0));
+    try testing.expectEqual(@as(u32, ghostty_max_side), sideLimit(-1));
+    try testing.expectEqual(@as(u32, min_side_limit), sideLimit(320));
+    try testing.expectEqual(@as(u32, ghostty_max_side), sideLimit(15_360));
 }
 
 test "downscaling averages each block" {
