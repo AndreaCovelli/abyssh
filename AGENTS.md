@@ -23,7 +23,7 @@ version catalog pins AGP, Kotlin, and libraries. Run `mise install` once.
 | `mise run test:device:compile` | Compile the instrumented tests without a device. Part of `mise run check` |
 | `mise run install` | Install the debug APK on a connected device and launch it |
 | `mise run release` | Tag the next version from the commits since the last tag (`mise-tasks/release`). Before 1.0, breaking changes bump minor and everything else bumps patch. Never tag by hand |
-| `cd zig-src && zig build test` | Run the Zig tests (the backup format, the fling cap, the Kitty image cache, and the vendored Mosh client) on the host |
+| `cd zig-src && zig build test` | Run the Zig tests (the backup format, the fling cap, the scaling of oversized PNGs, the Kitty image cache, and the vendored Mosh client) on the host |
 | `cd zig-src && zig build fmt` | Format the Zig sources |
 
 Run one Gradle build at a time. The native build takes several minutes for all ABIs;
@@ -140,7 +140,9 @@ and `NativeWakeBridge`. Zig implements each one as
 - `zig build test` runs the Zig `test` blocks on the host, for the code that doesn't
   need Android: the backup format (`src/bridge/backup_container.zig`), the cap on how
   much of a fling reaches a full-screen program (`src/bridge/scroll_momentum.zig`),
-  the cache that restores evicted Kitty images (`src/bridge/kitty_image_cache.zig`),
+  the decoding and scaling of PNGs too large to store
+  (`src/bridge/image_downscale.zig`), checked against zigimg, the cache that restores
+  evicted Kitty images (`src/bridge/kitty_image_cache.zig`),
   which runs Ghostty's terminal, and the vendored Mosh client. Keep such code out of
   the JNI files so it can be tested; test the rest of the bridge logic through its
   Kotlin callers.

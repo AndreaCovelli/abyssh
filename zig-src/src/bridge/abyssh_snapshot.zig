@@ -538,21 +538,14 @@ fn abysshDecodePng(alloc: std.mem.Allocator, data: []const u8) ghostty.sys.Decod
     kitty_image_cache.capturePng(data);
     var w: u32 = 0;
     var h: u32 = 0;
-    const pixels = zignal_png.decodePng(data.ptr, data.len, &w, &h) orelse return error.InvalidData;
+    const pixels = zignal_png.decodePng(data.ptr, data.len, max_kitty_image_pixels, max_image_side.load(.monotonic), &w, &h) orelse return error.InvalidData;
     defer zignal_png.freePixels(pixels, w, h);
     logInfo("decode_png ok bytes={} width={} height={}", .{ data.len, w, h });
 
     const pixel_len = @as(usize, w) * @as(usize, h) * 4;
-    const src = image_downscale.Size{ .width = w, .height = h };
-    const fitted = image_downscale.fittedSize(w, h, max_kitty_image_pixels);
-    if (fitted.width == w and fitted.height == h) {
-        const out = try alloc.alloc(u8, pixel_len);
-        @memcpy(out, pixels[0..pixel_len]);
-        return .{ .width = w, .height = h, .data = out };
-    }
-    const out = try image_downscale.downscale(alloc, pixels[0..pixel_len], src, fitted);
-    logInfo("decode_png scaled width={} height={} to width={} height={}", .{ w, h, fitted.width, fitted.height });
-    return .{ .width = fitted.width, .height = fitted.height, .data = out };
+    const out = try alloc.alloc(u8, pixel_len);
+    @memcpy(out, pixels[0..pixel_len]);
+    return .{ .width = w, .height = h, .data = out };
 }
 
 /// The most bytes of decoded Kitty images one terminal stores.
@@ -562,6 +555,11 @@ const kitty_image_storage_limit = 64 * 1024 * 1024;
 /// storage limit, so a larger PNG is scaled down to fit. Android also refuses to draw
 /// a bitmap over 100 MB, so raising the limit instead would need scaling there.
 const max_kitty_image_pixels = kitty_image_storage_limit / 4;
+
+/// The largest width or height a decoded PNG keeps: the longest side of the largest
+/// display, which Kotlin sets through `nativeSetDisplaySide`. Ghostty's decode hook
+/// is global, so this is too.
+var max_image_side = std.atomic.Value(u32).init(image_downscale.ghostty_max_side);
 
 /// How long a synchronized output hold may keep the screen frozen, as in Ghostty.
 const sync_hold_timeout_ms: u64 = 1000;
@@ -712,6 +710,12 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
     _ = env;
     _ = thiz;
     return abyssh_create_terminal(cols, rows, max_scrollback_bytes);
+}
+
+export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeSetDisplaySide(env: *c.JNIEnv, thiz: c.jobject, side: c.jint) callconv(.c) void {
+    _ = env;
+    _ = thiz;
+    max_image_side.store(image_downscale.sideLimit(side), .monotonic);
 }
 
 export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nativeDestroy(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong) callconv(.c) void {
@@ -1370,7 +1374,7 @@ fn prepareImageData(image_id: u32, image: ghostty.kitty.graphics.Image) ?Prepare
             }
             var png_w: u32 = 0;
             var png_h: u32 = 0;
-            const rgba = zignal_png.decodePng(data_ptr, data_len, &png_w, &png_h) orelse return null;
+            const rgba = zignal_png.decodePng(data_ptr, data_len, max_kitty_image_pixels, max_image_side.load(.monotonic), &png_w, &png_h) orelse return null;
             if (png_w == 0 or png_h == 0) {
                 zignal_png.freePixels(rgba, png_w, png_h);
                 logWarn("kitty placement skipped image_id={} reason=png_decode_zero", .{image_id});

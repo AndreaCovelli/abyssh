@@ -24,6 +24,9 @@ class KittyImageRestoreTest {
 
     @Before
     fun createTerminal() {
+        // A test that starts the app sets the side limit to the emulator's display, which
+        // would shrink these images until both fit. The limit is process-wide, so lift it.
+        bridge.nativeSetDisplaySide(UNKNOWN_DISPLAY_SIDE)
         handle = bridge.nativeCreate(COLUMNS, ROWS, SCROLLBACK_BYTES)
         bridge.nativeResize(handle, COLUMNS, ROWS, CELL_WIDTH, CELL_HEIGHT)
     }
@@ -100,6 +103,9 @@ class KittyImageRestoreTest {
         const val CELL_WIDTH = 10
         const val CELL_HEIGHT = 20
         const val CHUNK_CHARS = 4096
+
+        // An unknown display size leaves only Ghostty's 10000-pixel limit.
+        const val UNKNOWN_DISPLAY_SIDE = 0
 
         // About 34 MiB each when decoded, so a second image evicts the first.
         const val IMAGE_SIDE = 3000

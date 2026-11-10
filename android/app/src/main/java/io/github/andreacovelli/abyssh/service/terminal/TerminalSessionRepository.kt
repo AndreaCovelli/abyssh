@@ -71,6 +71,12 @@ class TerminalSessionRepository private constructor(application: Application) {
     // A frame of the display while the setting asks to match its refresh rate.
     private val frameInterval =
         DisplayFrameInterval(appContext, settingsRepository.matchDisplayRefreshRate, scope)
+
+    init {
+        // Kitty images are stored no larger than the largest display can show them.
+        followLongestDisplaySide(appContext, GhosttyBridge())
+    }
+
     private var attachedClients = 0
 
     private val _multiplexerSessionsChanged = MutableSharedFlow<String>(extraBufferCapacity = 8)

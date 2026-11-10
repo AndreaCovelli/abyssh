@@ -24,6 +24,9 @@ class GhosttyBridge {
     external fun nativeVersion(): String
     external fun nativeCreate(cols: Int, rows: Int, maxScrollbackBytes: Int): Long
     external fun nativeDestroy(handle: Long)
+
+    // The longest side of the largest display, which caps the size of stored Kitty images.
+    external fun nativeSetDisplaySide(side: Int)
     external fun nativeWriteRemote(handle: Long, data: ByteArray)
     external fun nativeResize(handle: Long, cols: Int, rows: Int, cellW: Int, cellH: Int)
     /**
