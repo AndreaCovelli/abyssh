@@ -4,6 +4,7 @@ const scroll_momentum = @import("scroll_momentum.zig");
 const ghostty = @import("ghostty-vt");
 const kitty_image_cache = @import("kitty_image_cache.zig");
 const zignal_png = @import("zignal_png.zig");
+const image_downscale = @import("image_downscale.zig");
 
 const c = @import("c");
 const jni_string = @import("jni_string.zig");
@@ -541,10 +542,25 @@ fn abysshDecodePng(alloc: std.mem.Allocator, data: []const u8) ghostty.sys.Decod
     logInfo("decode_png ok bytes={} width={} height={}", .{ data.len, w, h });
 
     const pixel_len = @as(usize, w) * @as(usize, h) * 4;
-    const out = try alloc.alloc(u8, pixel_len);
-    @memcpy(out, pixels[0..pixel_len]);
-    return .{ .width = w, .height = h, .data = out };
+    const src = image_downscale.Size{ .width = w, .height = h };
+    const fitted = image_downscale.fittedSize(w, h, max_kitty_image_pixels);
+    if (fitted.width == w and fitted.height == h) {
+        const out = try alloc.alloc(u8, pixel_len);
+        @memcpy(out, pixels[0..pixel_len]);
+        return .{ .width = w, .height = h, .data = out };
+    }
+    const out = try image_downscale.downscale(alloc, pixels[0..pixel_len], src, fitted);
+    logInfo("decode_png scaled width={} height={} to width={} height={}", .{ w, h, fitted.width, fitted.height });
+    return .{ .width = fitted.width, .height = fitted.height, .data = out };
 }
+
+/// The most bytes of decoded Kitty images one terminal stores.
+const kitty_image_storage_limit = 64 * 1024 * 1024;
+
+/// The most pixels a decoded PNG keeps. Ghostty refuses an image larger than the
+/// storage limit, so a larger PNG is scaled down to fit. Android also refuses to draw
+/// a bitmap over 100 MB, so raising the limit instead would need scaling there.
+const max_kitty_image_pixels = kitty_image_storage_limit / 4;
 
 /// How long a synchronized output hold may keep the screen frozen, as in Ghostty.
 const sync_hold_timeout_ms: u64 = 1000;
@@ -611,7 +627,7 @@ fn createTerminal(cols: c.jint, rows: c.jint, max_scrollback_bytes: c.jint) !*Ab
         .cols = init_cols,
         .rows = init_rows,
         .max_scrollback_bytes = @intCast(std.math.clamp(max_scrollback_bytes, 0, max_scrollback_limit_bytes)),
-        .kitty_image_storage_limit = 64 * 1024 * 1024,
+        .kitty_image_storage_limit = kitty_image_storage_limit,
         .kitty_image_loading_limits = .{
             .file = false,
             // Ghostty also accepts /tmp and /dev/shm. Ghostty 1.3 used $TMPDIR,
