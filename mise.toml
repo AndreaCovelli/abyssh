@@ -64,6 +64,19 @@ description = "Run Detekt static analysis"
 dir = "android"
 run = "./gradlew detekt"
 
+# CI runs these on a push that a pull request already validated, only when the dependency
+# cache is missing, so main can still seed it: pull requests cannot save caches.
+[tasks."deps:android"]
+description = "Resolve and compile what the Gradle checks need, to seed the CI dependency cache"
+dir = "android"
+# Keep the Gradle tasks in step with mise-tasks/check/_default.
+run = "./gradlew --continue spotlessCheck detekt lintDebug testDebugUnitTest compileDebugAndroidTestKotlin assembleDebug"
+
+[tasks."deps:zig"]
+description = "Fetch the Zig packages, to seed the CI dependency cache"
+dir = "zig-src"
+run = "zig build --fetch=all"
+
 [tasks."check:actions"]
 description = "Lint GitHub Actions workflows"
 run = "actionlint"
