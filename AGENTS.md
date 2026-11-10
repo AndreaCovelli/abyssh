@@ -16,6 +16,7 @@ version catalog pins AGP, Kotlin, and libraries. Run `mise install` once.
 | `mise run check` | Formatting, Detekt, Android Lint, unit tests, compiling the instrumented tests, the debug build, actionlint, and the Markdown lint. Run before every commit. When every file changed since the merge base with `origin/main` is Markdown, it runs only `check:docs`; pass `--full` to run everything |
 | `mise run check:docs` | Lint Markdown with rumdl, configured in `.rumdl.toml`. Prose wraps at 90 columns |
 | `mise run check:native` | Build the arm64 native library with the pinned NDK, run `zig build test`, check that every library in `jniLibs/` is aligned for 16 KB pages, and check that every Kotlin `external fun` has a `Java_*` export. Uses `ANDROID_NDK_HOME`, or NDK 28.2.13676358 under `ANDROID_HOME`. Run it after changing a bridge or Zig code |
+| `mise run deps:android`, `mise run deps:zig` | Warm the Gradle and Zig dependency caches. CI runs them only to seed a missing cache after a push that a pull request already validated |
 | `mise run format` | Format Kotlin sources and Gradle scripts with ktlint through Spotless. `mise run format:check` only reports |
 | `mise run detekt` | Detekt static analysis, configured in `android/config/detekt/detekt.yml`, with no baseline |
 | `mise run test` | Unit tests only. Filter with `cd android && ./gradlew testDebugUnitTest --tests '<pattern>'` |

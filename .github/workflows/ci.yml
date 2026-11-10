@@ -11,82 +11,106 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # Only pull requests cancel superseded runs: a cancelled main run leaves no Validate
+  # result for its commit and skips its cache saves, and the release gate needs both.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Markdown-only changes, including pushes to main, run just the Markdown lint here
-  # and skip the Gradle checks below.
+  # and skip the Gradle checks below. A push to main skips the work whenever a pull
+  # request already validated the same tree.
   docs:
     name: Docs
-    uses: AndreaCovelli/repo-baseline/.github/workflows/check.yml@a3cd314a40868370e41af02ecf02af60df5614ee # v1.0.1
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
     permissions:
+      checks: read
       contents: read
       pull-requests: read
-    with:
-      timeout-minutes: 10
-      task: check:docs
-      install-args: github:rvben/rumdl
-      paths: |
-        **/*.md
-        .rumdl.toml
+    steps:
+      - name: Check
+        uses: AndreaCovelli/repo-baseline/.github/actions/check@a9310352317e707bffc0e031caf29d3c48d7eb97 # v1.1.0
+        with:
+          task: check:docs
+          install-args: github:rvben/rumdl
+          paths: |
+            **/*.md
+            .rumdl.toml
 
   check:
     name: Check
-    uses: AndreaCovelli/repo-baseline/.github/workflows/check.yml@a3cd314a40868370e41af02ecf02af60df5614ee # v1.0.1
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
     permissions:
+      checks: read
       contents: read
       pull-requests: read
-    with:
-      timeout-minutes: 35
-      # The checks build the APK without the native library, so skip Zig.
-      install-args: java github:kjanat/actionlint github:rvben/rumdl
-      cache-path: |
-        ~/.gradle/caches
-        ~/.gradle/wrapper
-      cache-key-files: |
-        android/gradle/libs.versions.toml
-        android/gradle/wrapper/gradle-wrapper.properties
-        android/**/*.gradle.kts
-      paths: |
-        android/**
-        .editorconfig
-        mise.toml
-        mise.lock
-        mise-tasks/check/_default
-        .github/workflows/**
+    steps:
+      - name: Check
+        uses: AndreaCovelli/repo-baseline/.github/actions/check@a9310352317e707bffc0e031caf29d3c48d7eb97 # v1.1.0
+        with:
+          # The checks build the APK without the native library, so skip Zig.
+          install-args: java github:kjanat/actionlint github:rvben/rumdl
+          # A push that a pull request already validated runs this on a missing cache
+          # only, to seed it: pull requests cannot save caches.
+          setup-task: deps:android
+          cache-path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          # Build scripts are left out so that editing one does not create another
+          # 1+ GB entry; restore-keys fall back to the newest cache instead.
+          cache-key-files: |
+            android/gradle/libs.versions.toml
+            android/gradle/wrapper/gradle-wrapper.properties
+          paths: |
+            android/**
+            .editorconfig
+            mise.toml
+            mise.lock
+            mise-tasks/check/_default
+            .github/workflows/**
 
   # Builds the arm64 native library with the pinned NDK and checks that every Kotlin
   # external fun has a JNI export, which nothing else catches before runtime.
   native:
     name: Native
-    uses: AndreaCovelli/repo-baseline/.github/workflows/check.yml@a3cd314a40868370e41af02ecf02af60df5614ee # v1.0.1
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
     permissions:
+      checks: read
       contents: read
       pull-requests: read
-    with:
-      timeout-minutes: 30
-      task: check:native
-      # sdkmanager, which installs the NDK, needs Java.
-      install-args: java zig
-      cache-path: zig-src/zig-pkg
-      cache-key-files: zig-src/build.zig.zon
-      paths: |
-        zig-src/**
-        android/app/src/main/java/**/*Bridge.kt
-        mise.toml
-        mise.lock
-        mise-tasks/check/native
-        .github/workflows/ci.yml
+    steps:
+      - name: Check
+        uses: AndreaCovelli/repo-baseline/.github/actions/check@a9310352317e707bffc0e031caf29d3c48d7eb97 # v1.1.0
+        with:
+          task: check:native
+          # Fetch the Zig packages when a push reuses a pull request's result but the
+          # cache is missing, to seed it.
+          setup-task: deps:zig
+          # sdkmanager, which installs the NDK, needs Java.
+          install-args: java zig
+          cache-path: zig-src/zig-pkg
+          cache-key-files: zig-src/build.zig.zon
+          paths: |
+            zig-src/**
+            android/app/src/main/java/**/*Bridge.kt
+            mise.toml
+            mise.lock
+            mise-tasks/check/native
+            .github/workflows/ci.yml
 
   # Builds the x86_64 native library once for the emulator jobs below. Its path filter
   # also decides whether they run: Check's paths plus the Zig sources, since a native
-  # change can break the app on a device too.
+  # change can break the app on a device too. A push to main that a pull request already
+  # validated skips it and the device jobs.
   native-x86_64:
     name: Native x86_64
     runs-on: ubuntu-26.04
-    timeout-minutes: 30
+    timeout-minutes: 15
     permissions:
+      checks: read
       contents: read
       pull-requests: read
     outputs:
@@ -121,14 +145,22 @@ jobs:
               - '.github/workflows/**'
               - 'zig-src/**'
 
+      - name: Look for an earlier validation
+        id: earlier
+        if: steps.changes.outcome == 'skipped' || steps.changes.outputs.relevant == 'true'
+        uses: AndreaCovelli/repo-baseline/.github/actions/tree-validated@a9310352317e707bffc0e031caf29d3c48d7eb97 # v1.1.0
+
       - name: Decide whether to run
         id: relevant
         env:
           RELEVANT: ${{ steps.changes.outcome == 'skipped' || steps.changes.outputs.relevant == 'true' }}
+          REUSED: ${{ steps.earlier.outputs.validated == 'true' }}
         run: |
-          echo "relevant=$RELEVANT" >> "$GITHUB_OUTPUT"
-          if [[ "$RELEVANT" != true ]]; then
-            echo "::notice::No relevant changes; skipping the device tests"
+          if [[ "$RELEVANT" == true && "$REUSED" != true ]]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No relevant changes or already validated; skipping the device tests"
           fi
 
       - name: Set up locked tools
@@ -173,7 +205,7 @@ jobs:
     needs: native-x86_64
     if: needs.native-x86_64.outputs.relevant == 'true'
     runs-on: ubuntu-26.04
-    timeout-minutes: 45
+    timeout-minutes: 20
     permissions:
       contents: read
     strategy:
@@ -220,7 +252,8 @@ jobs:
             ~/.gradle/wrapper
           key: >-
             deps-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('android/gradle/libs.versions.toml',
-            'android/gradle/wrapper/gradle-wrapper.properties', 'android/**/*.gradle.kts') }}
+            'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: deps-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Install the emulator and system image
         run: |
@@ -234,14 +267,14 @@ jobs:
       # Creating the AVD can stall, so give it its own deadline.
       - name: Set up the managed device
         working-directory: android
-        timeout-minutes: 10
+        timeout-minutes: 5
         run: ./gradlew dev34Setup --console=plain
 
       # A test APK that crashes at start leaves Gradle waiting, so fail well before the job
       # timeout.
       - name: Run instrumented tests
         working-directory: android
-        timeout-minutes: 30
+        timeout-minutes: 15
         env:
           BUILD: ${{ matrix.build }}
         run: |
@@ -277,7 +310,7 @@ jobs:
   secrets:
     name: Secrets
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -302,8 +335,8 @@ jobs:
     name: Validate
     needs: [docs, check, native, native-x86_64, device, secrets]
     if: always()
-    runs-on: ubuntu-26.04
-    timeout-minutes: 5
+    runs-on: ubuntu-slim
+    timeout-minutes: 3
     steps:
       - name: Check CI results
         env:
