@@ -91,6 +91,8 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
     private val decorations = TerminalDecorations()
     private val sprites = TerminalSprites()
     private val rowPictures = RowPictureCache()
+    private val glyphs = TerminalGlyphs()
+    private var glyphPaints: TerminalTextPaints? = null
 
     fun draw(canvas: Canvas, frame: TerminalFrame, paints: TerminalTextPaints, placement: SnapshotPlacement) {
         traceSection("TerminalRenderer.draw") {
@@ -105,6 +107,11 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
 
     private fun drawRows(canvas: Canvas, frame: TerminalFrame, paints: TerminalTextPaints) {
         val cell = frame.cell
+        // New paints come with a new font or size, so the old ones' glyphs are dropped.
+        if (paints !== glyphPaints) {
+            glyphs.clear()
+            glyphPaints = paints
+        }
         val width = frame.snapshot.cols * cell.widthPx
         rowPictures.startFrame(RowPictureCache.Style(paints, cell, frame.snapshot.defaultBgArgb))
         for (row in 0 until frame.snapshot.rows) {
@@ -204,22 +211,68 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         // cell and, in the last column, off the screen. Shifting left by half the slant at
         // mid-ascent centers each slanted glyph on its cell. A real italic face needs none.
         val slant = paint.textSkewX * baseline / 2f
-        // Pass the builder, not text.toString(): Canvas copies a CharSequence into a
-        // pooled char buffer, so no String is allocated per run per frame.
-        if (ascii || fitsCells(paint, (end - start) * cellWidth)) {
-            canvas.drawText(text, 0, text.length, start * cellWidth + slant, baseline, paint)
-        } else {
-            // Paint.hasGlyph() counts system fonts, so a glyph the primary font lacks (a
-            // subscript, a math symbol) can join a primary run and be drawn from a
-            // proportional system font. Its advance would move the rest of the run off
-            // the grid, so each cell's glyph is placed on its own column.
-            for (col in start until end) {
-                val from = cellOffsets[col]
-                val to = cellOffsets[col + 1]
-                if (to > from) canvas.drawText(text, from, to, col * cellWidth + slant, baseline, paint)
-            }
+        val x = start * cellWidth + slant
+        when {
+            ascii && glyphs.drawAscii(canvas, row.codepoints, start, end, x, baseline, cellWidth, paint) -> {}
+            needsBidi(text) -> drawRunAsText(canvas, paint, start, end, cell, slant, ascii)
+            else -> drawShapedRun(canvas, paint, start, end, cell, slant, ascii)
         }
         return end
+    }
+
+    /**
+     * Draws the run in [text] from shaped glyphs: whole when [ascii] or when its glyphs
+     * fill its cells, else each cell's glyphs on their own column.
+     */
+    private fun drawShapedRun(
+        canvas: Canvas,
+        paint: Paint,
+        start: Int,
+        end: Int,
+        cell: TerminalCellMetrics,
+        slant: Float,
+        ascii: Boolean,
+    ) {
+        val run = glyphs.shape(text, 0, text.length, paint)
+        if (ascii || abs(run.advance - (end - start) * cell.width) <= RUN_WIDTH_TOLERANCE_PX) {
+            glyphs.draw(canvas, run, start * cell.width + slant, cell.baseline, paint)
+            return
+        }
+        // Paint.hasGlyph() counts system fonts, so a glyph the primary font lacks (a
+        // subscript, a math symbol) can join a primary run and be drawn from a
+        // proportional system font. Its advance would move the rest of the run off
+        // the grid, so each cell's glyph is placed on its own column.
+        for (col in start until end) {
+            val from = cellOffsets[col]
+            val to = cellOffsets[col + 1]
+            if (to > from) glyphs.draw(canvas, glyphs.shape(text, from, to, paint), col * cell.width + slant, cell.baseline, paint)
+        }
+    }
+
+    /**
+     * Draws the run in [text] with [Canvas.drawText], for text with right-to-left
+     * characters, which the shaped glyphs would leave in logical order.
+     */
+    private fun drawRunAsText(
+        canvas: Canvas,
+        paint: Paint,
+        start: Int,
+        end: Int,
+        cell: TerminalCellMetrics,
+        slant: Float,
+        ascii: Boolean,
+    ) {
+        // Pass the builder, not text.toString(): Canvas copies a CharSequence into a
+        // pooled char buffer, so no String is allocated per run per frame.
+        if (ascii || fitsCells(paint, (end - start) * cell.width)) {
+            canvas.drawText(text, 0, text.length, start * cell.width + slant, cell.baseline, paint)
+            return
+        }
+        for (col in start until end) {
+            val from = cellOffsets[col]
+            val to = cellOffsets[col + 1]
+            if (to > from) canvas.drawText(text, from, to, col * cell.width + slant, cell.baseline, paint)
+        }
     }
 
     /** Draws a run of [TerminalSprites] characters, one per cell, in the text's color. */
@@ -330,6 +383,25 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         paint.color = color
         canvas.drawText(glyph, left, top + frame.cell.baseline, paint)
     }
+}
+
+/** Whether [text] holds a right-to-left character or a bidi control that reorders text. */
+internal fun needsBidi(text: CharSequence): Boolean {
+    var i = 0
+    while (i < text.length) {
+        val codepoint = Character.codePointAt(text, i)
+        when (Character.getDirectionality(codepoint)) {
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT,
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC,
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT_EMBEDDING,
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT_OVERRIDE,
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT_ISOLATE,
+            Character.DIRECTIONALITY_FIRST_STRONG_ISOLATE,
+            -> return true
+        }
+        i += Character.charCount(codepoint)
+    }
+    return false
 }
 
 /** Sets the text color, faded for faint text. Bold and italic come with the paint. */

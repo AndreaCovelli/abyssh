@@ -10,10 +10,21 @@ const Translator = @import("translate_c").Translator;
 // No 32-bit x86: Ghostty 1.4 fails a comptime layout assert there under Zig 0.17
 // (u64 is 4-byte aligned on i386), and x86 devices are not a supported target.
 const default_build_targets: []const std.Target.Query = &.{
-    .{ .cpu_arch = .aarch64, .os_tag = .linux, .abi = .android, .android_api_level = 24 },
-    .{ .cpu_arch = .arm, .os_tag = .linux, .abi = .androideabi, .android_api_level = 24 },
-    .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .android, .android_api_level = 24 },
+    .{ .cpu_arch = .aarch64, .os_tag = .linux, .abi = .android, .android_api_level = 31 },
+    .{ .cpu_arch = .arm, .os_tag = .linux, .abi = .androideabi, .android_api_level = 31 },
+    .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .android, .android_api_level = 31 },
 };
+
+/// Builds `module` and every static library it links as position-independent code,
+/// which a shared library needs. Zig turns PIC on by itself only below Android API 29,
+/// where thread-locals go through libc.
+fn usePic(module: *std.Build.Module) void {
+    module.pic = true;
+    for (module.link_objects.items) |object| switch (object) {
+        .other_step => |step| usePic(step.root_module),
+        else => {},
+    };
+}
 
 fn resolveBuildTargets(b: *std.Build) []const std.Target.Query {
     const maybe_target = b.option(
@@ -25,7 +36,7 @@ fn resolveBuildTargets(b: *std.Build) []const std.Target.Query {
     var query = std.Target.Query.parse(.{ .arch_os_abi = maybe_target }) catch |err| {
         std.debug.panic("invalid -Dtarget '{s}': {s}", .{ maybe_target, @errorName(err) });
     };
-    if (query.android_api_level == null) query.android_api_level = 24;
+    if (query.android_api_level == null) query.android_api_level = 31;
 
     const targets = b.allocator.alloc(std.Target.Query, 1) catch @panic("OOM");
     targets[0] = query;
@@ -144,6 +155,7 @@ fn buildNativeLibrary(
     });
 
     const libssh2 = libssh2_dep.artifact("ssh2");
+    usePic(libssh2.root_module);
 
     // Get upstream libssh2 for include paths
     const libssh2_upstream = libssh2_dep.builder.dependency("libssh2_upstream", .{
@@ -209,6 +221,8 @@ fn buildNativeLibrary(
     root_module.linkLibrary(libssh2);
     root_module.linkSystemLibrary("log", .{});
     root_module.linkSystemLibrary("z", .{});
+    // AHardwareBuffer, which holds Kitty images in GPU memory.
+    root_module.linkSystemLibrary("android", .{});
     lib.setVersionScript(b.path("src/bridge/version-script.map"));
 
     b.installArtifact(lib);
@@ -251,7 +265,7 @@ pub fn build(b: *std.Build) void {
             .cpu_arch = .aarch64,
             .os_tag = .linux,
             .abi = .android,
-            .android_api_level = 24,
+            .android_api_level = 31,
         });
         const openssl_dep = b.dependency("openssl", .{
             .target = test_target,

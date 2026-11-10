@@ -38,30 +38,34 @@ class KittyImageRestoreTest {
         transmit(FIRST, Color.RED)
         place(FIRST)
         val first = shownImage()
-        assertEquals(Color.RED, first.bitmap.getPixel(0, 0))
+        assertEquals(Bitmap.Config.HARDWARE, first.bitmap.config)
+        assertEquals(Color.RED, first.firstPixel())
 
         unplace(FIRST)
         transmit(SECOND, Color.BLUE)
         place(SECOND)
         val second = shownImage()
-        assertEquals(Color.BLUE, second.bitmap.getPixel(0, 0))
+        assertEquals(Color.BLUE, second.firstPixel())
 
         // A new generation means the image was gone and was stored again, so this is
         // the restored image rather than one that was never evicted.
         unplace(SECOND)
         place(FIRST)
         val restoredFirst = shownImage()
-        assertEquals(Color.RED, restoredFirst.bitmap.getPixel(0, 0))
+        assertEquals(Color.RED, restoredFirst.firstPixel())
         assertNotEquals(first.generation, restoredFirst.generation)
 
         unplace(FIRST)
         place(SECOND)
         val restoredSecond = shownImage()
-        assertEquals(Color.BLUE, restoredSecond.bitmap.getPixel(0, 0))
+        assertEquals(Color.BLUE, restoredSecond.firstPixel())
         assertNotEquals(second.generation, restoredSecond.generation)
     }
 
-    private fun shownImage(): ImagePlacement = TerminalSnapshot.parseImages(bridge.nativeSnapshotImages(handle, LongArray(0))).single()
+    private fun shownImage(): ImagePlacement = ImageSnapshotReader(bridge).read(handle, emptyMap()).single()
+
+    /** A hardware bitmap can't be read, so this reads a software copy. */
+    private fun ImagePlacement.firstPixel(): Int = bitmap.copy(Bitmap.Config.ARGB_8888, false).getPixel(0, 0)
 
     /** Sends a PNG of one color in chunks, as Kitty clients do. */
     private fun transmit(id: Int, color: Int) {

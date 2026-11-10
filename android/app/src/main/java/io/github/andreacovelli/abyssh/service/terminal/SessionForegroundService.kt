@@ -105,7 +105,6 @@ class SessionForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun ensureNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = getSystemService(NotificationManager::class.java) ?: return
         val existing = manager.getNotificationChannel(CHANNEL_ID)
         if (existing != null) return
@@ -202,13 +201,7 @@ class SessionForegroundService : Service() {
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_LABEL, label)
                 .putExtra(EXTRA_ENDS_SEVERAL, endsSeveral)
-            return runCatching {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
-                } else {
-                    context.startService(intent)
-                }
-            }.onFailure { Log.e(TAG, "Session service start refused", it) }.isSuccess
+            return runCatching { context.startForegroundService(intent) }.onFailure { Log.e(TAG, "Session service start refused", it) }.isSuccess
         }
 
         fun stop(context: Context) {

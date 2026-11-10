@@ -87,6 +87,7 @@ internal class TerminalEmulator(
 
     /** Bitmaps of the images on screen by generation, so their pixels cross JNI only once. */
     private var imageBitmaps: Map<Long, Bitmap> = emptyMap()
+    private val imageReader = ImageSnapshotReader(bridge)
 
     val isOpen: Boolean get() = handle != 0L
 
@@ -251,8 +252,7 @@ internal class TerminalEmulator(
             animationFrames.advance()
             val raw = traceSection("Terminal.nativeSnapshot") { bridge.nativeSnapshot(handle, previous == null) }
             val images = traceSection("Terminal.snapshotImages") {
-                val cached = imageBitmaps
-                TerminalSnapshot.parseImages(bridge.nativeSnapshotImages(handle, cached.keys.toLongArray()), cached)
+                imageReader.read(handle, imageBitmaps)
             }
             imageBitmaps = images.associate { it.generation to it.bitmap }
             val snapshot = traceSection("Terminal.parseSnapshot") {
