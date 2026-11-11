@@ -66,6 +66,7 @@ import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
 import io.github.andreacovelli.abyssh.ui.terminal.KeyboardAccessoryBar
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCanvas
+import io.github.andreacovelli.abyssh.ui.terminal.terminalImeMode
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 import io.github.andreacovelli.abyssh.ui.theme.GhosttyTheme
@@ -322,7 +323,7 @@ private fun TerminalPane(
                 factory = input::createInputView,
                 update = { view ->
                     view.contentDescription = inputLabel
-                    view.disableAutocorrect = host.settings.disableAutocorrect
+                    view.imeMode = terminalImeMode(host.settings.disableAutocorrect, host.settings.swipeTyping)
                     view.volumeKeysAsArrows = host.settings.volumeKeysAsArrows
                 },
                 onRelease = input::releaseInputView,

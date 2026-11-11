@@ -24,7 +24,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.asString
@@ -105,11 +104,11 @@ private fun ShortcutItem(hint: AbysshHint, onClick: () -> Unit) {
         ) {
             AbyssText(hint.key.toString(), style = typography.code, color = colors.accent)
         }
+        // Wraps rather than cuts a long description off, so the whole command shows.
         AbyssText(
             text = hint.description.asString(),
             style = typography.body,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(vertical = 6.dp),
         )
     }
 }
