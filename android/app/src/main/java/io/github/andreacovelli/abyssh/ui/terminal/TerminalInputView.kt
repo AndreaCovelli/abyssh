@@ -185,6 +185,15 @@ class TerminalInputView(context: Context) : EditText(context) {
             keyCode == KeyEvent.KEYCODE_INSERT ||
             keyCode == KeyEvent.KEYCODE_ESCAPE
 
+    /**
+     * Forgets the text the keyboard typed, after it was used for something other than
+     * reaching the terminal as typed: a shortcut took it, or a held modifier changed it.
+     * The keyboard would otherwise go on editing words the shell never got.
+     */
+    fun forgetImeText() {
+        activeInputConnection?.invalidateImeMirror()
+    }
+
     private fun emitTerminalText(text: String) {
         activeInputConnection?.clearImeCaretAnchor()
         onTerminalText?.invoke(text)
@@ -434,6 +443,7 @@ class TerminalInputView(context: Context) : EditText(context) {
         activeInputConnection = conn
         return conn
     }
+
 
     private class TerminalInputConnection(
         private val view: TerminalInputView,
