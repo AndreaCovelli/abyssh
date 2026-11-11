@@ -44,6 +44,9 @@ internal class EchoPredictor {
 
     val hasPending: Boolean get() = pending.isNotEmpty()
 
+    /** When the oldest guess times out, or null when none is pending. */
+    val nextTimeoutMs: Long? get() = pending.firstOrNull()?.let { it.sentAtMs + TIMEOUT_MS }
+
     /**
      * Records the guesses for [input], the bytes about to go to the host, on top of
      * [screen], the terminal's latest snapshot. Returns whether a guess was added.
@@ -92,7 +95,7 @@ internal class EchoPredictor {
         val cursorRow = screen.viewportScrollY + screen.cursorY
         while (pending.isNotEmpty()) {
             val guess = pending.first()
-            if (nowMs - guess.sentAtMs > TIMEOUT_MS) return reset()
+            if (isExpired(guess, nowMs)) return reset()
             val passed = cursorRow > guess.screenRow || (cursorRow == guess.screenRow && screen.cursorX > guess.col)
             if (!passed) {
                 // The cursor went back up a line, as a cleared screen leaves it.
@@ -129,6 +132,17 @@ internal class EchoPredictor {
     /** Whether [overlay] would draw anything under [mode]. */
     fun showsAny(mode: EchoPredictionMode): Boolean = shown(mode).isNotEmpty()
 
+    /**
+     * Drops every guess when the oldest has timed out, as [reconcile] does, without a
+     * snapshot to check them against. Returns whether it dropped them.
+     */
+    fun dropExpired(nowMs: Long): Boolean {
+        val oldest = pending.firstOrNull() ?: return false
+        if (!isExpired(oldest, nowMs)) return false
+        reset()
+        return true
+    }
+
     /** Forgets every guess, as when the terminal is replaced or prediction turns off. */
     fun reset() {
         pending.clear()
@@ -144,6 +158,8 @@ internal class EchoPredictor {
         if (!show) return emptyList()
         return pending.takeWhile { it.epoch <= confirmedEpoch }
     }
+
+    private fun isExpired(guess: Guess, nowMs: Long): Boolean = nowMs - guess.sentAtMs > TIMEOUT_MS
 
     private fun newEpoch() {
         epoch++

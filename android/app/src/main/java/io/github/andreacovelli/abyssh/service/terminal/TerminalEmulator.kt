@@ -82,7 +82,6 @@ internal class TerminalEmulator(
             state.update { it.copy(snapshot = snapshot) }
             onPublished()
         },
-        refresh = { requestSnapshot(force = true) },
     )
 
     private val animationFrames = AnimationFrames(

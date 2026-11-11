@@ -104,6 +104,23 @@ class EchoPredictorTest {
     }
 
     @Test
+    fun `guesses time out from the oldest one the host hasn't answered`() {
+        assertEquals(null, predictor.nextTimeoutMs)
+        val echoed = confirmFirst()
+        assertEquals(null, predictor.nextTimeoutMs)
+
+        type("b", echoed, atMs = 200L)
+        type("c", echoed, atMs = 300L)
+        assertEquals(200L + EchoPredictor.TIMEOUT_MS, predictor.nextTimeoutMs)
+        assertFalse(predictor.dropExpired(nowMs = 200L + EchoPredictor.TIMEOUT_MS))
+
+        predictor.reconcile(screen("$ ab", cursorX = 4), nowMs = 400L)
+        assertEquals(300L + EchoPredictor.TIMEOUT_MS, predictor.nextTimeoutMs)
+        assertTrue(predictor.dropExpired(nowMs = 300L + EchoPredictor.TIMEOUT_MS + 1))
+        assertFalse(predictor.hasPending)
+    }
+
+    @Test
     fun `auto waits until echoes take long enough`() {
         val fast = confirmFirst(latencyMs = 5L)
         type("b", fast, atMs = 200L)

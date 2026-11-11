@@ -18,11 +18,10 @@ internal class EchoPredictions(
     private val mode: () -> EchoPredictionMode,
     // Whether something shows the open terminal, so its snapshots are built.
     private val isShown: () -> Boolean,
-    // The terminal's latest snapshot, built first when output since would change it.
+    // The terminal's latest snapshot, built first when output since would change it, which
+    // checks the guesses against it.
     private val currentScreen: () -> TerminalSnapshot?,
     private val publish: (TerminalSnapshot) -> Unit,
-    // Builds and publishes a snapshot now, which checks the guesses.
-    private val refresh: () -> Unit,
 ) {
     private val predictor = EchoPredictor()
     private var check: Job? = null
@@ -60,13 +59,14 @@ internal class EchoPredictions(
      */
     fun onSnapshot(snapshot: TerminalSnapshot): TerminalSnapshot {
         predictor.reconcile(snapshot, System.currentTimeMillis())
+        // Once the host has answered every guess, no timeout is left to watch for.
+        if (!predictor.hasPending) cancelCheck()
         return predictor.overlay(snapshot, mode())
     }
 
     /** Drops the guesses, and when [publish], publishes the screen without them if any showed. */
     fun forget(publish: Boolean = true) {
-        check?.cancel()
-        check = null
+        cancelCheck()
         val shown = predictor.showsAny(mode())
         predictor.reset()
         if (!publish || !shown) return
@@ -74,19 +74,32 @@ internal class EchoPredictions(
     }
 
     // Output checks the guesses when it builds a snapshot; this drops those the host never
-    // answers, such as the characters of a password.
+    // answers, such as the characters of a password. It wakes only when the oldest guess
+    // times out, and not at all once the host has answered them.
     private fun scheduleCheck() {
-        if (check?.isActive == true || !predictor.hasPending) return
+        if (check?.isActive == true) return
+        val timeoutMs = predictor.nextTimeoutMs ?: return
         check = scope.launch(dispatcher) {
-            delay(EchoPredictor.TIMEOUT_MS + 1)
+            delay((timeoutMs + 1 - System.currentTimeMillis()).coerceAtLeast(0L))
             check = null
-            // A hidden terminal builds no snapshots to check the guesses against, and shows none.
-            if (!isShown()) {
-                predictor.reset()
-                return@launch
-            }
-            refresh()
+            dropExpired()
             scheduleCheck()
         }
+    }
+
+    private fun dropExpired() {
+        // A hidden terminal builds no snapshots to check the guesses against, and shows none.
+        if (!isShown()) return predictor.reset()
+        // Output that hasn't reached a snapshot yet may still confirm guesses.
+        val screen = currentScreen()
+        val shown = predictor.showsAny(mode())
+        // The real screen is the last snapshot without the guesses, so redrawing needs no
+        // new one, and guesses that didn't show need no redraw at all.
+        if (predictor.dropExpired(System.currentTimeMillis()) && shown && screen != null) publish(screen)
+    }
+
+    private fun cancelCheck() {
+        check?.cancel()
+        check = null
     }
 }
