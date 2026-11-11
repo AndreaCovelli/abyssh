@@ -548,10 +548,7 @@ private fun TerminalPaletteSheet(
                 modifier = barModifier,
             )
         },
-        multiplexerPanel = {
-            TmuxWindowActionsPanel(vm, overlay, onDismiss = { overlay.showTabSheet = false })
-            TerminalMultiplexerPanel(vm, onDismiss = { overlay.showTabSheet = false })
-        },
+        multiplexerPanel = { TerminalMultiplexerPanel(vm, onDismiss = { overlay.showTabSheet = false }) },
     )
 }
 

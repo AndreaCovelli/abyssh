@@ -15,6 +15,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +25,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -63,7 +67,8 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 /**
  * Full-screen tab switcher for the current host. [accessoryBar] draws the keyboard
  * accessory bar along the bottom edge and receives the modifier that places it;
- * [multiplexerPanel] draws below the tab list.
+ * [multiplexerPanel] draws below the tab list, and the panel scrolls when it is taller
+ * than the space above the accessory bar.
  */
 @Composable
 fun CommandPalette(
@@ -101,48 +106,56 @@ fun CommandPalette(
                         onClick = onDismiss,
                     ),
         ) {
-            Column(
-                modifier =
-                    Modifier.align(Alignment.TopCenter)
-                        .windowInsetsPadding(WindowInsets.safeDrawing)
-                        .padding(top = 56.dp, start = 16.dp, end = 16.dp)
-                        .fillMaxWidth()
-                        .clip(MaterialTheme.shapes.large)
-                        .background(colors.surface)
-                        .border(1.dp, colors.border.copy(alpha = 0.65f), MaterialTheme.shapes.large)
-                        // Swallow clicks so only the space around the panel dismisses it.
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {},
-                        ),
-            ) {
-                PaletteHeader(shown = entries.size, total = tabs.size)
-                if (entries.isNotEmpty()) {
-                    PaletteTabList(
-                        entries = entries,
-                        activeTabId = activeTabId,
-                        focusedTabIndex = focusedTabIndex.coerceIn(0, maxIndex),
-                        canClose = tabs.size > 1,
-                        onFocusTab = onFocusedTabIndexChange,
-                        onSelectTab = onSelectTab,
-                        onCloseTab = onCloseTab,
-                    )
+            Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                // The panel scrolls in the space above the accessory bar, so its end stays in view.
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    Column(
+                        modifier =
+                            Modifier.align(Alignment.TopCenter)
+                                .windowInsetsPadding(
+                                    WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+                                )
+                                .padding(top = 56.dp, start = 16.dp, end = 16.dp, bottom = 8.dp)
+                                .fillMaxWidth()
+                                .clip(MaterialTheme.shapes.large)
+                                .background(colors.surface)
+                                .border(1.dp, colors.border.copy(alpha = 0.65f), MaterialTheme.shapes.large)
+                                // Swallow clicks so only the space around the panel dismisses it.
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = {},
+                                )
+                                // The tab list scrolls first, then the panel, so the sessions below stay in reach.
+                                .verticalScroll(rememberScrollState()),
+                    ) {
+                        PaletteHeader(shown = entries.size, total = tabs.size)
+                        if (entries.isNotEmpty()) {
+                            PaletteTabList(
+                                entries = entries,
+                                activeTabId = activeTabId,
+                                focusedTabIndex = focusedTabIndex.coerceIn(0, maxIndex),
+                                canClose = tabs.size > 1,
+                                onFocusTab = onFocusedTabIndexChange,
+                                onSelectTab = onSelectTab,
+                                onCloseTab = onCloseTab,
+                            )
+                        }
+                        entries.getOrNull(focusedTabIndex)?.first?.let { FocusedTabPreview(it) }
+                        PaletteDivider()
+                        PaletteFooter(
+                            onSearch = onSearch,
+                            onAddTab = onAddTab,
+                            addsWindow = tabs.firstOrNull { it.id == activeTabId }?.spec?.usesTmuxControlMode == true,
+                        )
+                        multiplexerPanel()
+                    }
                 }
-                entries.getOrNull(focusedTabIndex)?.first?.let { FocusedTabPreview(it) }
-                PaletteDivider()
-                PaletteFooter(
-                    onSearch = onSearch,
-                    onAddTab = onAddTab,
-                    addsWindow = tabs.firstOrNull { it.id == activeTabId }?.spec?.usesTmuxControlMode == true,
+                accessoryBar(
+                    Modifier.windowInsetsPadding(WindowInsets.safeDrawing)
+                        .background(colors.background.copy(alpha = 0.92f)),
                 )
-                multiplexerPanel()
             }
-            accessoryBar(
-                Modifier.align(Alignment.BottomCenter)
-                    .windowInsetsPadding(WindowInsets.safeDrawing)
-                    .background(colors.background.copy(alpha = 0.92f)),
-            )
         }
     }
 }

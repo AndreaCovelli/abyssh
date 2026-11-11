@@ -204,14 +204,7 @@ private fun TerminalStripTabManager(
         onAddTab = onAddTab,
         onDismiss = { overlay.showTabManager = false },
         shortcuts = abysshKeys,
-        multiplexerPanel = {
-            TmuxWindowActionsPanel(vm, overlay, onDismiss = { overlay.showTabManager = false })
-            TerminalMultiplexerPanel(
-                vm = vm,
-                onDismiss = { overlay.showTabManager = false },
-                modifier = Modifier.weight(1f, fill = false),
-            )
-        },
+        multiplexerPanel = { TerminalMultiplexerPanel(vm, onDismiss = { overlay.showTabManager = false }) },
     )
 }
 

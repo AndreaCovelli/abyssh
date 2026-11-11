@@ -174,6 +174,35 @@ class TerminalCanvasGestureTest {
     }
 
     @Test
+    fun wobblingSwipeScrollsAllItsRows() {
+        show(snapshot(appTracksMouse = false, "a", "b", "c"))
+        val rows = 6
+        compose.onNodeWithTag("canvas").performTouchInput {
+            down(Offset(centerX, top + 1f))
+            moveBy(Offset(0f, cellHeight.toFloat()))
+            // Each move after the first goes further sideways than down, but the swipe as a
+            // whole goes down.
+            repeat((rows - 1) * 2) { step ->
+                val sideways = if (step % 2 == 0) cellHeight * 0.8f else -cellHeight * 0.8f
+                moveBy(Offset(sideways, cellHeight / 2f))
+            }
+            up()
+        }
+        compose.runOnIdle { assertEquals(-rows, scrolls.sum()) }
+    }
+
+    @Test
+    fun sidewaysSwipeDoesNotScroll() {
+        show(snapshot(appTracksMouse = false, "a", "b", "c"))
+        compose.onNodeWithTag("canvas").performTouchInput {
+            down(Offset(left + 1f, top + 1f))
+            repeat(10) { moveBy(Offset(cellWidth * 2f, cellHeight / 4f)) }
+            up()
+        }
+        compose.runOnIdle { assertTrue(scrolls.isEmpty()) }
+    }
+
+    @Test
     fun pinchShowsTheFontSizeUntilItHoldsStill() {
         val snapshot = snapshot(appTracksMouse = false, "a", "b", "c")
         var fontSize by mutableFloatStateOf(14f)

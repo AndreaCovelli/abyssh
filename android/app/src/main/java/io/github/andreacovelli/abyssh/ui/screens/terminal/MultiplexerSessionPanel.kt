@@ -9,15 +9,15 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -94,22 +94,24 @@ internal fun MultiplexerSessionPanel(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
         }
-        // Rows stay while the list reloads, so a refresh doesn't empty the panel.
+        // Rows stay while the list reloads, so a refresh doesn't empty the panel. The
+        // switcher around the panel scrolls, so the rows take the height they need.
         if (rows.isNotEmpty()) {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-                contentPadding = PaddingValues(horizontal = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                items(rows, key = { it.name }) { row ->
-                    MultiplexerSessionRow(
-                        row = row,
-                        onAttach = {
-                            onAttach(row.name)
-                            onDismiss()
-                        },
-                        onEnd = { pendingEnd = row },
-                    )
+                rows.forEach { row ->
+                    key(row.name) {
+                        MultiplexerSessionRow(
+                            row = row,
+                            onAttach = {
+                                onAttach(row.name)
+                                onDismiss()
+                            },
+                            onEnd = { pendingEnd = row },
+                        )
+                    }
                 }
             }
         }
@@ -159,7 +161,7 @@ internal fun MultiplexerSessionRow(
                 colors.border.copy(alpha = if (row.current) 0.65f else 0.35f),
                 MaterialTheme.shapes.medium,
             )
-            .padding(start = 12.dp, end = 6.dp, top = 2.dp, bottom = 2.dp),
+            .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -170,7 +172,7 @@ internal fun MultiplexerSessionRow(
                 .clip(CircleShape)
                 .background(if (row.current) colors.success else Color.Transparent),
         )
-        Column(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             AbyssText(
                 row.name,
                 style = typography.code,
@@ -263,6 +265,7 @@ private fun EndSessionDialog(
 internal fun TerminalMultiplexerPanel(vm: TerminalViewModel, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
     val activeTab by vm.activeTab.collectAsStateWithLifecycle()
     val spec = activeTab?.spec?.takeIf { it.usesRuntimeMultiplexer } ?: return
+    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(AbyssColors.current.border))
     val state by vm.multiplexer.state.collectAsStateWithLifecycle()
     // tmux control mode reports when sessions come and go, so the open panel keeps up.
     LaunchedEffect(vm.multiplexer) { vm.multiplexer.reloadSessionsOnChange() }
