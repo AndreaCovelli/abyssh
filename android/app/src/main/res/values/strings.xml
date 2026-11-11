@@ -201,6 +201,8 @@
     <string name="settings_hide_screen_contents_hint">Blocks screenshots and hides the terminal in the app switcher</string>
     <string name="settings_disable_autocorrect">Disable autocorrect</string>
     <string name="settings_disable_autocorrect_hint">For keyboards that ignore the standard hint; may disable glide typing</string>
+    <string name="settings_swipe_typing">Swipe typing</string>
+    <string name="settings_swipe_typing_hint">Type words by sliding across the keyboard. Turns on the keyboard\'s suggestions and autocorrect</string>
     <string name="settings_app_commands_sheet_hint">Empty key hides the command. Overrides custom action shortcut keys.</string>
     <string name="settings_shortcut_key_placeholder">Key</string>
     <string name="command_tabs">Tabs</string>

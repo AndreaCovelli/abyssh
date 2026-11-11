@@ -44,6 +44,7 @@ data class TerminalSettingsState(
     val matchDisplayRefreshRate: Boolean = false,
     val hideScreenContents: Boolean = false,
     val disableAutocorrect: Boolean = true,
+    val swipeTyping: Boolean = false,
     val text: TerminalTextState = TerminalTextState(),
 )
 
@@ -84,6 +85,7 @@ interface TerminalSettingsActions {
     fun setMatchDisplayRefreshRate(enabled: Boolean)
     fun setHideScreenContents(enabled: Boolean)
     fun setDisableAutocorrect(enabled: Boolean)
+    fun setSwipeTyping(enabled: Boolean)
     val keys: TerminalKeyActions
     val text: TerminalTextActions
 }
@@ -121,7 +123,7 @@ class SettingsViewModel(
                 settings.localShellEnabled, settings.remoteClipboardWriteEnabled, settings.ctrlVPastes,
                 settings.tmuxPrefixKeys,
                 settings.keepScreenAwake, settings.matchDisplayRefreshRate, settings.hideScreenContents,
-                settings.disableAutocorrect, settings.volumeKeysAsArrows,
+                settings.keyboard.disableAutocorrect, settings.keyboard.swipeTyping, settings.volumeKeysAsArrows,
                 settings.text.wordSeparators, settings.text.ligatures, settings.text.cursorBlink,
             ),
         ) { currentState() }
@@ -154,7 +156,8 @@ class SettingsViewModel(
             keepScreenAwake = settings.keepScreenAwake.value,
             matchDisplayRefreshRate = settings.matchDisplayRefreshRate.value,
             hideScreenContents = settings.hideScreenContents.value,
-            disableAutocorrect = settings.disableAutocorrect.value,
+            disableAutocorrect = settings.keyboard.disableAutocorrect.value,
+            swipeTyping = settings.keyboard.swipeTyping.value,
             text = TerminalTextState(
                 wordSeparators = settings.text.wordSeparators.value,
                 ligatures = settings.text.ligatures.value,
@@ -184,7 +187,8 @@ class SettingsViewModel(
     override fun setKeepScreenAwake(enabled: Boolean) = settings.setKeepScreenAwake(enabled)
     override fun setMatchDisplayRefreshRate(enabled: Boolean) = settings.setMatchDisplayRefreshRate(enabled)
     override fun setHideScreenContents(enabled: Boolean) = settings.setHideScreenContents(enabled)
-    override fun setDisableAutocorrect(enabled: Boolean) = settings.setDisableAutocorrect(enabled)
+    override fun setDisableAutocorrect(enabled: Boolean) = settings.keyboard.setDisableAutocorrect(enabled)
+    override fun setSwipeTyping(enabled: Boolean) = settings.keyboard.setSwipeTyping(enabled)
 
     override val keys = object : TerminalKeyActions {
         override fun setCtrlVPastes(enabled: Boolean) = settings.setCtrlVPastes(enabled)

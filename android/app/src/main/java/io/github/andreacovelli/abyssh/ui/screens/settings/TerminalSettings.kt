@@ -140,11 +140,20 @@ internal fun TerminalSettings(
             onCheckedChange = actions::setHideScreenContents,
         )
         SettingSwitchCard(
-            title = stringResource(R.string.settings_disable_autocorrect),
-            hint = stringResource(R.string.settings_disable_autocorrect_hint),
-            checked = state.disableAutocorrect,
-            onCheckedChange = actions::setDisableAutocorrect,
+            title = stringResource(R.string.settings_swipe_typing),
+            hint = stringResource(R.string.settings_swipe_typing_hint),
+            checked = state.swipeTyping,
+            onCheckedChange = actions::setSwipeTyping,
         )
+        // Swipe typing turns the keyboard's suggestions on, so this switch has nothing to change.
+        if (!state.swipeTyping) {
+            SettingSwitchCard(
+                title = stringResource(R.string.settings_disable_autocorrect),
+                hint = stringResource(R.string.settings_disable_autocorrect_hint),
+                checked = state.disableAutocorrect,
+                onCheckedChange = actions::setDisableAutocorrect,
+            )
+        }
     }
 }
 

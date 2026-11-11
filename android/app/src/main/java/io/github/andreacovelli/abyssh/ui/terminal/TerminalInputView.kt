@@ -10,6 +10,7 @@ import android.app.Activity
 
 import android.content.Context
 import android.content.res.Configuration
+import android.os.Build
 import android.os.SystemClock
 import android.text.Editable
 import android.text.InputType
@@ -21,15 +22,36 @@ import android.view.inputmethod.ExtractedText
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
+import android.view.inputmethod.TextAttribute
 import android.widget.EditText
+import androidx.annotation.RequiresApi
 
-fun terminalImeInputType(disableAutocorrect: Boolean): Int {
+/** How the terminal asks the keyboard to treat what is typed. */
+enum class TerminalImeMode {
+    /** Text without suggestions, which most keyboards take as no autocorrect. */
+    Default,
+
+    /** No text at all, for keyboards that autocorrect despite [Default]'s hint. */
+    NoAutocorrect,
+
+    /** Text with suggestions, which keyboards need to turn swipes into words. */
+    SwipeTyping,
+}
+
+fun terminalImeMode(disableAutocorrect: Boolean, swipeTyping: Boolean): TerminalImeMode = when {
+    swipeTyping -> TerminalImeMode.SwipeTyping
+    disableAutocorrect -> TerminalImeMode.NoAutocorrect
+    else -> TerminalImeMode.Default
+}
+
+fun terminalImeInputType(mode: TerminalImeMode): Int = when (mode) {
     // TYPE_NULL matches Termux's default and prevents keyboards from treating terminal input as prose.
-    if (disableAutocorrect) return InputType.TYPE_NULL
-
-    return InputType.TYPE_CLASS_TEXT or
-        InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-        InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+    TerminalImeMode.NoAutocorrect -> InputType.TYPE_NULL
+    TerminalImeMode.Default ->
+        InputType.TYPE_CLASS_TEXT or
+            InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+            InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+    TerminalImeMode.SwipeTyping -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
 }
 
 private val ENTER_CONFIRMED_SCRIPTS = setOf(
@@ -123,13 +145,23 @@ class TerminalInputView(context: Context) : EditText(context) {
     /** Whether the volume keys send Up and Down instead of changing the volume. */
     var volumeKeysAsArrows = false
 
-    var disableAutocorrect = false
+    var imeMode = TerminalImeMode.Default
         set(value) {
             if (field == value) return
             field = value
+            activeInputConnection?.invalidateImeMirror()
             inputType = terminalImeInputType(value)
             inputMethodManager?.restartInput(this)
         }
+
+    /**
+     * Whether the mirror keeps the words already sent. A keyboard with suggestions edits
+     * them after the fact, swapping a swiped word for the one picked or undoing an
+     * autocorrection, at offsets into the text it remembers. Keyboards without them only
+     * edit the open composition, so the mirror drops everything else.
+     */
+    private val keepsCommittedText: Boolean
+        get() = imeMode == TerminalImeMode.SwipeTyping
 
     /**
      * Keys that should drop the IME mirror buffer when delivered as
@@ -241,7 +273,7 @@ class TerminalInputView(context: Context) : EditText(context) {
         imeOptions =
             EditorInfo.IME_FLAG_NO_EXTRACT_UI or
                 EditorInfo.IME_ACTION_NONE
-        inputType = terminalImeInputType(disableAutocorrect)
+        inputType = terminalImeInputType(imeMode)
     }
 
     override fun onCheckIsTextEditor(): Boolean = true
@@ -339,6 +371,8 @@ class TerminalInputView(context: Context) : EditText(context) {
         val unicodeChar = event.unicodeChar
         if (unicodeChar > 0 && Character.isValidCodePoint(unicodeChar)) {
             clearSuppression()
+            // The keyboard's words no longer end the line, so it can't edit them in place.
+            if (keepsCommittedText) activeInputConnection?.invalidateImeMirror()
             emitTerminalText(String(Character.toChars(unicodeChar)))
             return true
         }
@@ -392,7 +426,7 @@ class TerminalInputView(context: Context) : EditText(context) {
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or
             EditorInfo.IME_FLAG_NO_FULLSCREEN or
             EditorInfo.IME_ACTION_NONE
-        outAttrs.inputType = terminalImeInputType(disableAutocorrect)
+        outAttrs.inputType = terminalImeInputType(imeMode)
         outAttrs.initialSelStart = selectionStart
         outAttrs.initialSelEnd = selectionEnd
 
@@ -507,8 +541,9 @@ class TerminalInputView(context: Context) : EditText(context) {
 
             // Drop committed text from the mirror immediately; a long-lived
             // buffer let one backspace diff into many deletes. Keep only an
-            // active composing region, until it's committed or finished.
-            if (!composing && getEditable().isNotEmpty()) {
+            // active composing region, until it's committed or finished,
+            // unless the keyboard edits committed words.
+            if (!composing && !view.keepsCommittedText && getEditable().isNotEmpty()) {
                 clearMirrorSilently()
             }
             reportImeSelection(request = false)
@@ -535,6 +570,27 @@ class TerminalInputView(context: Context) : EditText(context) {
                 super.commitText(text ?: "", newCursorPosition)
             }
 
+        /**
+         * Replaces text in the mirror, as Gboard does to swap a word for a suggestion. A
+         * range past the mirror's end is in words the mirror already dropped, after a key
+         * that moved the shell's cursor, so where they sit on the shell's line is unknown
+         * and they stay as they are.
+         */
+        @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+        override fun replaceText(
+            start: Int,
+            end: Int,
+            text: CharSequence,
+            newCursorPosition: Int,
+            textAttribute: TextAttribute?,
+        ): Boolean {
+            if (maxOf(start, end) > getEditable().length) {
+                reportImeSelection()
+                return true
+            }
+            return super.replaceText(start, end, text, newCursorPosition, textAttribute)
+        }
+
         override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
             // Empty composing text ends composition; treat as a commit so the
             // mirror is dropped instead of holding stale state.
@@ -549,7 +605,7 @@ class TerminalInputView(context: Context) : EditText(context) {
             val ok = super.finishComposingText()
             // Composing region is committed; drop the mirror copy so a later
             // backspace can't mass-delete it.
-            if (getEditable().isNotEmpty()) clearMirrorSilently()
+            if (!view.keepsCommittedText && getEditable().isNotEmpty()) clearMirrorSilently()
             return ok
         }
 
@@ -679,6 +735,29 @@ class TerminalInputView(context: Context) : EditText(context) {
             return ok
         }
 
+        /**
+         * Removes the character before the caret from a mirror that keeps committed text,
+         * for a Backspace key the terminal gets as a key. The keyboard can then still edit
+         * the words before it, as when Backspace undoes an autocorrection. Returns false
+         * when the mirror can't follow, and should be cleared instead.
+         */
+        private fun dropCharBeforeCaret(): Boolean {
+            if (!view.keepsCommittedText) return false
+            val editable = getEditable()
+            val caret = Selection.getSelectionStart(editable)
+            if (caret <= 0 || caret != Selection.getSelectionEnd(editable) || getComposingSpanStart(editable) != -1) {
+                return false
+            }
+            val before = editable.toString()
+            // A batch around the key must not send the deletion again.
+            if (batchEditDepth > 0 && outerBatchBeforeText != before) return false
+            imeCaretAnchor = null
+            editable.delete(Character.offsetByCodePoints(editable, caret, -1), caret)
+            if (batchEditDepth > 0) outerBatchBeforeText = editable.toString()
+            reportImeSelection()
+            return true
+        }
+
         override fun beginBatchEdit(): Boolean {
             if (batchEditDepth == 0) {
                 outerBatchBeforeText = getEditable().toString()
@@ -731,7 +810,11 @@ class TerminalInputView(context: Context) : EditText(context) {
             if (ghosttyAction != null) {
                 val mapped = KeyMapper.map(event.keyCode, event.unicodeChar, event.metaState, event.getUnicodeChar(0))
                 if (mapped != null) {
-                    if (ghosttyAction == GhosttyKeyAction.Press && view.shouldInvalidateImeMirrorForKey(event.keyCode)) {
+                    if (
+                        ghosttyAction == GhosttyKeyAction.Press &&
+                        view.shouldInvalidateImeMirrorForKey(event.keyCode) &&
+                        !(event.keyCode == KeyEvent.KEYCODE_DEL && dropCharBeforeCaret())
+                    ) {
                         invalidateImeMirror()
                     }
                     view.onTerminalKey?.invoke(mapped.key, mapped.codepoint, mapped.mods, ghosttyAction, mapped.charCode)

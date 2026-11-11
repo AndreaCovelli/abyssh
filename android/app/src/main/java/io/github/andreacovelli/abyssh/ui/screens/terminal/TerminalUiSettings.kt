@@ -39,6 +39,7 @@ internal data class TerminalUiSettings(
     val builtinShortcuts: Map<String, String>,
     val keepScreenAwake: Boolean,
     val disableAutocorrect: Boolean,
+    val swipeTyping: Boolean,
     val volumeKeysAsArrows: Boolean,
     val ctrlVPastes: Boolean,
     val tmuxPrefixKeys: Boolean,
@@ -66,7 +67,8 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
     val customKeyGroups by repo.terminalCustomKeyGroups.collectAsStateWithLifecycle()
     val builtinShortcuts by repo.builtinShortcuts.collectAsStateWithLifecycle()
     val keepScreenAwake by repo.keepScreenAwake.collectAsStateWithLifecycle()
-    val disableAutocorrect by repo.disableAutocorrect.collectAsStateWithLifecycle()
+    val disableAutocorrect by repo.keyboard.disableAutocorrect.collectAsStateWithLifecycle()
+    val swipeTyping by repo.keyboard.swipeTyping.collectAsStateWithLifecycle()
     val volumeKeysAsArrows by repo.volumeKeysAsArrows.collectAsStateWithLifecycle()
     val ctrlVPastes by repo.ctrlVPastes.collectAsStateWithLifecycle()
     val tmuxPrefixKeys by repo.tmuxPrefixKeys.collectAsStateWithLifecycle()
@@ -83,6 +85,7 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
         builtinShortcuts = builtinShortcuts,
         keepScreenAwake = keepScreenAwake,
         disableAutocorrect = disableAutocorrect,
+        swipeTyping = swipeTyping,
         volumeKeysAsArrows = volumeKeysAsArrows,
         ctrlVPastes = ctrlVPastes,
         tmuxPrefixKeys = tmuxPrefixKeys,

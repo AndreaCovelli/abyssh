@@ -169,6 +169,80 @@ class TerminalInputConnectionTest {
         assertEquals(listOf(RIGHT), keys)
     }
 
+    @Test
+    fun `picking a suggestion for a swiped word replaces it`() {
+        swipeTyping()
+        connection.commitText("hello", 1)
+        connection.commitText(" Wii", 1)
+        // What Gboard sends when a suggestion is tapped after a swipe.
+        connection.beginBatchEdit()
+        connection.replaceText(6, 9, "world ", 1, null)
+        connection.endBatchEdit()
+
+        assertEquals("hello world ", line())
+    }
+
+    @Test
+    fun `backspace after a swiped word deletes one character`() {
+        swipeTyping()
+        connection.commitText("hello", 1)
+        connection.deleteSurroundingText(1, 0)
+
+        assertEquals("hell", line())
+    }
+
+    @Test
+    fun `a suggestion picked after the backspace key replaces the word`() {
+        swipeTyping()
+        connection.commitText("teh", 1)
+        connection.commitText(" ", 1)
+        // Gboard deletes the space with the key, then swaps the word it reopened.
+        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
+        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL))
+        // The key goes to the terminal as a key, not as text; the shell deletes the space.
+        sent.append(BACKSPACE)
+        connection.beginBatchEdit()
+        connection.replaceText(1, 3, "he ", 1, null)
+        connection.endBatchEdit()
+
+        assertEquals("the ", line())
+    }
+
+    @Test
+    fun `a suggestion for a word the mirror dropped leaves the line alone`() {
+        swipeTyping()
+        connection.commitText("hello", 1)
+        view.armInputSuppression()
+        connection.beginBatchEdit()
+        connection.replaceText(3, 5, "p ", 1, null)
+        connection.endBatchEdit()
+
+        assertEquals("hello", line())
+    }
+
+    @Test
+    fun `enter ends the words a swipe typing keyboard can edit`() {
+        swipeTyping()
+        connection.commitText("ls", 1)
+        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER))
+        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER))
+        connection.commitText("pwd", 1)
+
+        assertEquals("lspwd", sent.toString())
+    }
+
+    @Test
+    fun `without swipe typing committed text leaves the mirror`() {
+        connection.commitText("hello", 1)
+
+        assertEquals("", view.editableText.toString())
+    }
+
+    private fun swipeTyping() {
+        view.imeMode = TerminalImeMode.SwipeTyping
+        connection = view.onCreateInputConnection(EditorInfo())
+    }
+
     private companion object {
         const val BACKSPACE = '\u007f'
         const val FORWARD_DELETE = "\u001b[3~"

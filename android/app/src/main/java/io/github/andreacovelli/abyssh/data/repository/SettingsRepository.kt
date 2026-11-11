@@ -28,6 +28,9 @@ class SettingsRepository(context: Context) {
     /** Word separators, ligatures, and blinking. */
     val text = TerminalTextSettings(prefs)
 
+    /** Autocorrect and swipe typing on the on-screen keyboard. */
+    val keyboard = KeyboardSettings(prefs)
+
     /** The server list's sort order and collapsed sections. */
     val hostList = HostListSettings(prefs)
 
@@ -71,8 +74,6 @@ class SettingsRepository(context: Context) {
     private val _hideScreenContents = MutableStateFlow(prefs.getBoolean(KEY_HIDE_SCREEN_CONTENTS, false))
     val hideScreenContents: StateFlow<Boolean> = _hideScreenContents.asStateFlow()
 
-    private val _disableAutocorrect = MutableStateFlow(prefs.getBoolean(KEY_DISABLE_AUTOCORRECT, true))
-    val disableAutocorrect: StateFlow<Boolean> = _disableAutocorrect.asStateFlow()
     private val _remoteClipboardWriteEnabled =
         MutableStateFlow(prefs.getBoolean(KEY_REMOTE_CLIPBOARD_WRITE_ENABLED, true))
     val remoteClipboardWriteEnabled: StateFlow<Boolean> = _remoteClipboardWriteEnabled.asStateFlow()
@@ -175,11 +176,6 @@ class SettingsRepository(context: Context) {
         _hideScreenContents.value = enabled
     }
 
-    fun setDisableAutocorrect(enabled: Boolean) {
-        prefs.edit { putBoolean(KEY_DISABLE_AUTOCORRECT, enabled) }
-        _disableAutocorrect.value = enabled
-    }
-
     fun setRemoteClipboardWriteEnabled(enabled: Boolean) {
         prefs.edit { putBoolean(KEY_REMOTE_CLIPBOARD_WRITE_ENABLED, enabled) }
         _remoteClipboardWriteEnabled.value = enabled
@@ -260,7 +256,6 @@ class SettingsRepository(context: Context) {
         private const val KEY_KEEP_SCREEN_AWAKE = "keep_screen_awake"
         private const val KEY_MATCH_DISPLAY_REFRESH_RATE = "match_display_refresh_rate"
         private const val KEY_HIDE_SCREEN_CONTENTS = "hide_screen_contents"
-        private const val KEY_DISABLE_AUTOCORRECT = "disable_autocorrect"
         private const val KEY_VOLUME_KEYS_AS_ARROWS = "volume_keys_as_arrows"
         private const val KEY_REMOTE_CLIPBOARD_WRITE_ENABLED = "remote_clipboard_write_enabled"
         private const val KEY_CTRL_V_PASTES = "ctrl_v_pastes"
