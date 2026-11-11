@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
+import io.github.andreacovelli.abyssh.model.EchoPredictionMode
 import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalTabMode
 import io.github.andreacovelli.abyssh.ui.terminal.DEFAULT_WORD_SEPARATORS
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCustomKeyGroup
@@ -45,6 +46,7 @@ data class TerminalSettingsState(
     val hideScreenContents: Boolean = false,
     val disableAutocorrect: Boolean = true,
     val swipeTyping: Boolean = false,
+    val echoPrediction: EchoPredictionMode = EchoPredictionMode.Default,
     val text: TerminalTextState = TerminalTextState(),
 )
 
@@ -86,6 +88,7 @@ interface TerminalSettingsActions {
     fun setHideScreenContents(enabled: Boolean)
     fun setDisableAutocorrect(enabled: Boolean)
     fun setSwipeTyping(enabled: Boolean)
+    fun setEchoPrediction(mode: EchoPredictionMode)
     val keys: TerminalKeyActions
     val text: TerminalTextActions
 }
@@ -123,7 +126,8 @@ class SettingsViewModel(
                 settings.localShellEnabled, settings.remoteClipboardWriteEnabled, settings.ctrlVPastes,
                 settings.tmuxPrefixKeys,
                 settings.keepScreenAwake, settings.matchDisplayRefreshRate, settings.hideScreenContents,
-                settings.keyboard.disableAutocorrect, settings.keyboard.swipeTyping, settings.volumeKeysAsArrows,
+                settings.keyboard.disableAutocorrect, settings.keyboard.swipeTyping, settings.keyboard.echoPrediction,
+                settings.volumeKeysAsArrows,
                 settings.text.wordSeparators, settings.text.ligatures, settings.text.cursorBlink,
             ),
         ) { currentState() }
@@ -158,6 +162,7 @@ class SettingsViewModel(
             hideScreenContents = settings.hideScreenContents.value,
             disableAutocorrect = settings.keyboard.disableAutocorrect.value,
             swipeTyping = settings.keyboard.swipeTyping.value,
+            echoPrediction = settings.keyboard.echoPrediction.value,
             text = TerminalTextState(
                 wordSeparators = settings.text.wordSeparators.value,
                 ligatures = settings.text.ligatures.value,
@@ -189,6 +194,7 @@ class SettingsViewModel(
     override fun setHideScreenContents(enabled: Boolean) = settings.setHideScreenContents(enabled)
     override fun setDisableAutocorrect(enabled: Boolean) = settings.keyboard.setDisableAutocorrect(enabled)
     override fun setSwipeTyping(enabled: Boolean) = settings.keyboard.setSwipeTyping(enabled)
+    override fun setEchoPrediction(mode: EchoPredictionMode) = settings.keyboard.setEchoPrediction(mode)
 
     override val keys = object : TerminalKeyActions {
         override fun setCtrlVPastes(enabled: Boolean) = settings.setCtrlVPastes(enabled)

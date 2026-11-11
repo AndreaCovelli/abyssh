@@ -251,6 +251,7 @@ class TerminalSessionRepository private constructor(application: Application) {
                     settingsRepository.terminalScrollbackMb.value * SettingsRepository.BYTES_PER_MB
                 },
                 snapshotIntervalMs = { frameInterval.ms },
+                echoPredictionMode = { settingsRepository.keyboard.echoPrediction.value },
                 scope = scope,
                 localShellService = NativeLocalShellService(appContext.filesDir, appContext.cacheDir),
                 hostKeyStore = hostKeyStore,

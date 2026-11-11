@@ -154,6 +154,7 @@ internal fun TerminalSettings(
                 onCheckedChange = actions::setDisableAutocorrect,
             )
         }
+        EchoPredictionCard(mode = state.echoPrediction, onModeChanged = actions::setEchoPrediction)
     }
 }
 
