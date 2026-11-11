@@ -6,6 +6,7 @@ import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlParser
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyPolicy
 import io.github.andreacovelli.abyssh.service.ssh.NativeSshService
 import io.github.andreacovelli.abyssh.service.ssh.RemoteTerm
+import io.github.andreacovelli.abyssh.service.ssh.SshLogin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.yield
@@ -29,28 +30,35 @@ internal interface TmuxCommandSink {
  * callback still waiting. Every call must run on the control session's thread, which
  * [outputWaiter] blocks while the read loop waits for output.
  */
-internal class TmuxControlLink(hostKeyPolicy: HostKeyPolicy, private val outputWaiter: OutputWaiter) : TmuxCommandSink {
+internal class TmuxControlLink(
+    hostKeyPolicy: HostKeyPolicy,
+    private val outputWaiter: OutputWaiter,
+    private val idleLogins: IdleSshLogins<SshLogin> = IdleSshLogins.shared,
+) : TmuxCommandSink {
     val ssh = NativeSshService(hostKeyPolicy = hostKeyPolicy)
     private val parser = TmuxControlParser()
     private val pacer = ReadPacer()
     private val replies = ArrayDeque<(TmuxControlEvent.Reply) -> Unit>()
 
     /**
-     * Logs in and starts tmux in control mode on [sessionName], replacing any earlier
-     * channel; [createIfMissing] creates the session when it doesn't exist.
+     * Starts tmux in control mode on [sessionName], replacing any earlier channel, over the
+     * login the multiplexer check left idle or a new one; [createIfMissing] creates the
+     * session when it doesn't exist.
      */
     fun open(spec: TabSpec, sessionName: String, createIfMissing: Boolean, geometry: TerminalGeometry) {
         close()
         check(ssh.isAvailable()) { "Native SSH unavailable" }
-        ssh.connect(spec)
-        ssh.openExecPty(
-            TmuxControlCommands.attach(sessionName, createIfMissing),
-            geometry.cols,
-            geometry.rows,
-            geometry.ptyWidthPx,
-            geometry.ptyHeightPx,
-            RemoteTerm.SSH,
-        )
+        ssh.openReusing(idleLogins.take(spec), connect = { ssh.connect(spec) }) {
+            ssh.openExecPty(
+                TmuxControlCommands.attach(sessionName, createIfMissing),
+                geometry.cols,
+                geometry.rows,
+                geometry.ptyWidthPx,
+                geometry.ptyHeightPx,
+                RemoteTerm.SSH,
+            )
+            true
+        }
         ssh.setKeepalive(spec.keepaliveIntervalSeconds)
     }
 

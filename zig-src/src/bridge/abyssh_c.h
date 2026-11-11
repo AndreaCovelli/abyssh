@@ -25,5 +25,6 @@
 
 // Built into libssh2 from src/vendor/libssh2/ssh2ext.c.
 int ssh2ext_discard_global_replies(LIBSSH2_SESSION *session);
+int ssh2ext_channel_setenv_noreply(LIBSSH2_CHANNEL *channel, const char *varname, unsigned int varname_len, const char *value, unsigned int value_len);
 
 #include "abyssh_jni_internal.h"

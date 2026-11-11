@@ -337,9 +337,12 @@ fn queryAuthMethods(session: *NativeSshSession, ssh_session: *c.LIBSSH2_SESSION,
     }
 }
 
+/// Sets an environment variable on the shell `channel` will start. The request asks for
+/// no reply, so it costs no round trip, and a server that doesn't accept the variable
+/// (OpenSSH accepts only the ones its AcceptEnv lists) ignores it.
 fn trySetChannelEnv(session: *NativeSshSession, channel: *c.LIBSSH2_CHANNEL, name: []const u8, value: []const u8) void {
     while (true) {
-        const rc = c.libssh2_channel_setenv_ex(
+        const rc = c.ssh2ext_channel_setenv_noreply(
             channel,
             name.ptr,
             @intCast(name.len),
@@ -348,7 +351,7 @@ fn trySetChannelEnv(session: *NativeSshSession, channel: *c.LIBSSH2_CHANNEL, nam
         );
         if (rc == 0) return;
         if (rc != c.LIBSSH2_ERROR_EAGAIN) {
-            logInfo("Ignoring rejected channel-setenv {s} rc={}", .{ name, rc });
+            logInfo("Ignoring failed channel-setenv {s} rc={}", .{ name, rc });
             return;
         }
         if (!waitSocket(session, setup_wait_timeout_ms)) {
@@ -1316,9 +1319,8 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
             return c.JNI_FALSE;
         }
     }
-    // PTY negotiation already conveys TERM. Extra env vars are best-effort
-    // because many OpenSSH servers reject channel-setenv unless AcceptEnv
-    // explicitly allows them.
+    // PTY negotiation already conveys TERM. The others reach only servers whose AcceptEnv
+    // lists them.
     trySetChannelEnv(session, channel.?, "COLORTERM", "truecolor");
     trySetChannelEnv(session, channel.?, "TERM_PROGRAM", "ghostty");
     trySetChannelEnv(session, channel.?, "TERM_PROGRAM_VERSION", "1");

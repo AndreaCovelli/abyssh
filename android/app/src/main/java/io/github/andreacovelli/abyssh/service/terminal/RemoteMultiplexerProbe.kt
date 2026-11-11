@@ -18,6 +18,7 @@ import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSessi
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxControlCommands
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyPolicy
 import io.github.andreacovelli.abyssh.service.ssh.NativeSshService
+import io.github.andreacovelli.abyssh.service.ssh.SshLogin
 import java.util.concurrent.CopyOnWriteArraySet
 
 private const val COMMAND_TIMEOUT_MS = 20_000L
@@ -29,14 +30,16 @@ private const val EXIT_NO_MARKER = 125
 private val EXIT_MARKER = Regex("(?:^|\\n)ABYSSH_EXIT:(\\d+)\\s*$")
 
 /**
- * Runs multiplexer commands on a host, each over its own short-lived SSH exec channel:
- * whether the multiplexer is installed, which sessions it has, and which one a tab should
- * attach to. The calls block, so run them off the main thread. A multiplexer found in the
- * last few minutes, per [availabilityCache], isn't checked again.
+ * Runs multiplexer commands on a host, each over its own SSH exec channel: whether the
+ * multiplexer is installed, which sessions it has, and which one a tab should attach to.
+ * A login that ran a command waits in [idleLogins] for the next command or the tab. The
+ * calls block, so run them off the main thread. A multiplexer found in the last few
+ * minutes, per [availabilityCache], isn't checked again.
  */
 internal class RemoteMultiplexerProbe(
     private val hostKeyPolicy: HostKeyPolicy,
     private val availabilityCache: MultiplexerAvailabilityCache = MultiplexerAvailabilityCache.shared,
+    private val idleLogins: IdleSshLogins<SshLogin> = IdleSshLogins.shared,
 ) {
     private val running = CopyOnWriteArraySet<RunningCommand>()
 
@@ -132,15 +135,24 @@ internal class RemoteMultiplexerProbe(
         return reusable ?: multiplexer.defaultSessionName(remoteSessions, localSessionNames)
     }
 
+    /**
+     * Runs [command] over an idle login to [spec]'s host, or a new one, and keeps the login
+     * in [idleLogins] once the command has finished, for the tab or the command after it.
+     */
     private fun runCommand(spec: TabSpec, command: String): MultiplexerCommandResult =
         NativeSshService(hostKeyPolicy = hostKeyPolicy).use { ssh ->
             val running = RunningCommand(ssh)
             this.running += running
             try {
-                ssh.connect(spec)
+                val opened = ssh.openReusing(idleLogins.take(spec), connect = {
+                    ssh.connect(spec)
+                    running.throwIfCancelled()
+                }) { ssh.openExec(withExitEnvelope(command)) }
                 running.throwIfCancelled()
-                if (ssh.openExec(withExitEnvelope(command))) {
-                    readExecOutput(running)
+                if (opened) {
+                    readExecOutput(running).also { result ->
+                        if (result.exitCode != EXIT_TIMED_OUT) ssh.release()?.let { idleLogins.park(spec, it) }
+                    }
                 } else {
                     MultiplexerCommandResult(EXIT_NO_CHANNEL, "", "Remote server did not open an exec channel")
                 }
