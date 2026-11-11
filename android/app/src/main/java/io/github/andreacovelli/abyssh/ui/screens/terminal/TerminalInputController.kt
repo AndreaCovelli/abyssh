@@ -207,15 +207,22 @@ internal class TerminalInputController(
     }
 
     private fun onText(text: String) {
-        when {
-            text.isEmpty() -> Unit
-            abysshKeys.handleText(text) -> Unit
-            tmuxPrefix.handleText(text, modifierState.terminalMods()) -> spendModifiers()
+        val reachedTerminalAsTyped = when {
+            text.isEmpty() -> true
+            abysshKeys.handleText(text) -> false
+            tmuxPrefix.handleText(text, modifierState.terminalMods()) -> {
+                spendModifiers()
+                false
+            }
             isCopyShortcut(text, modifierState, hasSelectedText) -> {
                 spendModifiers()
                 copySelection()
+                false
             }
-            isPasteShortcut(text, modifierState, ctrlVPastes) -> pasteClipboard(applyModifiers = false)
+            isPasteShortcut(text, modifierState, ctrlVPastes) -> {
+                pasteClipboard(applyModifiers = false)
+                false
+            }
             else -> {
                 clearSelection()
                 // A modifier held for one key applies to the first character of a word the keyboard commits.
@@ -224,8 +231,12 @@ internal class TerminalInputController(
                 val firstEnd = text.offsetByCodePoints(0, 1)
                 input.sendText(text.substring(0, firstEnd), held)
                 if (firstEnd < text.length) input.sendText(text.substring(firstEnd), modifierState)
+                !held.hasActiveModifiers()
             }
         }
+        // The keyboard edits its words by offsets into the text it typed, so text the
+        // shell didn't get as typed must leave the keyboard's copy too.
+        if (!reachedTerminalAsTyped) inputView?.forgetImeText()
     }
 
     private fun onKey(key: Int, codepoint: Int, mods: Int, action: Int, charCode: Int) {
