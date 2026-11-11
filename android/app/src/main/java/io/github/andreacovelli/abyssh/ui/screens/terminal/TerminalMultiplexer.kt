@@ -98,11 +98,8 @@ class TerminalMultiplexer internal constructor(
         if (duplicateInFlight) return
         // A host in tmux control mode gets a new window in its session, which opens as a tab.
         if (sessionRepository.openTmuxWindow(spec)) return
-        // A host that asks which session to use shows its sessions instead of creating one.
-        if (spec.chooseSessionOnConnect) {
-            open(spec.withNewSession(), leaveOnCancel = false)
-            return
-        }
+        // A new tab is a new session even on a host that asks which session to use: that
+        // choice is for connecting, and the sessions panel attaches to an existing one.
         duplicateInFlight = true
         _state.update { it.copy(duplicateLoading = true) }
         val duplicateSpec = spec.withNewSession()
