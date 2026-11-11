@@ -15,11 +15,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -89,7 +90,8 @@ private data class TabRowState(
  *
  * Full-screen overlay listing all active sessions with host/profile name,
  * status, optional terminal title, user@host, PWD.  Each row exposes
- * labeled duplicate and close actions. [multiplexerPanel] draws below the list.
+ * labeled duplicate and close actions. [multiplexerPanel] draws below the list, and the
+ * whole panel scrolls when it is taller than the screen.
  */
 @Composable
 fun TerminalTabManager(
@@ -104,7 +106,7 @@ fun TerminalTabManager(
     onAddTab: () -> Unit,
     onDismiss: () -> Unit,
     shortcuts: AbysshKeyBindings? = null,
-    multiplexerPanel: @Composable ColumnScope.() -> Unit = {},
+    multiplexerPanel: @Composable () -> Unit = {},
 ) {
     val colors = AbyssColors.current
     val maxIndex = (tabs.size - 1).coerceAtLeast(0)
@@ -152,7 +154,7 @@ fun TerminalTabManager(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .windowInsetsPadding(WindowInsets.safeDrawing)
-                    .padding(top = 56.dp, start = 16.dp, end = 16.dp)
+                    .padding(top = 56.dp, start = 16.dp, end = 16.dp, bottom = 16.dp)
                     .fillMaxWidth()
                     .clip(MaterialTheme.shapes.large)
                     .background(colors.surface)
@@ -161,7 +163,9 @@ fun TerminalTabManager(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {},
-                    ),
+                    )
+                    // The tab list scrolls first, then the panel, so the sessions below stay in reach.
+                    .verticalScroll(rememberScrollState()),
             ) {
                 TabManagerHeader(sessionCount = tabs.size)
                 val addAndDismiss = {

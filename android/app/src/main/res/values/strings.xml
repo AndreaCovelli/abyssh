@@ -223,7 +223,6 @@
     <string name="command_previous_prompt_description">Scroll to the previous shell prompt</string>
     <string name="command_next_prompt">Next prompt</string>
     <string name="command_next_prompt_description">Scroll to the next shell prompt</string>
-    <string name="tmux_window_actions">tmux window</string>
     <string name="tmux_window_name">Window name</string>
     <string name="command_split_right">Split right</string>
     <string name="command_split_right_description">Split the tmux pane, with the new one on the right</string>

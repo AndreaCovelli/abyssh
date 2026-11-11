@@ -54,7 +54,7 @@ private const val AUTO_SCROLL_MAX_ROWS = 8
 
 private const val LONG_PRESS_SLOP_FACTOR = 1.5f
 
-/** A drag counts as vertical when it moves this much more vertically than sideways. */
+/** A swipe scrolls when, past the slop, it moved this much more vertically than sideways. */
 private const val VERTICAL_INTENT_RATIO = 1.2f
 
 /** The longest run of taps that means something: a triple tap selects a line. */
@@ -443,6 +443,10 @@ internal class TerminalCanvasGestures(
             private set
         private var dragMode = DragMode.None
         private var dragRemainder = 0f
+
+        // Whether the swipe scrolls, decided once it passes the slop from its whole motion.
+        // Judging each move on its own dropped the rows of slow or slanted swipes.
+        private var verticalSwipe: Boolean? = null
         private var startPinchDistance: Float? = null
         private var anchorFontSp = 0f
         private var lastSentSp = 0f
@@ -652,10 +656,12 @@ internal class TerminalCanvasGestures(
             stopAutoScroll()
             lastPointerPos = change.position
             velocity.addPosition(change.uptimeMillis, pos)
-            val dragX = pos.x - previous.x
-            val dragY = pos.y - previous.y
-            if (abs(dragY) > abs(dragX) * VERTICAL_INTENT_RATIO) dragRemainder += dragY / current.cell.height
-            if (didDragGesture && abs(dragRemainder) >= 1f) {
+            if (didDragGesture && verticalSwipe == null) {
+                val moved = pos - current.toSnapshot(down.position)
+                verticalSwipe = abs(moved.y) > abs(moved.x) * VERTICAL_INTENT_RATIO
+            }
+            if (verticalSwipe != false) dragRemainder += (pos.y - previous.y) / current.cell.height
+            if (verticalSwipe == true && abs(dragRemainder) >= 1f) {
                 val delta = dragRemainder.toInt()
                 dragRemainder -= delta
                 didScroll = true
