@@ -2,6 +2,7 @@ package io.github.andreacovelli.abyssh.service.terminal
 
 import android.graphics.Bitmap
 import android.util.Log
+import io.github.andreacovelli.abyssh.model.EchoPredictionMode
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,7 +41,8 @@ internal fun GhosttyBridge.versionOrNull(): String? =
  * One session's Ghostty terminal: its native handle, size, and colors, and the snapshots
  * it publishes to [state] at most once a frame. Every call must run on the session
  * thread, [dispatcher]. [scrollbackLimitBytes] is read each time a terminal is created,
- * and [snapshotIntervalMs], the length of that frame, each time a snapshot is due.
+ * [snapshotIntervalMs], the length of that frame, each time a snapshot is due, and
+ * [echoPredictionMode] each time one is published or a key is typed.
  */
 internal class TerminalEmulator(
     val bridge: GhosttyBridge,
@@ -53,6 +55,7 @@ internal class TerminalEmulator(
     // Runs after each update to [state], as when a tmux pane's terminal feeds its window's view.
     private val onPublished: () -> Unit = {},
     private val snapshotIntervalMs: () -> Long = { DEFAULT_SNAPSHOT_INTERVAL_MS },
+    private val echoPredictionMode: () -> EchoPredictionMode = { EchoPredictionMode.Off },
 ) {
     var handle: Long = 0L
         private set
@@ -64,6 +67,23 @@ internal class TerminalEmulator(
     private var lastSnapshotAtMs = 0L
     private var snapshotScheduled = false
     private var syncHoldTimeout: Job? = null
+
+    /** What the user types, drawn before the host echoes it, for the connections that turn it on. */
+    val echoPredictions = EchoPredictions(
+        scope = scope,
+        dispatcher = dispatcher,
+        mode = echoPredictionMode,
+        isShown = { isOpen && viewers.isShown },
+        currentScreen = {
+            if (snapshotScheduled) requestSnapshot(force = true)
+            lastSnapshot.takeIf { isOpen }
+        },
+        publish = { snapshot ->
+            state.update { it.copy(snapshot = snapshot) }
+            onPublished()
+        },
+        refresh = { requestSnapshot(force = true) },
+    )
 
     private val animationFrames = AnimationFrames(
         scope = scope,
@@ -103,6 +123,7 @@ internal class TerminalEmulator(
     }
 
     fun destroy() {
+        echoPredictions.forget(publish = false)
         animationFrames.cancel()
         viewers.cancel()
         syncHoldTimeout?.cancel()
@@ -260,12 +281,13 @@ internal class TerminalEmulator(
                     .copy(scrolledBack = rowsAboveBottom() > 0, alternateScreen = isAlternateScreen())
             }
             lastSnapshot = snapshot
+            val published = echoPredictions.onSnapshot(snapshot)
             val bellCount = pollMetadata()
             // Includes the StateFlow equality check, which compares only the rows that changed.
             traceSection("Terminal.publishSnapshot") {
                 state.update {
                     it.copy(
-                        snapshot = snapshot,
+                        snapshot = published,
                         title = title,
                         pwd = pwd,
                         bellCount = bellCount,

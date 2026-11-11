@@ -2,11 +2,12 @@ package io.github.andreacovelli.abyssh.data.repository
 
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import io.github.andreacovelli.abyssh.model.EchoPredictionMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** What the terminal asks of the on-screen keyboard. */
+/** What the terminal asks of the on-screen keyboard, and whether it shows typing before the echo. */
 class KeyboardSettings internal constructor(private val prefs: SharedPreferences) {
 
     private val _disableAutocorrect = MutableStateFlow(prefs.getBoolean(KEY_DISABLE_AUTOCORRECT, true))
@@ -30,8 +31,19 @@ class KeyboardSettings internal constructor(private val prefs: SharedPreferences
         _swipeTyping.value = enabled
     }
 
+    private val _echoPrediction = MutableStateFlow(EchoPredictionMode.fromName(prefs.getString(KEY_ECHO_PREDICTION, null)))
+
+    /** When SSH and tmux control mode tabs draw typed text before the host echoes it. */
+    val echoPrediction: StateFlow<EchoPredictionMode> = _echoPrediction.asStateFlow()
+
+    fun setEchoPrediction(mode: EchoPredictionMode) {
+        prefs.edit { putString(KEY_ECHO_PREDICTION, mode.name) }
+        _echoPrediction.value = mode
+    }
+
     private companion object {
         const val KEY_DISABLE_AUTOCORRECT = "disable_autocorrect"
         const val KEY_SWIPE_TYPING = "swipe_typing"
+        const val KEY_ECHO_PREDICTION = "echo_prediction"
     }
 }

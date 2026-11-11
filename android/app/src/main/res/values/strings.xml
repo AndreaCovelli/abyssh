@@ -203,6 +203,11 @@
     <string name="settings_disable_autocorrect_hint">For keyboards that ignore the standard hint; may disable glide typing</string>
     <string name="settings_swipe_typing">Swipe typing</string>
     <string name="settings_swipe_typing_hint">Type words by sliding across the keyboard. Turns on the keyboard\'s suggestions and autocorrect</string>
+    <string name="settings_echo_prediction">Predictive echo</string>
+    <string name="settings_echo_prediction_hint">On SSH and tmux control mode tabs, show what you type at the end of a line before the server echoes it, dimmed until it does. Auto turns on once the echo takes 30 ms or more</string>
+    <string name="settings_echo_prediction_off">Off</string>
+    <string name="settings_echo_prediction_auto">Auto</string>
+    <string name="settings_echo_prediction_always">Always</string>
     <string name="settings_app_commands_sheet_hint">Empty key hides the command. Overrides custom action shortcut keys.</string>
     <string name="settings_shortcut_key_placeholder">Key</string>
     <string name="command_tabs">Tabs</string>

@@ -1,5 +1,6 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import io.github.andreacovelli.abyssh.model.EchoPredictionMode
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
 import io.github.andreacovelli.abyssh.service.network.NetworkWaiter
 
@@ -24,6 +25,8 @@ class TerminalSessionEngine internal constructor(
     scrollbackLimitBytes: () -> Int,
     // The shortest time between two snapshots, read each time one is due.
     snapshotIntervalMs: () -> Long = { DEFAULT_SNAPSHOT_INTERVAL_MS },
+    // Whether typed text shows before its echo, read each time a key is typed or a snapshot published.
+    echoPredictionMode: () -> EchoPredictionMode = { EchoPredictionMode.Off },
     private val scope: CoroutineScope,
     localShellService: NativeLocalShellService,
     hostKeyStore: HostKeyStore,
@@ -76,7 +79,8 @@ class TerminalSessionEngine internal constructor(
                         scrollbackLimitBytes,
                         onPublished,
                         snapshotIntervalMs,
-                    )
+                        echoPredictionMode,
+                    ).apply { echoPredictions.enabled = true }
                 },
                 control = tmuxControl,
                 windowId = tmuxWindowId,
@@ -96,6 +100,7 @@ class TerminalSessionEngine internal constructor(
                 publishClipboardText,
                 scrollbackLimitBytes,
                 snapshotIntervalMs = snapshotIntervalMs,
+                echoPredictionMode = echoPredictionMode,
             )
             val transports = SessionTransports(hostKeys, localShellService, thread)
             connection =
@@ -134,14 +139,14 @@ class TerminalSessionEngine internal constructor(
 
     /** [consumedMods] are the modifiers that went into typing [utf8], such as Shift for `:`. */
     fun writeKey(key: Int, codepoint: Int, mods: Int, action: Int, utf8: String? = null, consumedMods: Int = 0) =
-        sendEncoded { handle -> bridge.nativeEncodeKey(handle, key, codepoint, mods, action, utf8, consumedMods) }
+        sendEncoded(typed = true) { handle -> bridge.nativeEncodeKey(handle, key, codepoint, mods, action, utf8, consumedMods) }
 
     fun writeText(text: String) {
-        if (text.isNotEmpty()) sendEncoded { text.toByteArray(Charsets.UTF_8) }
+        if (text.isNotEmpty()) sendEncoded(typed = true) { text.toByteArray(Charsets.UTF_8) }
     }
 
     fun writePaste(text: String) {
-        if (text.isNotEmpty()) sendEncoded { handle -> bridge.nativeEncodePaste(handle, text) }
+        if (text.isNotEmpty()) sendEncoded(typed = true) { handle -> bridge.nativeEncodePaste(handle, text) }
     }
 
     fun sendFocusEvent(focused: Boolean) = sendEncoded { handle -> bridge.nativeEncodeFocus(handle, focused) }
@@ -322,12 +327,17 @@ class TerminalSessionEngine internal constructor(
         thread.close()
     }
 
-    /** Sends the bytes [encode] returns for the terminal keys go to, when there are any. */
-    private fun sendEncoded(encode: (handle: Long) -> ByteArray?) {
+    /**
+     * Sends the bytes [encode] returns for the terminal keys go to, when there are any.
+     * When the user [typed] them, the terminal may show their echo before it arrives.
+     */
+    private fun sendEncoded(typed: Boolean = false, encode: (handle: Long) -> ByteArray?) {
         scope.launch(dispatcher) {
             val target = terminals.focused() ?: return@launch
             val encoded = encode(target.emulator.handle)
-            if (encoded != null && encoded.isNotEmpty()) target.send(encoded)
+            if (encoded == null || encoded.isEmpty()) return@launch
+            if (typed) target.emulator.echoPredictions.onInput(encoded)
+            target.send(encoded)
         }
     }
 

@@ -249,6 +249,7 @@ internal class SessionConnection(
         remoteGeometry = null
         transports.closeAll()
         emulator.open()
+        emulator.echoPredictions.enabled = spec.transport == Transport.SSH || spec.transport == Transport.TailscaleSSH
         if (spec.transport == Transport.Mosh) moshStaleness.reset()
         val geometry = emulator.geometry
         transports.open(spec, geometry)
