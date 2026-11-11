@@ -1,10 +1,13 @@
 package io.github.andreacovelli.abyssh.service.ssh
 
+import android.util.Log
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.AuthMethod
 import io.github.andreacovelli.abyssh.model.UiText
 import io.github.andreacovelli.abyssh.model.UiTextException
 import java.io.Closeable
+
+private const val TAG = "NativeSshService"
 
 /** The most input that may wait for a channel that takes nothing. */
 internal const val MAX_PENDING_WRITE_BYTES = 16L * 1024 * 1024
@@ -156,6 +159,66 @@ class NativeSshService(
      * thread, and does nothing when no connection was started.
      */
     fun cancelConnect() = cancellation.cancel()
+
+    /**
+     * Hands the logged-in connection over for another service to [adopt], and leaves this
+     * one closed. Returns null, and keeps the connection, when nothing is connected or the
+     * connection was cancelled. Call it only while no channel has input waiting to go out.
+     */
+    fun release(): SshLogin? {
+        if (handle == 0L || cancellation.requested) return null
+        pendingWrites.clear()
+        pendingOffset = 0
+        pendingBytes = 0
+        // The adopting service sets its own keepalive and cancel descriptor.
+        bridge.nativeSetKeepalive(handle, 0, KEEPALIVE_MAX_MISSED)
+        bridge.nativeSetCancelFd(handle, -1)
+        val login = SshLogin(bridge, handle)
+        handle = 0L
+        cancellation.close()
+        return login
+    }
+
+    /**
+     * Takes over [login] in place of [connect], closing any connection this service had.
+     * Returns false when another service took [login] first or it was closed.
+     */
+    fun adopt(login: SshLogin): Boolean {
+        close()
+        val adopted = login.take()
+        if (adopted == 0L) return false
+        handle = adopted
+        bridge.nativeSetCancelFd(handle, cancellation.open())
+        return true
+    }
+
+    /**
+     * Opens a channel with [open] over [login], a connection that another service logged
+     * in, so the channel costs no new login. When [login] is null, was taken, or [open]
+     * fails on it, as it does once the connection has dropped, logs in again with
+     * [connect] and opens over that. [open] returns whether the channel opened, or throws.
+     */
+    // A connection that dropped while it was idle fails in whatever way libssh2 reports
+    // first; any of them means logging in again.
+    @Suppress("TooGenericExceptionCaught")
+    fun openReusing(login: SshLogin?, connect: () -> Unit, open: () -> Boolean): Boolean {
+        if (login != null && adopt(login)) {
+            val failure =
+                try {
+                    if (open()) return true
+                    null
+                } catch (e: Exception) {
+                    e
+                }
+            if (cancellation.requested) {
+                if (failure != null) throw failure
+                return false
+            }
+            Log.i(TAG, "Idle SSH login didn't open a channel; logging in again")
+        }
+        connect()
+        return open()
+    }
 
 
     /** The numeric IP address the connection reached, such as `192.0.2.7` or `fe80::1%3`. */

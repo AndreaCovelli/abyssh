@@ -412,9 +412,10 @@ class TerminalSessionRepository private constructor(application: Application) {
         openTab(spec)
     }
 
-    /** Closes every tab and any multiplexer check that is waiting on the user. */
+    /** Closes every tab, any multiplexer check that is waiting on the user, and the logins the checks left idle. */
     fun disconnect() {
         preflight.cancel()
+        IdleSshLogins.shared.closeAll()
         tmuxTabs.endAll()
         val tabs = _tabs.value
         _tabs.value = emptyList()

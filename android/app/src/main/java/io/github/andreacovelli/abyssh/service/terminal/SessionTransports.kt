@@ -7,6 +7,7 @@ import io.github.andreacovelli.abyssh.service.mosh.NativeMoshService
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyPolicy
 import io.github.andreacovelli.abyssh.service.ssh.NativeSshService
 import io.github.andreacovelli.abyssh.service.ssh.RemoteTerm
+import io.github.andreacovelli.abyssh.service.ssh.SshLogin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
@@ -70,6 +71,7 @@ internal class SessionTransports(
     hostKeyPolicy: HostKeyPolicy,
     val localShell: NativeLocalShellService,
     private val outputWaiter: OutputWaiter,
+    private val idleLogins: IdleSshLogins<SshLogin> = IdleSshLogins.shared,
 ) {
     val ssh = NativeSshService(hostKeyPolicy = hostKeyPolicy)
     private val pacer = ReadPacer()
@@ -171,16 +173,19 @@ internal class SessionTransports(
         if (!outputWaiter.awaitOutput(wait)) pacer.idle()
     }
 
+    /** Opens the shell, or the multiplexer, over the login a multiplexer check left idle or a new one. */
     private fun openSsh(spec: TabSpec, geometry: TerminalGeometry) {
         check(ssh.isAvailable()) { "Native SSH unavailable" }
-        ssh.connect(spec)
         val width = geometry.ptyWidthPx
         val height = geometry.ptyHeightPx
         val startupCommand = spec.multiplexerStartupCommand()?.trim().orEmpty()
-        if (startupCommand.isNotEmpty()) {
-            ssh.openExecPty(startupCommand, geometry.cols, geometry.rows, width, height, RemoteTerm.SSH)
-        } else {
-            ssh.openShell(geometry.cols, geometry.rows, width, height, RemoteTerm.SSH)
+        ssh.openReusing(idleLogins.take(spec), connect = { ssh.connect(spec) }) {
+            if (startupCommand.isNotEmpty()) {
+                ssh.openExecPty(startupCommand, geometry.cols, geometry.rows, width, height, RemoteTerm.SSH)
+            } else {
+                ssh.openShell(geometry.cols, geometry.rows, width, height, RemoteTerm.SSH)
+            }
+            true
         }
         ssh.setKeepalive(spec.keepaliveIntervalSeconds)
     }
