@@ -7,7 +7,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** What the terminal asks of the on-screen keyboard, and whether it shows typing before the echo. */
+/**
+ * What the terminal asks of the on-screen keyboard, whether the app shows it beside a
+ * physical keyboard, and whether the terminal shows typing before the echo.
+ */
 class KeyboardSettings internal constructor(private val prefs: SharedPreferences) {
 
     private val _disableAutocorrect = MutableStateFlow(prefs.getBoolean(KEY_DISABLE_AUTOCORRECT, true))
@@ -41,9 +44,24 @@ class KeyboardSettings internal constructor(private val prefs: SharedPreferences
         _echoPrediction.value = mode
     }
 
+    private val _showWithPhysicalKeyboard = MutableStateFlow(prefs.getBoolean(KEY_SHOW_WITH_PHYSICAL_KEYBOARD, false))
+
+    /**
+     * Whether text fields and the terminal still use the on-screen keyboard while a
+     * physical keyboard is connected. Off, they give it nothing to type into, so it shows
+     * neither its strip nor the bubbles it opens for typing on the physical keyboard.
+     */
+    val showWithPhysicalKeyboard: StateFlow<Boolean> = _showWithPhysicalKeyboard.asStateFlow()
+
+    fun setShowWithPhysicalKeyboard(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_SHOW_WITH_PHYSICAL_KEYBOARD, enabled) }
+        _showWithPhysicalKeyboard.value = enabled
+    }
+
     private companion object {
         const val KEY_DISABLE_AUTOCORRECT = "disable_autocorrect"
         const val KEY_SWIPE_TYPING = "swipe_typing"
         const val KEY_ECHO_PREDICTION = "echo_prediction"
+        const val KEY_SHOW_WITH_PHYSICAL_KEYBOARD = "show_keyboard_with_physical_keyboard"
     }
 }

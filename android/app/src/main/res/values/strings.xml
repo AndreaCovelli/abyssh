@@ -480,6 +480,9 @@
     <string name="settings_category_terminal">Terminal</string>
     <string name="settings_category_keys">Keys</string>
     <string name="settings_section_security">Security</string>
+    <string name="settings_section_keyboard">Keyboard</string>
+    <string name="settings_show_keyboard_with_physical">On-screen keyboard with a physical keyboard</string>
+    <string name="settings_show_keyboard_with_physical_hint">While a physical keyboard is connected, text fields and the terminal still open the on-screen keyboard. Off, it stays away, with no strip or bubbles as you type</string>
     <string name="settings_lock_app">Lock app on open</string>
     <string name="settings_lock_app_verify_title">Verify to turn on app lock</string>
     <string name="settings_lock_app_unavailable">Set up a screen lock on this device to use app lock.</string>

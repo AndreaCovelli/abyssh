@@ -202,6 +202,15 @@ private fun GeneralSettings(
     Spacer(modifier = Modifier.height(16.dp))
     FontSelectorSection(currentFont = state.fontName, onFontSelected = actions::setFont)
     Spacer(modifier = Modifier.height(16.dp))
+    AbyssSectionHeader(stringResource(R.string.settings_section_keyboard))
+    Spacer(modifier = Modifier.height(12.dp))
+    SettingSwitchCard(
+        title = stringResource(R.string.settings_show_keyboard_with_physical),
+        hint = stringResource(R.string.settings_show_keyboard_with_physical_hint),
+        checked = state.showKeyboardWithPhysicalKeyboard,
+        onCheckedChange = actions.physicalKeyboard::setShowOnScreenKeyboard,
+    )
+    Spacer(modifier = Modifier.height(16.dp))
     AbyssSectionHeader(stringResource(R.string.settings_section_security))
     Spacer(modifier = Modifier.height(12.dp))
     Row(

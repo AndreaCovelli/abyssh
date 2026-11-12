@@ -25,6 +25,7 @@ data class GeneralSettingsState(
     val fontName: String = SettingsRepository.DEFAULT_FONT,
     val appLockEnabled: Boolean = false,
     val requireAuthOnConnect: Boolean = false,
+    val showKeyboardWithPhysicalKeyboard: Boolean = false,
 )
 
 /** Terminal behavior settings shown on the Terminal tab. */
@@ -72,6 +73,12 @@ interface GeneralSettingsActions {
     fun setFont(name: String)
     fun setAppLockEnabled(enabled: Boolean)
     fun setRequireAuthOnConnect(enabled: Boolean)
+    val physicalKeyboard: PhysicalKeyboardActions
+}
+
+/** How text fields and the terminal behave while a physical keyboard is connected. */
+interface PhysicalKeyboardActions {
+    fun setShowOnScreenKeyboard(enabled: Boolean)
 }
 
 interface TerminalSettingsActions {
@@ -137,7 +144,7 @@ class SettingsViewModel(
                 settings.tmuxPrefixKeys,
                 settings.keepScreenAwake, settings.matchDisplayRefreshRate, settings.hideScreenContents,
                 settings.keyboard.disableAutocorrect, settings.keyboard.swipeTyping, settings.keyboard.echoPrediction,
-                settings.volumeKeysAsArrows,
+                settings.volumeKeysAsArrows, settings.keyboard.showWithPhysicalKeyboard,
                 settings.text.wordSeparators, settings.text.ligatures, settings.text.cursorBlink,
             ),
         ) { currentState() }
@@ -152,6 +159,7 @@ class SettingsViewModel(
             fontName = settings.fontName.value,
             appLockEnabled = settings.appLockEnabled.value,
             requireAuthOnConnect = settings.requireAuthOnConnect.value,
+            showKeyboardWithPhysicalKeyboard = settings.keyboard.showWithPhysicalKeyboard.value,
         ),
         terminal = TerminalSettingsState(
             fontSize = settings.terminalFontSize.value,
@@ -206,6 +214,10 @@ class SettingsViewModel(
     override fun setDisableAutocorrect(enabled: Boolean) = settings.keyboard.setDisableAutocorrect(enabled)
     override fun setSwipeTyping(enabled: Boolean) = settings.keyboard.setSwipeTyping(enabled)
     override fun setEchoPrediction(mode: EchoPredictionMode) = settings.keyboard.setEchoPrediction(mode)
+
+    override val physicalKeyboard = object : PhysicalKeyboardActions {
+        override fun setShowOnScreenKeyboard(enabled: Boolean) = settings.keyboard.setShowWithPhysicalKeyboard(enabled)
+    }
 
     override val keys = object : TerminalKeyActions {
         override fun setCtrlVPastes(enabled: Boolean) = settings.setCtrlVPastes(enabled)
