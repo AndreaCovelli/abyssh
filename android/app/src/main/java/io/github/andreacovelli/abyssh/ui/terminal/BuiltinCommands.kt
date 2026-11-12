@@ -36,6 +36,7 @@ enum class BuiltinCommand(
     SplitDown("tmux_split_down", R.string.command_split_down, R.string.command_split_down_description, 'b'),
     ClosePane("tmux_close_pane", R.string.command_close_pane, R.string.command_close_pane_description, 'x'),
     ZoomPane("tmux_zoom_pane", R.string.command_zoom_pane, R.string.command_zoom_pane_description, 'm'),
+    KillWindow("tmux_kill_window", R.string.command_kill_window, R.string.command_kill_window_description, 'w'),
     RenameWindow("tmux_rename_window", R.string.command_rename_window, R.string.command_rename_window_description, 'r'),
     PreviousWindow(
         "tmux_previous_window",

@@ -237,6 +237,10 @@
     <string name="command_close_pane_description">Kill the active tmux pane</string>
     <string name="command_zoom_pane">Zoom pane</string>
     <string name="command_zoom_pane_description">Show the active tmux pane across its whole window, or put it back</string>
+    <string name="command_kill_window">Kill window</string>
+    <string name="command_kill_window_description">Kill the tmux window and the programs running in it</string>
+    <string name="tmux_kill_window_title">Kill window %1$s?</string>
+    <string name="tmux_kill_window_body">This closes the tmux window and the programs running in it.</string>
     <string name="command_rename_window">Rename window</string>
     <string name="command_rename_window_description">Rename the tmux window</string>
     <string name="command_previous_window">Previous window</string>

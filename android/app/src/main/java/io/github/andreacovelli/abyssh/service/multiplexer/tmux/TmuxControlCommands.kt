@@ -121,6 +121,8 @@ internal object TmuxControlCommands {
 
     fun parseNewWindow(lines: List<String>): Int? = lines.firstNotNullOfOrNull { windowId(it.trim()) }
 
+    fun killWindow(windowId: Int): String = "kill-window -t @$windowId"
+
     /**
      * Names window [windowId] [name]. Line breaks and other control characters become
      * spaces, so the name stays one command, and `#` is doubled, since tmux expands

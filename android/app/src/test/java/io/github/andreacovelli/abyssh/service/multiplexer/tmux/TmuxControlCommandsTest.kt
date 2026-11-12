@@ -21,6 +21,7 @@ class TmuxControlCommandsTest {
     @Test
     fun windowCommandsTargetTheWindowId() {
         assertEquals("select-window -t @7", TmuxControlCommands.selectWindow(7))
+        assertEquals("kill-window -t @7", TmuxControlCommands.killWindow(7))
     }
 
     @Test

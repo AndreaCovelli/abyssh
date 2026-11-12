@@ -30,6 +30,12 @@ internal class TmuxWindowControl(
     /** Zooms the active pane of [view]'s window to fill it, or unzooms it. */
     fun toggleZoom(view: TmuxPaneView) = onActivePane(view, TmuxControlCommands::toggleZoom)
 
+    /** Kills [view]'s window and the programs running in it; tmux then closes its tab. */
+    fun killWindow(view: TmuxPaneView) = onThread {
+        val (windowId, _) = windows.windowOf(view) ?: return@onThread
+        if (attached()) link.send(TmuxControlCommands.killWindow(windowId))
+    }
+
     fun renameWindow(view: TmuxPaneView, name: String) = onThread {
         val (windowId, _) = windows.windowOf(view) ?: return@onThread
         if (attached() && name.isNotBlank()) link.send(TmuxControlCommands.renameWindow(windowId, name))

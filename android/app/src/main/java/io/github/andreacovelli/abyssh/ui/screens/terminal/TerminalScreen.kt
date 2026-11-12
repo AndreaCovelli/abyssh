@@ -80,6 +80,7 @@ fun TerminalScreen(
     MultiplexerSessionChooserDialog(vm, onBack)
     TerminalEndSessionDialog(endSession, tabs)
     TmuxRenameWindowDialog(vm, overlay)
+    TmuxKillWindowDialog(vm, overlay)
     hostKeyPrompt?.let { prompt -> HostKeyDialog(prompt, vm::onHostKeyDecision) }
 
     val onNewConnection = { launcher.openAnotherSession(activeTab?.spec?.hostId ?: route.hostId) }

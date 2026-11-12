@@ -166,7 +166,7 @@ internal fun rememberAbysshKeys(
                 vm.files.selectPane(ConnectionTab.Terminal)
                 overlay.showTabSheet = false
             },
-            // Asks first when closing would end a live tmux window, as the tab strip does.
+            // Closes the tab as the tab strip does; a tmux window's tab detaches its session.
             BuiltinCommand.Close to { vm.activeTabId.value?.let(endSession::requestClose) },
             BuiltinCommand.Actions to { repo.setShowCustomActionsFab(!settings.showCustomActionsFab) },
             BuiltinCommand.Settings to { openSettings() },

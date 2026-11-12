@@ -12,6 +12,9 @@ sealed interface TmuxWindowAction {
 
     data object ZoomPane : TmuxWindowAction
 
+    /** Kills the window and the programs running in it. */
+    data object KillWindow : TmuxWindowAction
+
     data object NextWindow : TmuxWindowAction
 
     data object PreviousWindow : TmuxWindowAction

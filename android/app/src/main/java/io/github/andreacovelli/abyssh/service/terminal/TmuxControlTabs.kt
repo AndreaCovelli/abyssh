@@ -93,6 +93,7 @@ internal class TmuxControlTabs(
             TmuxWindowAction.SplitDown -> control.windowControl.splitPane(view, sideBySide = false)
             TmuxWindowAction.ClosePane -> control.windowControl.killPane(view)
             TmuxWindowAction.ZoomPane -> control.windowControl.toggleZoom(view)
+            TmuxWindowAction.KillWindow -> control.windowControl.killWindow(view)
             is TmuxWindowAction.Rename -> control.windowControl.renameWindow(view, action.name)
             TmuxWindowAction.NextWindow -> selectAdjacentWindow(control, tab, 1)
             TmuxWindowAction.PreviousWindow -> selectAdjacentWindow(control, tab, -1)
