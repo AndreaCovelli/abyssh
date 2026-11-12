@@ -93,6 +93,7 @@ internal class TmuxPrefixKeys(private val onCommand: (TmuxPrefixCommand) -> Unit
         '"'.code -> TmuxPrefixCommand.Run(TmuxWindowAction.SplitDown)
         'x'.code -> TmuxPrefixCommand.Run(TmuxWindowAction.ClosePane)
         'z'.code -> TmuxPrefixCommand.Run(TmuxWindowAction.ZoomPane)
+        '&'.code -> TmuxPrefixCommand.Run(TmuxWindowAction.KillWindow)
         'n'.code -> TmuxPrefixCommand.Run(TmuxWindowAction.NextWindow)
         'p'.code -> TmuxPrefixCommand.Run(TmuxWindowAction.PreviousWindow)
         'd'.code -> TmuxPrefixCommand.Run(TmuxWindowAction.Detach)

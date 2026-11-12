@@ -21,6 +21,7 @@ import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
 import io.github.andreacovelli.abyssh.ui.terminal.AbysshKeyBindings
 import io.github.andreacovelli.abyssh.ui.terminal.BuiltinCommand
 import io.github.andreacovelli.abyssh.ui.terminal.ResolvedAccessoryEntry
+import io.github.andreacovelli.abyssh.ui.terminal.ShortcutMenuLayout
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalAccessoryLayoutStore
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCustomKeyGroup
 import io.github.andreacovelli.abyssh.ui.theme.GhosttyTheme
@@ -37,6 +38,7 @@ internal data class TerminalUiSettings(
     val singleRowAccessoryBar: Boolean,
     val customKeyGroups: List<TerminalCustomKeyGroup>,
     val builtinShortcuts: Map<String, String>,
+    val shortcutMenuLayout: ShortcutMenuLayout,
     val keepScreenAwake: Boolean,
     val disableAutocorrect: Boolean,
     val swipeTyping: Boolean,
@@ -66,6 +68,7 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
     val singleRow by repo.accessoryBarSingleRow.collectAsStateWithLifecycle()
     val customKeyGroups by repo.terminalCustomKeyGroups.collectAsStateWithLifecycle()
     val builtinShortcuts by repo.builtinShortcuts.collectAsStateWithLifecycle()
+    val shortcutMenuLayout by repo.shortcutMenu.layout.collectAsStateWithLifecycle()
     val keepScreenAwake by repo.keepScreenAwake.collectAsStateWithLifecycle()
     val disableAutocorrect by repo.keyboard.disableAutocorrect.collectAsStateWithLifecycle()
     val swipeTyping by repo.keyboard.swipeTyping.collectAsStateWithLifecycle()
@@ -83,6 +86,7 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
         singleRowAccessoryBar = singleRow,
         customKeyGroups = customKeyGroups,
         builtinShortcuts = builtinShortcuts,
+        shortcutMenuLayout = shortcutMenuLayout,
         keepScreenAwake = keepScreenAwake,
         disableAutocorrect = disableAutocorrect,
         swipeTyping = swipeTyping,
@@ -136,7 +140,7 @@ internal fun KeepFocusOnMouseClickEffect() {
     }
 }
 
-/** The shortcut prefix bindings: builtin commands first, then the custom actions. */
+/** The shortcut prefix bindings: builtin commands and custom actions, in the menu's order. */
 @Composable
 internal fun rememberAbysshKeys(
     vm: TerminalViewModel,
@@ -156,6 +160,7 @@ internal fun rememberAbysshKeys(
         settings.tabMode,
         settings.customKeyGroups,
         settings.builtinShortcuts,
+        settings.shortcutMenuLayout,
         settings.showCustomActionsFab,
         showsTmuxWindow,
     ) {
@@ -166,7 +171,7 @@ internal fun rememberAbysshKeys(
                 vm.files.selectPane(ConnectionTab.Terminal)
                 overlay.showTabSheet = false
             },
-            // Asks first when closing would end a live tmux window, as the tab strip does.
+            // Closes the tab as the tab strip does; a tmux window's tab detaches its session.
             BuiltinCommand.Close to { vm.activeTabId.value?.let(endSession::requestClose) },
             BuiltinCommand.Actions to { repo.setShowCustomActionsFab(!settings.showCustomActionsFab) },
             BuiltinCommand.Settings to { openSettings() },
@@ -188,6 +193,7 @@ internal fun rememberAbysshKeys(
             customGroups = settings.customKeyGroups,
             onDispatchAction = vm.input::sendCustomAction,
             onSelectAmongActions = { actions -> overlay.fabFilteredActions = actions },
+            menuLayout = settings.shortcutMenuLayout,
         )
     }
 }

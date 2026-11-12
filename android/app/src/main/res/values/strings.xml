@@ -173,7 +173,7 @@
         <item quantity="one">%1$d shortcut</item>
         <item quantity="other">%1$d shortcuts</item>
     </plurals>
-    <string name="settings_app_commands_hint">Assign shortcut keys for builtin commands.</string>
+    <string name="settings_app_commands_hint">Assign shortcut keys to builtin commands, and order the shortcut menu or hide its items.</string>
     <string name="settings_local_shell">Enable local shell</string>
     <string name="settings_local_shell_hint">Show the Android local shell shortcut on the server list</string>
     <string name="settings_remote_clipboard">Allow remote clipboard writes</string>
@@ -189,7 +189,7 @@
     <string name="settings_word_separators_hint">Characters that end a word when you double-tap to select one, besides spaces.</string>
     <string name="settings_ctrl_v_pastes">Ctrl+V pastes</string>
     <string name="settings_tmux_prefix_keys">tmux prefix keys</string>
-    <string name="settings_tmux_prefix_keys_hint" formatted="false">In a tmux window\'s tab, Ctrl+B and then a tmux key run its command: c new window, % split right, \" split down, x close pane, z zoom pane, n and p next and previous window, d detach, and , rename window. Ctrl+B twice sends Ctrl+B. When this is off, Ctrl+B reaches the shell.</string>
+    <string name="settings_tmux_prefix_keys_hint" formatted="false">In a tmux window\'s tab, Ctrl+B and then a tmux key run its command: c new window, % split right, \" split down, x close pane, z zoom pane, &amp; kill window (after asking), n and p next and previous window, d detach, and , rename window. Ctrl+B twice sends Ctrl+B. When this is off, Ctrl+B reaches the shell.</string>
     <string name="settings_ctrl_v_pastes_hint">Ctrl+Shift+V always pastes. Turn this off to send Ctrl+V to the shell (e.g. vim block select).</string>
     <string name="settings_volume_keys_as_arrows">Volume keys as arrows</string>
     <string name="settings_volume_keys_as_arrows_hint">Volume Up and Down send the Up and Down arrows while the terminal has focus.</string>
@@ -208,7 +208,9 @@
     <string name="settings_echo_prediction_off">Off</string>
     <string name="settings_echo_prediction_auto">Auto</string>
     <string name="settings_echo_prediction_always">Always</string>
-    <string name="settings_app_commands_sheet_hint">Empty key hides the command. Overrides custom action shortcut keys.</string>
+    <string name="settings_app_commands_sheet_hint">Long-press a handle and drag to order the shortcut menu. The switch hides an item from the menu and keeps its key. An empty key unbinds the command, and a command\'s key overrides a custom action\'s.</string>
+    <string name="settings_menu_custom_action">Custom action</string>
+    <string name="settings_menu_show">Show %1$s in the menu</string>
     <string name="settings_shortcut_key_placeholder">Key</string>
     <string name="command_tabs">Tabs</string>
     <string name="command_tabs_description">Show tab manager</string>
@@ -237,6 +239,10 @@
     <string name="command_close_pane_description">Kill the active tmux pane</string>
     <string name="command_zoom_pane">Zoom pane</string>
     <string name="command_zoom_pane_description">Show the active tmux pane across its whole window, or put it back</string>
+    <string name="command_kill_window">Kill window</string>
+    <string name="command_kill_window_description">Kill the tmux window and the programs running in it</string>
+    <string name="tmux_kill_window_title">Kill window %1$s?</string>
+    <string name="tmux_kill_window_body">This closes the tmux window and the programs running in it.</string>
     <string name="command_rename_window">Rename window</string>
     <string name="command_rename_window_description">Rename the tmux window</string>
     <string name="command_previous_window">Previous window</string>
@@ -461,6 +467,8 @@
     <string name="custom_actions_shortcut_label">Shortcut</string>
     <string name="custom_actions_shortcut_placeholder">Single key for an Abyssh command</string>
     <string name="custom_actions_shortcut_taken">Already used by %1$s</string>
+    <string name="custom_actions_show_in_menu">Show in the shortcut menu</string>
+    <string name="custom_actions_show_in_menu_hint">When hidden, the shortcut still runs it. Actions with the same shortcut share one item.</string>
     <string name="custom_actions_no_modifiers">No modifiers</string>
     <string name="custom_actions_modifiers">Modifiers: %1$s</string>
     <string name="custom_actions_value_label">Value</string>
@@ -568,12 +576,10 @@
     <string name="accessory_modifier_locked">Locked</string>
     <string name="accessory_open_files">Open files</string>
     <string name="accessory_zoom">Zoom</string>
-    <string name="terminal_kill_window">Kill window</string>
     <string name="terminal_disconnect">Disconnect</string>
     <string name="terminal_end_shell">End shell</string>
     <string name="terminal_end_session_title">End %1$s?</string>
     <string name="terminal_end_session_body">This closes the session. To leave it running, go back instead.</string>
-    <string name="terminal_end_session_body_tmux_window">This closes the tmux window and the programs running in it.</string>
     <string name="terminal_end_session_body_tmux_detach">This detaches from tmux. The tmux session keeps running.</string>
     <string name="files_go_up">Parent folder</string>
     <string name="files_sort">Sort</string>

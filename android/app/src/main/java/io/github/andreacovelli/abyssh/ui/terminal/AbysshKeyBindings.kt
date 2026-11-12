@@ -55,12 +55,12 @@ class AbysshKeyBindings(
          * Merge builtin-command shortcuts and per-custom-action shortcuts into a single
          * set of hints and key handlers.
          *
-         * Builtin commands are processed first, in [BuiltinCommand] enum order, so their
-         * ordering is deterministic and they take priority over custom actions bound to
-         * the same key. The first binding for a key wins (settings already prevents
-         * builtin duplicates). Custom actions that collide with a builtin key are
-         * dropped. When several custom actions share one key, the handler defers to
-         * [onSelectAmongActions] instead of dispatching directly.
+         * Builtin commands take priority over custom actions bound to the same key, and
+         * the first builtin for a key wins (settings already prevents builtin
+         * duplicates). Custom actions that collide with a builtin key are dropped. When
+         * several custom actions share one key, the handler defers to
+         * [onSelectAmongActions] instead of dispatching directly. The hints follow
+         * [menuLayout]'s order and leave out the items it hides; their keys still run.
          *
          * The actual side effects live in the caller-supplied lambdas
          * ([builtinCommandHandlers], [onDispatchAction], [onSelectAmongActions]) so this
@@ -72,39 +72,29 @@ class AbysshKeyBindings(
             customGroups: List<TerminalCustomKeyGroup>,
             onDispatchAction: (TerminalCustomAction) -> Unit,
             onSelectAmongActions: (List<TerminalCustomAction>) -> Unit,
+            menuLayout: ShortcutMenuLayout = ShortcutMenuLayout(),
         ): AbysshKeyBindings {
-            val builtinHints = mutableListOf<AbysshHint>()
-            val builtinHandlers = mutableMapOf<Char, () -> Unit>()
+            val items = LinkedHashMap<String, AbysshHint>()
+            val handlers = mutableMapOf<Char, () -> Unit>()
             BuiltinCommand.entries.forEach { command ->
                 val shortcut = builtinShortcuts[command.id]?.takeIf { it.isNotEmpty() }
                     ?: return@forEach
                 val handler = builtinCommandHandlers[command] ?: return@forEach
                 val keyChar = shortcut.first().lowercaseChar()
-                if (keyChar in builtinHandlers) return@forEach
-                builtinHandlers[keyChar] = handler
-                builtinHints += AbysshHint(key = keyChar, description = UiText.Resource(command.label))
+                if (keyChar in handlers) return@forEach
+                handlers[keyChar] = handler
+                items[ShortcutMenuLayout.builtinId(command)] =
+                    AbysshHint(key = keyChar, description = UiText.Resource(command.label))
             }
 
-            val builtinKeys = builtinHandlers.keys.toSet()
-            val customHints = mutableListOf<AbysshHint>()
-            val customHandlers = mutableMapOf<Char, () -> Unit>()
-            val seenShortcuts = builtinKeys.toMutableSet()
-            val shortcutActionsMap = mutableMapOf<Char, MutableList<TerminalCustomAction>>()
-            customGroups.forEach { group ->
-                group.actions.forEach { action ->
-                    val shortcut = action.shortcut?.takeIf { it.length == 1 } ?: return@forEach
-                    val keyChar = shortcut.first().lowercaseChar()
-                    if (keyChar in builtinKeys) return@forEach
-                    shortcutActionsMap.getOrPut(keyChar) { mutableListOf() }.add(action)
-                }
-            }
-            shortcutActionsMap.forEach { (keyChar, actions) ->
-                if (!seenShortcuts.add(keyChar)) return@forEach
-                customHints += AbysshHint(
+            val builtinKeys = handlers.keys.toSet()
+            customActionsByShortcut(customGroups).forEach { (keyChar, actions) ->
+                if (keyChar in builtinKeys) return@forEach
+                items[ShortcutMenuLayout.customId(keyChar)] = AbysshHint(
                     key = keyChar,
                     description = UiText.Raw(actions.joinToString(", ") { it.label }),
                 )
-                customHandlers[keyChar] = {
+                handlers[keyChar] = {
                     if (actions.size == 1) {
                         onDispatchAction(actions.first())
                     } else {
@@ -113,10 +103,10 @@ class AbysshKeyBindings(
                 }
             }
 
-            return AbysshKeyBindings(
-                hints = builtinHints + customHints,
-                handlers = builtinHandlers + customHandlers,
-            )
+            val hints = menuLayout.arrange(items.keys.toList())
+                .filter(menuLayout::isShown)
+                .mapNotNull(items::get)
+            return AbysshKeyBindings(hints = hints, handlers = handlers)
         }
     }
 }

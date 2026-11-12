@@ -5,11 +5,17 @@ import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionRepository
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalSearchState
 import io.github.andreacovelli.abyssh.ui.terminal.parseSearchMatches
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -26,6 +32,7 @@ class TerminalSearchController internal constructor(
     /** The open search bar, or null when it's closed. */
     val state: StateFlow<TerminalSearchState?> = _state.asStateFlow()
     private var searchJob: Job? = null
+    private var refreshJob: Job? = null
 
     private val _tappedLink = MutableStateFlow<String?>(null)
 
@@ -36,12 +43,37 @@ class TerminalSearchController internal constructor(
         get() = sessionRepository.activeTab.value?.engine
 
     fun open() {
-        if (_state.value == null) _state.value = TerminalSearchState()
+        if (_state.value != null) return
+        _state.value = TerminalSearchState()
+        refreshJob = scope.launch { refreshOnRedraw() }
     }
 
     fun close() {
         searchJob?.cancel()
+        refreshJob?.cancel()
+        refreshJob = null
         _state.value = null
+    }
+
+    /**
+     * Searches again whenever the active terminal's screen changes, at most every
+     * [REFRESH_INTERVAL_MS], so the highlights follow text that a program such as nvim
+     * redraws in place, where the matches found before no longer point at it.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun refreshOnRedraw() {
+        sessionRepository.activeTab
+            .flatMapLatest { tab -> tab?.sessionState?.map { it.snapshot } ?: flowOf(null) }
+            .distinctUntilChanged { old, new -> old === new }
+            .conflate()
+            .collect {
+                val query = _state.value?.query
+                if (!query.isNullOrEmpty()) {
+                    val found = parseSearchMatches(activeEngine?.search(query) ?: IntArray(0))
+                    _state.update { state -> if (state?.query == query) state.withMatches(found) else state }
+                }
+                delay(REFRESH_INTERVAL_MS)
+            }
     }
 
     fun setQuery(query: String) {
@@ -118,5 +150,6 @@ class TerminalSearchController internal constructor(
 
     private companion object {
         const val SEARCH_TYPING_DELAY_MS = 150L
+        const val REFRESH_INTERVAL_MS = 250L
     }
 }

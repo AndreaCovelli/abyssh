@@ -10,6 +10,7 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssFontOption
 import io.github.andreacovelli.abyssh.ui.theme.ThemeMode
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCustomActionStore
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCustomKeyGroup
+import io.github.andreacovelli.abyssh.ui.terminal.customActionsByShortcut
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +34,9 @@ class SettingsRepository(context: Context) {
 
     /** The server list's sort order and collapsed sections. */
     val hostList = HostListSettings(prefs)
+
+    /** The order of the ⚡ shortcut menu and the items it hides. */
+    val shortcutMenu = ShortcutMenuSettings(prefs)
 
 
     private val _fontName = MutableStateFlow(
@@ -123,6 +127,7 @@ class SettingsRepository(context: Context) {
         val serialized = TerminalCustomActionStore.serialize(normalized)
         prefs.edit { putString(KEY_TERMINAL_CUSTOM_ACTIONS, serialized) }
         _terminalCustomKeyGroups.value = normalized
+        shortcutMenu.keepCustomKeys(customActionsByShortcut(normalized).keys)
     }
 
     fun setShowCustomActionsFab(visible: Boolean) {

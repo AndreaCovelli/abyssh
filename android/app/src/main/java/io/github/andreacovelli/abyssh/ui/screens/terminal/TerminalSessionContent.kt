@@ -498,7 +498,7 @@ private fun TerminalFooter(
             abysshKeyActive = host.abysshKeys.isPrefixActive,
             onOpenFiles = { files.open() },
             onEndSession = host.onEndSession,
-            endSessionLabel = activeTab?.let { stringResource(endTabLabel(it, tabs)) },
+            endSessionLabel = activeTab?.let { stringResource(endTabLabel(it)) },
             useSingleRow = host.settings.singleRowAccessoryBar,
             modifier = Modifier.padding(bottom = 2.dp),
         )

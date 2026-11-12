@@ -41,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalDensity
@@ -52,10 +53,12 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssButton
 import io.github.andreacovelli.abyssh.ui.components.AbyssSheetHeader
 import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssCard
+import io.github.andreacovelli.abyssh.ui.components.AbyssSwitch
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
 import io.github.andreacovelli.abyssh.ui.terminal.BuiltinCommand
 import io.github.andreacovelli.abyssh.ui.terminal.CustomActionModifier
+import io.github.andreacovelli.abyssh.ui.terminal.ShortcutMenuLayout
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCustomAction
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCustomActionStore
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCustomKeyGroup
@@ -94,6 +97,12 @@ private class CustomActionForm {
     var value by mutableStateOf("")
     var shortcut by mutableStateOf("")
 
+    /** Whether the ⚡ menu lists the actions on [shortcut]; hidden, its key still runs them. */
+    var showInMenu by mutableStateOf(true)
+
+    /** The key [shortcut] gives the action in the ⚡ menu, or null without one. */
+    val menuKey: Char? get() = shortcut.trim().singleOrNull()?.lowercaseChar()
+
     val baseValue: String get() = value.trim().trimEnd('\n', '\r')
 
     fun beginAdd() {
@@ -101,12 +110,13 @@ private class CustomActionForm {
         visible = true
     }
 
-    fun beginEdit(item: CustomKeyValueDraft) {
+    fun beginEdit(item: CustomKeyValueDraft, menuLayout: ShortcutMenuLayout) {
         val decoded = decodeCustomActionValue(item.value)
         key = item.key
         modifiers = decoded.modifiers
         value = decoded.text
         shortcut = item.shortcut ?: ""
+        showInMenu = menuKey?.let { menuLayout.isShown(ShortcutMenuLayout.customId(it)) } ?: true
         showModifiers = true
         visible = true
         editingId = item.id
@@ -117,6 +127,7 @@ private class CustomActionForm {
         key = ""
         value = ""
         shortcut = ""
+        showInMenu = true
         modifiers = emptySet()
         showModifiers = false
         editingId = null
@@ -142,7 +153,9 @@ internal fun TerminalCustomActionsEditorSheet(
     visible: Boolean,
     initialGroups: List<TerminalCustomKeyGroup>,
     builtinShortcuts: Map<String, String>,
+    menuLayout: ShortcutMenuLayout,
     onSave: (List<TerminalCustomKeyGroup>) -> Unit,
+    onMenuKeyShown: (key: Char, shown: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     AbyssBottomSheet(visible = visible, onDismiss = onDismiss, heightFraction = 0.88f, verticalSpacing = 12.dp) {
@@ -152,7 +165,9 @@ internal fun TerminalCustomActionsEditorSheet(
         CustomActionsEditor(
             initialGroups = initialGroups,
             builtinShortcuts = builtinShortcuts,
+            menuLayout = menuLayout,
             onSave = onSave,
+            onMenuKeyShown = onMenuKeyShown,
             modifier = Modifier.weight(1f),
         )
     }
@@ -166,7 +181,9 @@ internal fun TerminalCustomActionsEditorSheet(
 private fun CustomActionsEditor(
     initialGroups: List<TerminalCustomKeyGroup>,
     builtinShortcuts: Map<String, String>,
+    menuLayout: ShortcutMenuLayout,
     onSave: (List<TerminalCustomKeyGroup>) -> Unit,
+    onMenuKeyShown: (key: Char, shown: Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val typography = AbyssTypography.current
@@ -194,6 +211,8 @@ private fun CustomActionsEditor(
                 draftItems + item
             },
         )
+        // After the save, which forgets the menu's keys that no action uses any more.
+        form.menuKey?.let { onMenuKeyShown(it, form.showInMenu) }
         form.clear()
     }
 
@@ -212,7 +231,7 @@ private fun CustomActionsEditor(
                 draftItems.movedInGroups(index, direction, CustomKeyValueDraft::groupKey)?.let(::persist)
             },
             onEdit = { item ->
-                if (form.editingId == item.id) form.clear() else form.beginEdit(item)
+                if (form.editingId == item.id) form.clear() else form.beginEdit(item, menuLayout)
             },
             onDelete = { id ->
                 persist(draftItems.filterNot { it.id == id })
@@ -344,6 +363,8 @@ private fun CustomActionFormCard(
                     style = typography.labelSmall,
                     color = colors.error,
                 )
+            } else if (form.menuKey != null) {
+                ShowInMenuRow(form)
             }
             ModifierPicker(form = form)
             AbyssTextField(
@@ -391,6 +412,33 @@ private fun CustomActionFormCard(
                 }
             }
         }
+    }
+}
+
+/** The switch that shows or hides the action's key in the ⚡ menu. */
+@Composable
+private fun ShowInMenuRow(form: CustomActionForm) {
+    val colors = AbyssColors.current
+    val typography = AbyssTypography.current
+    val label = stringResource(R.string.custom_actions_show_in_menu)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            AbyssText(label, style = typography.label)
+            AbyssText(
+                stringResource(R.string.custom_actions_show_in_menu_hint),
+                style = typography.labelSmall,
+                color = colors.textMuted,
+            )
+        }
+        AbyssSwitch(
+            checked = form.showInMenu,
+            onCheckedChange = { form.showInMenu = it },
+            modifier = Modifier.semantics { contentDescription = label },
+        )
     }
 }
 

@@ -35,6 +35,9 @@ internal class TerminalOverlayState {
 
     /** The name the rename dialog starts from while it asks for a tmux window's new name, else null. */
     var renamingWindow by mutableStateOf<String?>(null)
+
+    /** The name of the tmux window the kill prompt asks about while it shows, else null. */
+    var killingWindow by mutableStateOf<String?>(null)
     val zoom = TerminalZoomState()
 
     val isSwitcherOpen: Boolean get() = showTabSheet || showTabManager

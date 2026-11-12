@@ -11,8 +11,11 @@ import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
 import io.github.andreacovelli.abyssh.service.terminal.TmuxWindowAction
 import io.github.andreacovelli.abyssh.ui.components.AbyssDialog
+import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
 import io.github.andreacovelli.abyssh.ui.terminal.BuiltinCommand
+import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
+import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
 /** What a tmux window command does: an action tmux runs, or null to rename the window, which asks for a name first. */
 internal val TmuxWindowCommands: List<Pair<BuiltinCommand, TmuxWindowAction?>> = listOf(
@@ -20,6 +23,7 @@ internal val TmuxWindowCommands: List<Pair<BuiltinCommand, TmuxWindowAction?>> =
     BuiltinCommand.SplitDown to TmuxWindowAction.SplitDown,
     BuiltinCommand.ClosePane to TmuxWindowAction.ClosePane,
     BuiltinCommand.ZoomPane to TmuxWindowAction.ZoomPane,
+    BuiltinCommand.KillWindow to TmuxWindowAction.KillWindow,
     BuiltinCommand.RenameWindow to null,
     BuiltinCommand.PreviousWindow to TmuxWindowAction.PreviousWindow,
     BuiltinCommand.NextWindow to TmuxWindowAction.NextWindow,
@@ -30,12 +34,16 @@ internal val TmuxWindowCommands: List<Pair<BuiltinCommand, TmuxWindowAction?>> =
 internal fun tmuxCommandHandlers(vm: TerminalViewModel, overlay: TerminalOverlayState): Map<BuiltinCommand, () -> Unit> =
     TmuxWindowCommands.associate { (command, action) -> command to { runTmuxCommand(vm, overlay, action) } }
 
-/** Runs [action] on the active tab's tmux window, or asks for a new name when [action] is null. */
+/**
+ * Runs [action] on the active tab's tmux window. Asks for a new name when [action] is
+ * null, and asks first before killing the window, which ends the programs in it.
+ */
 internal fun runTmuxCommand(vm: TerminalViewModel, overlay: TerminalOverlayState, action: TmuxWindowAction?) {
-    if (action != null) {
-        vm.runTmuxAction(action)
-    } else {
-        overlay.renamingWindow = vm.activeTab.value?.let(::tmuxWindowName).orEmpty()
+    val name = vm.activeTab.value?.let(::tmuxWindowName).orEmpty()
+    when (action) {
+        null -> overlay.renamingWindow = name
+        TmuxWindowAction.KillWindow -> overlay.killingWindow = name
+        else -> vm.runTmuxAction(action)
     }
 }
 
@@ -65,6 +73,28 @@ internal fun TmuxRenameWindowDialog(vm: TerminalViewModel, overlay: TerminalOver
             label = stringResource(R.string.tmux_window_name),
             singleLine = true,
             keyboardActions = KeyboardActions(onDone = { confirm() }),
+        )
+    }
+}
+
+/** Asks before killing the active tmux window while [TerminalOverlayState.killingWindow] is set. */
+@Composable
+internal fun TmuxKillWindowDialog(vm: TerminalViewModel, overlay: TerminalOverlayState) {
+    val name = overlay.killingWindow ?: return
+    val close = { overlay.killingWindow = null }
+    AbyssDialog(
+        title = stringResource(R.string.tmux_kill_window_title, name),
+        confirmLabel = stringResource(R.string.command_kill_window),
+        onConfirm = {
+            vm.runTmuxAction(TmuxWindowAction.KillWindow)
+            close()
+        },
+        onDismiss = close,
+    ) {
+        AbyssText(
+            stringResource(R.string.tmux_kill_window_body),
+            style = AbyssTypography.current.body,
+            color = AbyssColors.current.textSecondary,
         )
     }
 }

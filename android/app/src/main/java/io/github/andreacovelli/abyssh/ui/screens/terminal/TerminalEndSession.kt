@@ -34,13 +34,11 @@ internal class TerminalEndSession(private val vm: TerminalViewModel) {
     }
 
     /**
-     * Closes tab [id] from a tab list. Only a tab whose close kills a live tmux window, and
-     * the programs in it, asks first; any other tab closes at once, as tabs do.
+     * Closes tab [id] from a tab list at once, as tabs do. A tmux control-mode tab detaches
+     * its session, which closes the session's other tabs and leaves its windows running.
      */
     fun requestClose(id: String) {
-        val tabs = vm.tabs.value
-        val tab = tabs.firstOrNull { it.id == id } ?: return
-        if (tab.sessionState.value.status.isLive && closeKillsTmuxWindow(tab, tabs)) pendingTabId = id else vm.endTab(id)
+        vm.endTab(id)
     }
 
     fun confirm() {
@@ -67,35 +65,27 @@ internal fun TerminalEndSessionDialog(endSession: TerminalEndSession, tabs: List
     if (tab == null) return
     AbyssDialog(
         title = stringResource(R.string.terminal_end_session_title, tab.sessionLabel(tabs)),
-        confirmLabel = stringResource(endTabLabel(tab, tabs)),
+        confirmLabel = stringResource(endTabLabel(tab)),
         onConfirm = endSession::confirm,
         onDismiss = endSession::dismiss,
     ) {
         AbyssText(
-            stringResource(endSessionBody(tab, tabs)),
+            stringResource(endSessionBody(tab)),
             style = AbyssTypography.current.body,
             color = AbyssColors.current.textSecondary,
         )
     }
 }
 
-/** The action that ending live [tab] takes: it kills its tmux window, detaches from tmux, disconnects, or ends the local shell. */
+/** The action that ending live [tab] takes: it detaches from tmux, disconnects, or ends the local shell. */
 @StringRes
-internal fun endTabLabel(tab: TabSession, tabs: List<TabSession>): Int = when {
-    tab.engine.tmuxControl != null -> if (closeKillsTmuxWindow(tab, tabs)) R.string.terminal_kill_window else R.string.action_detach
+internal fun endTabLabel(tab: TabSession): Int = when {
+    tab.engine.tmuxControl != null -> R.string.action_detach
     tab.spec.transport == Transport.LocalShell -> R.string.terminal_end_shell
     else -> R.string.terminal_disconnect
 }
 
-/** What ending [tab] does: a tmux window's tab ends the window, or detaches when it is the session's last tab. */
-private fun endSessionBody(tab: TabSession, tabs: List<TabSession>): Int = when {
-    tab.engine.tmuxControl == null -> R.string.terminal_end_session_body
-    closeKillsTmuxWindow(tab, tabs) -> R.string.terminal_end_session_body_tmux_window
-    else -> R.string.terminal_end_session_body_tmux_detach
-}
-
-/** Whether closing [tab] ends its tmux window: it shows one, and isn't its session's last tab, which detaches. */
-private fun closeKillsTmuxWindow(tab: TabSession, tabs: List<TabSession>): Boolean {
-    val control = tab.engine.tmuxControl ?: return false
-    return tabs.any { it !== tab && it.engine.tmuxControl === control }
-}
+/** What ending [tab] does: a tmux control-mode tab detaches, and any other closes its session. */
+@StringRes
+private fun endSessionBody(tab: TabSession): Int =
+    if (tab.engine.tmuxControl != null) R.string.terminal_end_session_body_tmux_detach else R.string.terminal_end_session_body

@@ -8,6 +8,7 @@ import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.model.EchoPredictionMode
 import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalTabMode
 import io.github.andreacovelli.abyssh.ui.terminal.DEFAULT_WORD_SEPARATORS
+import io.github.andreacovelli.abyssh.ui.terminal.ShortcutMenuLayout
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCustomKeyGroup
 import io.github.andreacovelli.abyssh.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.SharingStarted
@@ -36,6 +37,7 @@ data class TerminalSettingsState(
     val customKeyGroups: List<TerminalCustomKeyGroup> = emptyList(),
     val showCustomActionsFab: Boolean = false,
     val builtinShortcuts: Map<String, String> = emptyMap(),
+    val shortcutMenuLayout: ShortcutMenuLayout = ShortcutMenuLayout(),
     val localShellEnabled: Boolean = true,
     val remoteClipboardWriteEnabled: Boolean = true,
     val ctrlVPastes: Boolean = true,
@@ -91,6 +93,13 @@ interface TerminalSettingsActions {
     fun setEchoPrediction(mode: EchoPredictionMode)
     val keys: TerminalKeyActions
     val text: TerminalTextActions
+    val menu: ShortcutMenuActions
+}
+
+/** The order of the ⚡ shortcut menu and the items it hides. */
+interface ShortcutMenuActions {
+    fun setLayout(layout: ShortcutMenuLayout)
+    fun setCustomKeyShown(key: Char, shown: Boolean)
 }
 
 /** How the terminal reads keys from a hardware keyboard. */
@@ -123,6 +132,7 @@ class SettingsViewModel(
                 settings.terminalScrollbackMb,
                 settings.terminalTabMode, settings.accessoryLayoutIds, settings.accessoryBarSingleRow,
                 settings.terminalCustomKeyGroups, settings.showCustomActionsFab, settings.builtinShortcuts,
+                settings.shortcutMenu.layout,
                 settings.localShellEnabled, settings.remoteClipboardWriteEnabled, settings.ctrlVPastes,
                 settings.tmuxPrefixKeys,
                 settings.keepScreenAwake, settings.matchDisplayRefreshRate, settings.hideScreenContents,
@@ -152,6 +162,7 @@ class SettingsViewModel(
             customKeyGroups = settings.terminalCustomKeyGroups.value,
             showCustomActionsFab = settings.showCustomActionsFab.value,
             builtinShortcuts = settings.builtinShortcuts.value,
+            shortcutMenuLayout = settings.shortcutMenu.layout.value,
             localShellEnabled = settings.localShellEnabled.value,
             remoteClipboardWriteEnabled = settings.remoteClipboardWriteEnabled.value,
             ctrlVPastes = settings.ctrlVPastes.value,
@@ -206,6 +217,11 @@ class SettingsViewModel(
         override fun setWordSeparators(value: String) = settings.text.setWordSeparators(value)
         override fun setLigatures(enabled: Boolean) = settings.text.setLigatures(enabled)
         override fun setCursorBlink(enabled: Boolean) = settings.text.setCursorBlink(enabled)
+    }
+
+    override val menu = object : ShortcutMenuActions {
+        override fun setLayout(layout: ShortcutMenuLayout) = settings.shortcutMenu.setLayout(layout)
+        override fun setCustomKeyShown(key: Char, shown: Boolean) = settings.shortcutMenu.setCustomKeyShown(key, shown)
     }
 
     companion object {

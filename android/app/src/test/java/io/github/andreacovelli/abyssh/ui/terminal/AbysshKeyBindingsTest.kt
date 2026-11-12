@@ -68,4 +68,35 @@ class AbysshKeyBindingsTest {
             built.hints(),
         )
     }
+
+    @Test
+    fun `build follows the menu layout and leaves hidden items out while their keys still run`() {
+        val ran = mutableListOf<String>()
+        val built = AbysshKeyBindings.build(
+            builtinShortcuts = mapOf(BuiltinCommand.Tabs.id to "t", BuiltinCommand.Search.id to "f"),
+            builtinCommandHandlers = mapOf(
+                BuiltinCommand.Tabs to { ran += "tabs" },
+                BuiltinCommand.Search to { ran += "search" },
+            ),
+            customGroups = listOf(
+                TerminalCustomKeyGroup(
+                    keyLabel = "Git",
+                    actions = listOf(TerminalCustomAction(label = "Pull", payload = "git pull", shortcut = "g")),
+                ),
+            ),
+            onDispatchAction = { ran += it.label },
+            onSelectAmongActions = {},
+            menuLayout = ShortcutMenuLayout(
+                order = listOf(ShortcutMenuLayout.customId('g'), ShortcutMenuLayout.builtinId(BuiltinCommand.Search)),
+                hidden = setOf(ShortcutMenuLayout.builtinId(BuiltinCommand.Search)),
+            ),
+        )
+
+        // Tabs isn't placed, so it goes first, where it is by default.
+        assertEquals(listOf('t', 'g'), built.hints().map { it.key })
+        assertTrue(built.runShortcut('f'))
+        built.togglePrefix()
+        assertTrue(built.handleText("g"))
+        assertEquals(listOf("search", "Pull"), ran)
+    }
 }

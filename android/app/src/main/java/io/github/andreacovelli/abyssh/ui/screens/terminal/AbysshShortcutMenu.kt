@@ -17,7 +17,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -42,7 +44,8 @@ private val MenuOrigin = TransformOrigin(0f, 1f)
 /**
  * While the shortcut prefix waits for its second key, a menu of the keys it takes.
  * Typing a key or tapping its item runs the command. The menu is as wide as its
- * content, in two columns so it covers less of the terminal.
+ * content, in two columns so it covers less of the terminal, and scrolls when it is
+ * taller than the space it has.
  */
 @Composable
 internal fun AbysshShortcutMenu(keys: AbysshKeyBindings, modifier: Modifier = Modifier) {
@@ -63,8 +66,9 @@ internal fun AbysshShortcutMenu(keys: AbysshKeyBindings, modifier: Modifier = Mo
             val hints = keys.hints()
             // Column by column, so screen readers read the items in command order.
             val columns = hints.chunked(((hints.size + 1) / 2).coerceAtLeast(1))
+            // Scrolls when the space above the keyboard is shorter than the menu.
             Row(
-                modifier = Modifier.padding(6.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState()).padding(6.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 columns.forEach { column ->

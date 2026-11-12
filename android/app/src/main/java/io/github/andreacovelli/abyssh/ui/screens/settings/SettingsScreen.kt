@@ -155,14 +155,19 @@ private fun SettingsSheets(
         visible = openSheet == SettingsSheet.CustomActions,
         initialGroups = terminal.customKeyGroups,
         builtinShortcuts = terminal.builtinShortcuts,
+        menuLayout = terminal.shortcutMenuLayout,
         onSave = actions::setCustomKeyGroups,
+        onMenuKeyShown = actions.menu::setCustomKeyShown,
         onDismiss = onDismiss,
     )
     AbysshCommandsEditorSheet(
         visible = openSheet == SettingsSheet.AppCommands,
         builtinShortcuts = terminal.builtinShortcuts,
-        onSave = {
-            actions.setBuiltinShortcuts(it)
+        customGroups = terminal.customKeyGroups,
+        menuLayout = terminal.shortcutMenuLayout,
+        onSave = { shortcuts, layout ->
+            actions.setBuiltinShortcuts(shortcuts)
+            actions.menu.setLayout(layout)
             onDismiss()
         },
         onDismiss = onDismiss,

@@ -273,19 +273,14 @@ class TerminalSessionRepository private constructor(application: Application) {
     }
 
     /**
-     * Closes tab [id] and ends what it runs. A tmux window's tab kills its window and the
-     * programs in it, unless it is the session's last tab, which detaches and leaves the
-     * session running; the UI asks the user before a kill ([disconnectTabs] never kills).
+     * Closes tab [id] and ends what it runs. A tmux control-mode tab detaches its whole
+     * session instead, as closing a plain tmux tab does: the session's other tabs close
+     * too, and every window keeps running on the server.
      */
     fun endTab(id: String) {
         val tab = _tabs.value.firstOrNull { it.id == id } ?: return
-        if (tmuxTabs.closeNeedsConnection(tab)) {
-            notices.notify(UiText.Resource(R.string.tmux_window_needs_connection))
-            return
-        }
-        val windowId = tab.engine.tmuxWindowId
-        removeTab(tab)
-        tmuxTabs.tabClosed(tab, windowId)
+        val control = tab.engine.tmuxControl
+        if (control != null) tmuxTabs.end(control) else removeTab(tab)
     }
 
     private fun removeTab(tab: TabSession) {
@@ -323,15 +318,9 @@ class TerminalSessionRepository private constructor(application: Application) {
         disconnectTabs(multiplexerSessions.tabsShowing(spec, name).map { it.id })
     }
 
-    /**
-     * Closes tabs [ids] without ending anything on the server. A tmux control-mode tab
-     * detaches its whole session, which closes the session's other tabs too and leaves
-     * every window running; [endTab] would end the tab's window instead.
-     */
+    /** Closes tabs [ids] as [endTab] does, detaching each tmux control session once. */
     fun disconnectTabs(ids: Collection<String>) {
-        val tabs = _tabs.value.filter { it.id in ids }
-        tabs.mapNotNull { it.engine.tmuxControl }.distinct().forEach(tmuxTabs::end)
-        tabs.filter { it.engine.tmuxControl == null }.forEach { endTab(it.id) }
+        ids.forEach(::endTab)
     }
 
     /**
