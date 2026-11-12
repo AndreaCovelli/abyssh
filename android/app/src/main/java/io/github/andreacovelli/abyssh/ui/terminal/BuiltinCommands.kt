@@ -12,8 +12,8 @@ import kotlinx.serialization.json.Json
  *
  * Single source of truth for the command id (persisted), the display label, the
  * settings description, and the default shortcut key. Mirrors the label-carrying enum
- * pattern used by [CustomActionModifier]. Enum order is the order shown in settings and
- * in the shortcut menu.
+ * pattern used by [CustomActionModifier]. Enum order is the default order of the shortcut
+ * menu, which the user can change ([ShortcutMenuLayout]).
  */
 enum class BuiltinCommand(
     val id: String,
@@ -55,7 +55,7 @@ enum class BuiltinCommand(
 
 /**
  * Persistence for builtin-command shortcut keys, stored as a single JSON string
- * (command id -> single key char; empty value = command hidden).
+ * (command id -> single key char; empty value = command unbound).
  *
  * Uses kotlinx.serialization so any key char — including `:`, `,`, `;`, quotes — is
  * safe, mirroring [TerminalCustomActionStore]. The pref key is new on this branch, so

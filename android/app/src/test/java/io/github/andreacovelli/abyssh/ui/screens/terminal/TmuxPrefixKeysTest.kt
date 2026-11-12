@@ -33,6 +33,7 @@ class TmuxPrefixKeysTest {
             '%' to TmuxPrefixCommand.Run(TmuxWindowAction.SplitRight),
             '"' to TmuxPrefixCommand.Run(TmuxWindowAction.SplitDown),
             'x' to TmuxPrefixCommand.Run(TmuxWindowAction.ClosePane),
+            '&' to TmuxPrefixCommand.Run(TmuxWindowAction.KillWindow),
             'z' to TmuxPrefixCommand.Run(TmuxWindowAction.ZoomPane),
             'n' to TmuxPrefixCommand.Run(TmuxWindowAction.NextWindow),
             'p' to TmuxPrefixCommand.Run(TmuxWindowAction.PreviousWindow),
