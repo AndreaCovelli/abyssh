@@ -273,6 +273,21 @@ class TmuxWindowBindingsTest {
     }
 
     @Test
+    fun tabsTakeTheirWindowsNumbersAndFollowARenumbering() {
+        val first = FakeView()
+        val second = FakeView()
+        bindings.attach(first, windowId = null, shown = true)
+        answerWindows(window(4, active = true, pane = 1, index = 4), window(1, active = false, pane = 2, index = 1))
+        bindings.attach(second, windowId = 1, shown = false)
+
+        bindings.listWindows()
+        answerWindows(window(4, active = true, pane = 1, index = 2), window(1, active = false, pane = 2, index = 1))
+        bindings.windowRenamed(4, "editor")
+
+        assertEquals(listOf<Pair<TmuxPaneView, Int>>(first to 4, second to 1, first to 2), tabs.numbers)
+    }
+
+    @Test
     fun forgettingTheWindowsLetsTheTabsTakeWhatTmuxShowsNext() {
         val view = shownWindow()
 
@@ -366,6 +381,12 @@ class TmuxWindowBindingsTest {
         }
 
         val orders = mutableListOf<List<TmuxPaneView>>()
+
+        override fun number(view: TmuxPaneView, number: Int) {
+            numbers += view to number
+        }
+
+        val numbers = mutableListOf<Pair<TmuxPaneView, Int>>()
     }
 
     private class FakeView : TmuxPaneView {

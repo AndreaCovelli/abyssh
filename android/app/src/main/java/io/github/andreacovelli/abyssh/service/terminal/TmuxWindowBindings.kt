@@ -16,6 +16,9 @@ internal interface TmuxWindowTabs {
 
     /** Puts the session's tabs, which show [views], in that order, in the places they hold among the app's tabs. */
     fun order(views: List<TmuxPaneView>)
+
+    /** Gives [view]'s tab [number], the number tmux gives its window. */
+    fun number(view: TmuxPaneView, number: Int)
 }
 
 /** A tab's view, the tmux window it shows, and where that window's panes sit. */
@@ -24,6 +27,9 @@ internal class TmuxWindowBinding(val view: TmuxPaneView, var shown: Boolean) {
     var layout: TmuxWindowLayout? = null
     var activePane: Int? = null
     private var label: String? = null
+
+    // The number the tab was last given, which tmux gave its window.
+    private var number: Int? = null
 
     // The size each pane was last captured at.
     val captured = mutableMapOf<Int, TmuxPaneSize>()
@@ -38,21 +44,25 @@ internal class TmuxWindowBinding(val view: TmuxPaneView, var shown: Boolean) {
 
     fun shows(paneId: Int): Boolean = layout?.pane(paneId) != null
 
-    /** Labels the tab with [window]'s number and name, when they changed. */
-    fun nameAfter(window: TmuxWindow?) {
-        val label = window?.label ?: return
-        if (label == this.label) return
-        this.label = label
-        view.nameWindow(label)
+    /** Labels the tab with [window]'s number and name, and has [tabs] give it that number, when they changed. */
+    fun nameAfter(window: TmuxWindow?, tabs: TmuxWindowTabs) {
+        window ?: return
+        if (window.label != label) {
+            label = window.label
+            view.nameWindow(window.label)
+        }
+        if (window.index != number) {
+            number = window.index
+            tabs.number(view, window.index)
+        }
     }
 }
 
 /**
  * Which tab shows which tmux window, and where the window's panes sit. Keeps the tabs in
  * step with the session's windows: closes tabs whose window is gone, asks [tabs] to
- * open one for each new window, labels and orders them as tmux numbers the windows,
- * and fills each pane in from `capture-pane` when it
- * appears or its size changes. The panes of a quiet tab, and of a tab nothing has shown
+ * open one for each new window, labels, numbers, and orders them as tmux numbers the
+ * windows, and fills each pane in from `capture-pane` when it appears or its size changes. The panes of a quiet tab, and of a tab nothing has shown
  * yet, are paused, so tmux sends nothing for them, and captured once the tab is shown:
  * attaching to a session with many windows downloads only the windows the user looks
  * at. When only a pane's height changes, as when the keyboard shows or hides, its
@@ -208,7 +218,7 @@ internal class TmuxWindowBindings(
     fun windowRenamed(windowId: Int, name: String) {
         val window = windows[windowId] ?: return
         windows = windows + (windowId to window.copy(name = name))
-        bindings.filter { it.windowId == windowId }.forEach { it.nameAfter(windows[it.windowId]) }
+        bindings.filter { it.windowId == windowId }.forEach { it.nameAfter(windows[windowId], tabs) }
     }
 
     /** After a reconnect, every pane is captured again. */
@@ -286,7 +296,7 @@ internal class TmuxWindowBindings(
             opening += window.id
             tabs.open(window.id, select = requested.remove(window.id) || (replacing && window.active))
         }
-        bindings.forEach { it.nameAfter(windows[it.windowId]) }
+        bindings.forEach { it.nameAfter(windows[it.windowId], tabs) }
         orderTabs()
         bindings.forEach { binding -> windows[binding.windowId]?.let { showLayout(binding, it.layout, it.paneId) } }
     }
@@ -294,7 +304,7 @@ internal class TmuxWindowBindings(
     private fun bindTo(binding: TmuxWindowBinding, windowId: Int) {
         binding.windowId = windowId
         binding.view.bindWindow(windowId)
-        binding.nameAfter(windows[windowId])
+        binding.nameAfter(windows[windowId], tabs)
         if (binding.view === focused) selectFocused()
     }
 

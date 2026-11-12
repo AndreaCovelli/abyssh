@@ -91,6 +91,9 @@ internal interface TmuxControlHost {
     /** Puts the tabs that show [views] in that order. */
     fun orderWindowTabs(control: TmuxControlSession, views: List<TmuxPaneView>)
 
+    /** Gives the tab that shows [view] [number], the number tmux gives its window. */
+    fun numberWindowTab(control: TmuxControlSession, view: TmuxPaneView, number: Int)
+
     /**
      * tmux left control mode, because the session ended, another client detached this
      * one, or the server stopped; the session's status says so, and it can attach again.
@@ -172,6 +175,8 @@ internal class TmuxControlSession(
                 override fun select(view: TmuxPaneView) = post { selectWindowTab(this@TmuxControlSession, view) }
 
                 override fun order(views: List<TmuxPaneView>) = post { orderWindowTabs(this@TmuxControlSession, views) }
+
+                override fun number(view: TmuxPaneView, number: Int) = post { numberWindowTab(this@TmuxControlSession, view, number) }
             },
             attached = { attached },
             onThread = ::onThread,
