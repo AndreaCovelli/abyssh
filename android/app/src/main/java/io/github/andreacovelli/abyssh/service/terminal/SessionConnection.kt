@@ -18,7 +18,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -27,11 +26,6 @@ import kotlinx.coroutines.launch
 
 private const val TAG = "TerminalSession"
 private const val MAX_PTY_DRAINS = 8
-
-// The view's size changes on every frame while the keyboard slides in or out, so the far
-// end hears only the size that settles, as tmux control mode does.
-private const val REMOTE_RESIZE_SETTLE_MS = 150L
-private const val REMOTE_RESIZE_RETRY_MS = 500L
 
 /** How a read loop ended. */
 private class ReadOutcome(
@@ -85,11 +79,7 @@ internal class SessionConnection(
     // When the Mosh client last resumed after a network failure.
     private var moshResumedAtMs: Long? = null
 
-    // The view's latest size, and the size the far end was given, or null while no
-    // transport is open. They differ while a resize settles.
-    private var viewGeometry: TerminalGeometry? = null
-    private var remoteGeometry: TerminalGeometry? = null
-    private var remoteResizeJob: Job? = null
+    private val resizer = SessionResize(scope, dispatcher, emulator, transports::resize, ::flushPtyWrites, ::onResizeFailed)
 
     override fun connect(spec: TabSpec, sessionKey: String) {
         // A Retry shouldn't queue behind an attempt that is still waiting on the network.
@@ -130,62 +120,13 @@ internal class SessionConnection(
         spec = null
         scope.launch(dispatcher) {
             stopReadLoop()
-            remoteResizeJob?.cancel()
-            remoteResizeJob = null
-            remoteGeometry = null
+            resizer.cancel()
             transports.closeAll()
             onClosed()
         }
     }
 
-    override fun resize(geometry: TerminalGeometry) {
-        viewGeometry = geometry
-        try {
-            emulator.geometry = geometry
-            if (!emulator.isOpen) return
-            emulator.applyGeometry()
-            // Flush pty output from the resize (e.g. the DEC 2048 in-band size report)
-            // so Textual-based TUIs detect the resize.
-            flushPtyWrites()
-            emulator.setMouseEncodingSize()
-            emulator.requestSnapshot(force = true)
-        } catch (e: Exception) {
-            Log.e(TAG, "Resize failed", e)
-            onResizeFailed(e)
-            return
-        }
-        remoteResizeJob?.cancel()
-        remoteResizeJob = scope.launch(dispatcher) {
-            delay(REMOTE_RESIZE_SETTLE_MS)
-            syncRemoteSize()
-        }
-    }
-
-    /**
-     * Gives the far end the view's size, unless it already has it or nothing is open. The
-     * view's, not the terminal's: a Mosh server can still be resizing the terminal to an
-     * older size.
-     */
-    private fun syncRemoteSize() {
-        val sent = remoteGeometry ?: return
-        val geometry = viewGeometry ?: return
-        if (geometry == sent) return
-        try {
-            if (transports.resize(geometry)) {
-                remoteGeometry = geometry
-            } else {
-                // The send buffer is full; try again once it has had time to drain.
-                remoteResizeJob?.cancel()
-                remoteResizeJob = scope.launch(dispatcher) {
-                    delay(REMOTE_RESIZE_RETRY_MS)
-                    syncRemoteSize()
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Resize failed", e)
-            onResizeFailed(e)
-        }
-    }
+    override fun resize(geometry: TerminalGeometry) = resizer.onViewResized(geometry)
 
     // User input is best-effort: a dropped transport ends the read loop, which then
     // reports the error or reconnects, so a failed write needs no handling here.
@@ -246,14 +187,14 @@ internal class SessionConnection(
     }
 
     private suspend fun open(spec: TabSpec) {
-        remoteGeometry = null
+        resizer.remoteClosed()
         transports.closeAll()
         emulator.open()
         emulator.echoPredictions.enabled = spec.transport == Transport.SSH || spec.transport == Transport.TailscaleSSH
         if (spec.transport == Transport.Mosh) moshStaleness.reset()
         val geometry = emulator.geometry
         transports.open(spec, geometry)
-        remoteGeometry = geometry
+        resizer.opened(geometry)
     }
 
     private fun onOpened(spec: TabSpec) {
@@ -261,7 +202,7 @@ internal class SessionConnection(
         state.update { it.copy(status = SessionStatus.Connected, error = null, reconnectAttempt = 0) }
         emulator.requestSnapshot(force = true)
         // The view may have changed size while the transport was opening.
-        syncRemoteSize()
+        resizer.sync()
         startReadLoop(spec.transport)
         sendPostConnectCommand(spec.postConnectCommand)
     }
@@ -317,7 +258,7 @@ internal class SessionConnection(
     }
 
     private fun onReadLoopEnded(transport: Transport, outcome: ReadOutcome) {
-        remoteGeometry = null
+        resizer.remoteClosed()
         if (transport == Transport.Mosh && outcome.moshFailureCode != null && !disconnectRequested && resumeMosh()) return
         when (readLoopExitAction(transport, outcome.shellExited && !outcome.failed)) {
             ReadLoopExitAction.Disconnect -> {
@@ -359,7 +300,7 @@ internal class SessionConnection(
     }
 
     private fun onResizeFailed(error: Exception) {
-        remoteGeometry = null
+        resizer.remoteClosed()
         val transport = spec?.transport
         val reconnects = !disconnectRequested &&
             transport != null &&
