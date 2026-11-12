@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.time.measureTime
 
 /**
  * Scrollback search, tapped links, and selected text for the active terminal. Search and
@@ -56,9 +57,11 @@ class TerminalSearchController internal constructor(
     }
 
     /**
-     * Searches again whenever the active terminal's screen changes, at most every
-     * [REFRESH_INTERVAL_MS], so the highlights follow text that a program such as nvim
-     * redraws in place, where the matches found before no longer point at it.
+     * Searches again whenever the active terminal's screen changes, so the highlights
+     * follow text that a program such as nvim redraws in place, where the matches found
+     * before no longer point at it. Redraws that arrive during a search collapse into one
+     * search after it. Each search then waits as long as it took, which keeps a long
+     * scrollback from taking more than half of the session thread while output streams.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun refreshOnRedraw() {
@@ -68,11 +71,12 @@ class TerminalSearchController internal constructor(
             .conflate()
             .collect {
                 val query = _state.value?.query
-                if (!query.isNullOrEmpty()) {
+                if (query.isNullOrEmpty()) return@collect
+                val took = measureTime {
                     val found = parseSearchMatches(activeEngine?.search(query) ?: IntArray(0))
                     _state.update { state -> if (state?.query == query) state.withMatches(found) else state }
                 }
-                delay(REFRESH_INTERVAL_MS)
+                delay(took)
             }
     }
 
@@ -150,6 +154,5 @@ class TerminalSearchController internal constructor(
 
     private companion object {
         const val SEARCH_TYPING_DELAY_MS = 150L
-        const val REFRESH_INTERVAL_MS = 250L
     }
 }
