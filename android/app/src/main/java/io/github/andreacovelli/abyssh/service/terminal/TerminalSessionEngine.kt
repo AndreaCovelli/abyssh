@@ -126,9 +126,6 @@ class TerminalSessionEngine internal constructor(
     // A tab stops the traffic that only keeps it fresh while nothing shows it.
     private val quietWhenHidden = QuietWhenHidden(scope, dispatcher, setQuiet = connection::setQuiet)
 
-    /** The tmux window this tab shows, when it is part of a control session. */
-    internal val tmuxWindowId: Int? get() = (connection as? TmuxPaneConnection)?.windowId
-
     /** The tab's view of its tmux window, when it is part of a control session. */
     internal val tmuxView: TmuxPaneView? get() = connection as? TmuxPaneConnection
 

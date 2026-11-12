@@ -58,6 +58,7 @@ fun AbyssTextField(
 ) {
     val colors = AbyssColors.current
     val typography = AbyssTypography.current
+    val physicalKeyboard = physicalKeyboardInUse()
     val focusRequester = remember { FocusRequester() }
     var revealed by rememberSaveable { mutableStateOf(false) }
 
@@ -67,57 +68,60 @@ fun AbyssTextField(
         }
     }
 
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier
-            .fillMaxWidth()
-            .focusRequester(focusRequester)
-            // A hidden label still names the field for screen readers.
-            .then(if (!showLabel && label.isNotEmpty()) Modifier.semantics { contentDescription = label } else Modifier),
-        textStyle = (if (monospace) typography.code else typography.body).copy(textAlign = textAlign),
-        label = if (showLabel && label.isNotEmpty()) {
-            { Text(label) }
-        } else {
-            null
-        },
-        placeholder = if (placeholder.isNotBlank()) {
-            { Text(placeholder, style = typography.body, color = colors.textMuted) }
-        } else {
-            null
-        },
-        trailingIcon = if (secret) {
-            {
-                AbyssIconButton(
-                    icon = if (revealed) R.drawable.ic_visibility_off else R.drawable.ic_visibility,
-                    contentDescription = stringResource(
-                        if (revealed) R.string.action_hide_secret else R.string.action_show_secret,
-                    ),
-                    onClick = { revealed = !revealed },
-                )
-            }
-        } else {
-            null
-        },
-        visualTransformation = when {
-            !secret -> visualTransformation
-            revealed -> VisualTransformation.None
-            else -> PasswordVisualTransformation()
-        },
-        keyboardOptions = keyboardOptions
-            .let { if (secret) it.copy(keyboardType = KeyboardType.Password) else it }
-            .let { if (onSubmit != null) it.copy(imeAction = ImeAction.Done) else it },
-        keyboardActions = if (onSubmit != null) KeyboardActions(onDone = { onSubmit() }) else keyboardActions,
-        singleLine = singleLine,
-        maxLines = if (singleLine) 1 else maxLines,
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedTextColor = colors.textPrimary,
-            unfocusedTextColor = colors.textPrimary,
-            focusedBorderColor = colors.accent,
-            unfocusedBorderColor = colors.border,
-            focusedLabelColor = colors.accent,
-            unfocusedLabelColor = colors.textSecondary,
-            cursorColor = colors.accent,
-        ),
-    )
+    NoOnScreenKeyboardWithPhysicalKeyboard {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = modifier
+                .fillMaxWidth()
+                .focusRequester(focusRequester)
+                // A hidden label still names the field for screen readers.
+                .then(if (!showLabel && label.isNotEmpty()) Modifier.semantics { contentDescription = label } else Modifier),
+            textStyle = (if (monospace) typography.code else typography.body).copy(textAlign = textAlign),
+            label = if (showLabel && label.isNotEmpty()) {
+                { Text(label) }
+            } else {
+                null
+            },
+            placeholder = if (placeholder.isNotBlank()) {
+                { Text(placeholder, style = typography.body, color = colors.textMuted) }
+            } else {
+                null
+            },
+            trailingIcon = if (secret) {
+                {
+                    AbyssIconButton(
+                        icon = if (revealed) R.drawable.ic_visibility_off else R.drawable.ic_visibility,
+                        contentDescription = stringResource(
+                            if (revealed) R.string.action_hide_secret else R.string.action_show_secret,
+                        ),
+                        onClick = { revealed = !revealed },
+                    )
+                }
+            } else {
+                null
+            },
+            visualTransformation = when {
+                !secret -> visualTransformation
+                revealed -> VisualTransformation.None
+                else -> PasswordVisualTransformation()
+            },
+            keyboardOptions = keyboardOptions
+                .let { if (secret) it.copy(keyboardType = KeyboardType.Password) else it }
+                .let { if (onSubmit != null) it.copy(imeAction = ImeAction.Done) else it }
+                .let { if (physicalKeyboard) it.copy(showKeyboardOnFocus = false) else it },
+            keyboardActions = if (onSubmit != null) KeyboardActions(onDone = { onSubmit() }) else keyboardActions,
+            singleLine = singleLine,
+            maxLines = if (singleLine) 1 else maxLines,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = colors.textPrimary,
+                unfocusedTextColor = colors.textPrimary,
+                focusedBorderColor = colors.accent,
+                unfocusedBorderColor = colors.border,
+                focusedLabelColor = colors.accent,
+                unfocusedLabelColor = colors.textSecondary,
+                cursorColor = colors.accent,
+            ),
+        )
+    }
 }

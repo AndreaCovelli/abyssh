@@ -70,19 +70,6 @@ internal class TmuxControlTabs(
     }
 
     /**
-     * Whether closing [tab] would kill its window while its control session is
-     * reconnecting. tmux would never hear of it, and the window would come back as a tab
-     * once the session is back, so such a close waits for that. A session that gave up
-     * lets its tabs close.
-     */
-    fun closeNeedsConnection(tab: TabSession): Boolean {
-        val control = tab.engine.tmuxControl ?: return false
-        val status = control.status.value.status
-        val reconnecting = status == SessionStatus.Connecting || status == SessionStatus.Reconnecting
-        return reconnecting && tabsOf(control).any { it !== tab }
-    }
-
-    /**
      * A connected control session on [spec]'s host, preferring the one that shows
      * [spec]'s tmux session. All of them talk to the same tmux server.
      */
@@ -127,19 +114,6 @@ internal class TmuxControlTabs(
         val control = tab.engine.tmuxControl ?: return false
         control.switchSession(name)
         return true
-    }
-
-    /**
-     * After [tab] was removed: ends its window when other tabs still show the session,
-     * or detaches from tmux when it was the last, which leaves the session running.
-     */
-    fun tabClosed(tab: TabSession, windowId: Int?) {
-        val control = tab.engine.tmuxControl ?: return
-        if (tabsOf(control).isEmpty()) {
-            end(control)
-        } else if (windowId != null) {
-            control.windowControl.killWindow(windowId)
-        }
     }
 
     /** Closes [control]'s tabs and detaches from tmux. */

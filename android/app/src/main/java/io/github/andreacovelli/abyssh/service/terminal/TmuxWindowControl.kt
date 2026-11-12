@@ -21,10 +21,6 @@ internal class TmuxWindowControl(
         }
     }
 
-    fun killWindow(windowId: Int) = onThread {
-        if (attached()) link.send(TmuxControlCommands.killWindow(windowId))
-    }
-
     /** Splits the active pane of [view]'s window, side by side when [sideBySide], else one above the other. */
     fun splitPane(view: TmuxPaneView, sideBySide: Boolean) = onActivePane(view) { TmuxControlCommands.splitPane(it, sideBySide) }
 

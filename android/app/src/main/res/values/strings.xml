@@ -568,12 +568,10 @@
     <string name="accessory_modifier_locked">Locked</string>
     <string name="accessory_open_files">Open files</string>
     <string name="accessory_zoom">Zoom</string>
-    <string name="terminal_kill_window">Kill window</string>
     <string name="terminal_disconnect">Disconnect</string>
     <string name="terminal_end_shell">End shell</string>
     <string name="terminal_end_session_title">End %1$s?</string>
     <string name="terminal_end_session_body">This closes the session. To leave it running, go back instead.</string>
-    <string name="terminal_end_session_body_tmux_window">This closes the tmux window and the programs running in it.</string>
     <string name="terminal_end_session_body_tmux_detach">This detaches from tmux. The tmux session keeps running.</string>
     <string name="files_go_up">Parent folder</string>
     <string name="files_sort">Sort</string>
