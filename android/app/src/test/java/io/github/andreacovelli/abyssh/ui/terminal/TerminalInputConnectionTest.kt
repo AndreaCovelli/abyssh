@@ -6,6 +6,8 @@ import android.view.inputmethod.InputConnection
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -27,7 +29,7 @@ class TerminalInputConnectionTest {
         view = TerminalInputView(ApplicationProvider.getApplicationContext())
         view.onTerminalText = { sent.append(it) }
         view.onTerminalKey = { key, _, _, action, _ -> if (action == GhosttyKeyAction.Press) keys += key }
-        connection = view.onCreateInputConnection(EditorInfo())
+        connection = checkNotNull(view.onCreateInputConnection(EditorInfo()))
     }
 
     /** What the shell's line holds after the bytes sent so far, applying Backspace. */
@@ -37,6 +39,20 @@ class TerminalInputConnectionTest {
 
     private fun StringBuilder.deleteAt(index: Int) {
         if (index >= 0) deleteCharAt(index)
+    }
+
+    @Test
+    fun `without the on-screen keyboard the view offers no connection and keys still type`() {
+        view.usesOnScreenKeyboard = false
+
+        assertFalse(view.onCheckIsTextEditor())
+        assertNull(view.onCreateInputConnection(EditorInfo()))
+        assertTrue(view.onKeyDown(KeyEvent.KEYCODE_A, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_A)))
+        assertEquals(1, keys.size)
+
+        view.usesOnScreenKeyboard = true
+        assertTrue(view.onCheckIsTextEditor())
+        assertNotNull(view.onCreateInputConnection(EditorInfo()))
     }
 
     @Test
@@ -240,7 +256,7 @@ class TerminalInputConnectionTest {
 
     private fun swipeTyping() {
         view.imeMode = TerminalImeMode.SwipeTyping
-        connection = view.onCreateInputConnection(EditorInfo())
+        connection = checkNotNull(view.onCreateInputConnection(EditorInfo()))
     }
 
     private companion object {

@@ -325,6 +325,7 @@ private fun TerminalPane(
                     view.contentDescription = inputLabel
                     view.imeMode = terminalImeMode(host.settings.disableAutocorrect, host.settings.swipeTyping)
                     view.volumeKeysAsArrows = host.settings.volumeKeysAsArrows
+                    view.usesOnScreenKeyboard = host.settings.usesOnScreenKeyboard
                 },
                 onRelease = input::releaseInputView,
             )

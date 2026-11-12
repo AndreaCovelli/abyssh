@@ -9,7 +9,6 @@ import android.content.ContextWrapper
 import android.app.Activity
 
 import android.content.Context
-import android.content.res.Configuration
 import android.os.Build
 import android.os.SystemClock
 import android.text.Editable
@@ -82,15 +81,6 @@ internal fun commonCodePointPrefix(a: String, b: String): Int {
     return index
 }
 
-/** Whether a physical keyboard is connected and in use, such as a Bluetooth or cover keyboard. */
-internal fun Configuration.hasPhysicalKeyboard(): Boolean =
-    hasPhysicalKeyboard(keyboard, hardKeyboardHidden)
-
-internal fun hasPhysicalKeyboard(keyboard: Int, hardKeyboardHidden: Int): Boolean =
-    keyboard != Configuration.KEYBOARD_NOKEYS &&
-        keyboard != Configuration.KEYBOARD_UNDEFINED &&
-        hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
-
 class TerminalInputView(context: Context) : EditText(context) {
 
     companion object {
@@ -152,6 +142,24 @@ class TerminalInputView(context: Context) : EditText(context) {
             activeInputConnection?.invalidateImeMirror()
             inputType = terminalImeInputType(value)
             inputMethodManager?.restartInput(this)
+        }
+
+    /**
+     * Whether the on-screen keyboard types into the terminal. Without it the view offers
+     * no input connection, so the keyboard has nothing to show for, and a physical
+     * keyboard types through [onKeyDown]. See `OnScreenKeyboardPolicy`.
+     */
+    var usesOnScreenKeyboard = true
+        set(value) {
+            if (field == value) return
+            field = value
+            if (!value) {
+                context.findActivity()?.window?.let { window ->
+                    WindowCompat.getInsetsController(window, this).hide(WindowInsetsCompat.Type.ime())
+                }
+            }
+            val imm = inputMethodManager ?: context.getSystemService(InputMethodManager::class.java)
+            imm?.restartInput(this)
         }
 
     /**
@@ -285,7 +293,7 @@ class TerminalInputView(context: Context) : EditText(context) {
         inputType = terminalImeInputType(imeMode)
     }
 
-    override fun onCheckIsTextEditor(): Boolean = true
+    override fun onCheckIsTextEditor(): Boolean = usesOnScreenKeyboard
 
     private fun altGrText(event: KeyEvent): String? = KeyMapper.altGrText(
         metaState = event.metaState,
@@ -413,10 +421,7 @@ class TerminalInputView(context: Context) : EditText(context) {
             requestFocusFromTouch()
         }
         post {
-            // A physical keyboard types into the focused view on its own. Asking for the
-            // on-screen keyboard anyway leaves an empty strip under the terminal holding
-            // the keyboard's hide and switch buttons.
-            if (resources.configuration.hasPhysicalKeyboard()) return@post
+            if (!usesOnScreenKeyboard) return@post
             // No restartInput here either, so tapping the terminal keeps the input mode.
             // The insets controller replaces showSoftInput(SHOW_IMPLICIT), deprecated in API 37.
             val window = context.findActivity()?.window
@@ -428,7 +433,11 @@ class TerminalInputView(context: Context) : EditText(context) {
         }
     }
 
-    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
+    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
+        if (!usesOnScreenKeyboard) {
+            activeInputConnection = null
+            return null
+        }
         if (inputMethodManager == null) {
             inputMethodManager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
         }

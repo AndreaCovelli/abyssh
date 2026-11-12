@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
+import io.github.andreacovelli.abyssh.ui.components.OnScreenKeyboardPolicy
 import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
 import io.github.andreacovelli.abyssh.ui.terminal.AbysshKeyBindings
 import io.github.andreacovelli.abyssh.ui.terminal.BuiltinCommand
@@ -43,6 +44,7 @@ internal data class TerminalUiSettings(
     val disableAutocorrect: Boolean,
     val swipeTyping: Boolean,
     val volumeKeysAsArrows: Boolean,
+    val usesOnScreenKeyboard: Boolean,
     val ctrlVPastes: Boolean,
     val tmuxPrefixKeys: Boolean,
     val showCustomActionsFab: Boolean,
@@ -73,6 +75,7 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
     val disableAutocorrect by repo.keyboard.disableAutocorrect.collectAsStateWithLifecycle()
     val swipeTyping by repo.keyboard.swipeTyping.collectAsStateWithLifecycle()
     val volumeKeysAsArrows by repo.volumeKeysAsArrows.collectAsStateWithLifecycle()
+    val keyboardSuppressed by OnScreenKeyboardPolicy.getInstance(context).suppressed.collectAsStateWithLifecycle()
     val ctrlVPastes by repo.ctrlVPastes.collectAsStateWithLifecycle()
     val tmuxPrefixKeys by repo.tmuxPrefixKeys.collectAsStateWithLifecycle()
     val showCustomActionsFab by repo.showCustomActionsFab.collectAsStateWithLifecycle()
@@ -91,6 +94,7 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
         disableAutocorrect = disableAutocorrect,
         swipeTyping = swipeTyping,
         volumeKeysAsArrows = volumeKeysAsArrows,
+        usesOnScreenKeyboard = !keyboardSuppressed,
         ctrlVPastes = ctrlVPastes,
         tmuxPrefixKeys = tmuxPrefixKeys,
         showCustomActionsFab = showCustomActionsFab,

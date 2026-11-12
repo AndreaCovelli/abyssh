@@ -22,8 +22,9 @@ import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.ui.ApplicationNavController
 import io.github.andreacovelli.abyssh.ui.EscapeKeyBack
 import io.github.andreacovelli.abyssh.ui.LocalEscapeKeyBack
+import io.github.andreacovelli.abyssh.ui.components.FollowOnScreenKeyboardPolicy
+import io.github.andreacovelli.abyssh.ui.components.OnScreenKeyboardPolicy
 import io.github.andreacovelli.abyssh.ui.screens.terminal.clearRemoteFileCache
-import io.github.andreacovelli.abyssh.ui.terminal.hasPhysicalKeyboard
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTheme
 import io.github.andreacovelli.abyssh.ui.theme.GhosttyThemeRegistry
@@ -34,6 +35,7 @@ import kotlinx.coroutines.launch
 
 class MainActivity : FragmentActivity() {
     private val escapeKeyBack by lazy { EscapeKeyBack(onBackPressedDispatcher) }
+    private val keyboardPolicy by lazy { OnScreenKeyboardPolicy.getInstance(this) }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean =
         escapeKeyBack.onKeyDown(keyCode, event) || super.onKeyDown(keyCode, event)
@@ -43,8 +45,9 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        updateSoftInputState(resources.configuration)
         val settings = SettingsRepository.getInstance(this)
+        keyboardPolicy.onConfigurationChanged(resources.configuration)
+        lifecycleScope.launch { keyboardPolicy.suppressed.collect(::updateSoftInputState) }
         lifecycleScope.launch(Dispatchers.IO) { clearRemoteFileCache(cacheDir) }
         lifecycleScope.launch {
             // With app lock on, the recents thumbnail would show what the lock screen hides.
@@ -70,17 +73,18 @@ class MainActivity : FragmentActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        updateSoftInputState(newConfig)
+        keyboardPolicy.onConfigurationChanged(newConfig)
     }
 
     /**
-     * Keeps the on-screen keyboard hidden when the window gains focus while a physical
-     * keyboard is connected. Otherwise Android shows it on its own when the app returns
-     * to the front on a large screen, and again on every return after that, leaving the
-     * keyboard's empty strip with its hide and switch buttons under the terminal.
+     * Keeps the on-screen keyboard hidden when the window gains focus while
+     * [OnScreenKeyboardPolicy] keeps it away. Otherwise Android shows it on its own when
+     * the app returns to the front on a large screen, and again on every return after
+     * that, leaving the keyboard's empty strip with its hide and switch buttons under the
+     * terminal.
      */
-    private fun updateSoftInputState(config: Configuration) {
-        val state = if (config.hasPhysicalKeyboard()) {
+    private fun updateSoftInputState(keyboardSuppressed: Boolean) {
+        val state = if (keyboardSuppressed) {
             WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
         } else {
             WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
@@ -112,7 +116,7 @@ fun AppRoot() {
                 .fillMaxSize()
                 .background(AbyssColors.current.background),
         ) {
-            ApplicationNavController()
+            FollowOnScreenKeyboardPolicy { ApplicationNavController() }
         }
     }
 }
