@@ -157,6 +157,10 @@ internal class TmuxControlTabs(
         orderTabs(views.mapNotNull { view -> tabs.firstOrNull { it.engine.showsTmuxView(view) } })
     }
 
+    override fun numberWindowTab(control: TmuxControlSession, view: TmuxPaneView, number: Int) {
+        tabsOf(control).firstOrNull { it.engine.showsTmuxView(view) }?.number = number
+    }
+
     // One tab stays, the active one if it is the session's, to say why and offer to attach
     // again, which reopens the other windows.
     override fun controlEnded(control: TmuxControlSession) {
