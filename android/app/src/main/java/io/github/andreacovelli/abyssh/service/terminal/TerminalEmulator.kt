@@ -160,12 +160,6 @@ internal class TerminalEmulator(
         if (isOpen) bridge.nativeResize(handle, geometry.cols, geometry.rows, geometry.cellWidth, geometry.cellHeight)
     }
 
-    /** A resize from the far end, as Mosh sends; the cell size stays. */
-    fun resizeGrid(cols: Int, rows: Int) {
-        geometry = geometry.copy(cols = cols, rows = rows)
-        applyGeometry()
-    }
-
     fun setMouseEncodingSize() {
         if (!isOpen) return
         with(geometry) {

@@ -7,7 +7,6 @@ import io.github.andreacovelli.abyssh.model.UiText
 import io.github.andreacovelli.abyssh.R
 
 import io.github.andreacovelli.abyssh.model.MultiplexerType
-import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.service.multiplexer.MultiplexerRegistry
 import io.github.andreacovelli.abyssh.service.multiplexer.RemoteMultiplexerSession
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
@@ -298,12 +297,7 @@ class TerminalMultiplexer internal constructor(
 
     private fun unsupportedReason(spec: TabSpec): UiText? {
         val multiplexer = spec.multiplexer ?: MultiplexerRegistry.defaultType
-        return when {
-            spec.transport == Transport.Mosh ->
-                UiText.Resource(R.string.multiplexer_unsupported_transport, multiplexer.label, Transport.Mosh.name)
-            !multiplexer.runtimeSupported -> UiText.Resource(R.string.multiplexer_unsupported, multiplexer.label)
-            else -> null
-        }
+        return UiText.Resource(R.string.multiplexer_unsupported, multiplexer.label).takeUnless { multiplexer.runtimeSupported }
     }
 
     private fun isCurrent(generation: Long, action: PendingAction): Boolean =

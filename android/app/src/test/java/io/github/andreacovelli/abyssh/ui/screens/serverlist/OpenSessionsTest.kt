@@ -10,7 +10,7 @@ import org.junit.Test
 
 class OpenSessionsTest {
     private val web = TabSpec(hostId = 1, displayName = "web", host = "web.example.com")
-    private val db = TabSpec(hostId = 2, displayName = "db", host = "db.example.com", transport = Transport.Mosh)
+    private val db = TabSpec(hostId = 2, displayName = "db", host = "db.example.com", transport = Transport.TailscaleSSH)
     private val shell = TabSpec(transport = Transport.LocalShell)
 
     @Test

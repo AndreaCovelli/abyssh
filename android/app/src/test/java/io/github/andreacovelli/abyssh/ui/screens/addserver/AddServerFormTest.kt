@@ -13,35 +13,21 @@ import org.junit.Test
 class AddServerFormTest {
 
     @Test
-    fun `switching to mosh and back restores the chosen multiplexer`() {
+    fun `switching the transport keeps the chosen multiplexer`() {
         val tmux = AddServerForm().withMultiplexer(MultiplexerType.Tmux)
 
-        val mosh = tmux.withTransport(Transport.Mosh)
-        assertNull(mosh.effectiveMultiplexer)
-
-        assertEquals(MultiplexerType.Tmux, mosh.withTransport(Transport.SSH).effectiveMultiplexer)
+        val tailscale = tmux.withTransport(Transport.TailscaleSSH)
+        assertEquals(MultiplexerType.Tmux, tailscale.effectiveMultiplexer)
+        assertEquals(MultiplexerType.Tmux, tailscale.withTransport(Transport.SSH).effectiveMultiplexer)
     }
 
     @Test
-    fun `selecting off under mosh keeps the earlier choice`() {
-        val form =
-            AddServerForm()
-                .withMultiplexer(MultiplexerType.Zmx)
-                .withTransport(Transport.Mosh)
-                .withMultiplexer(null)
-                .withTransport(Transport.TailscaleSSH)
-
-        assertEquals(MultiplexerType.Zmx, form.effectiveMultiplexer)
-    }
-
-    @Test
-    fun `turning the multiplexer off over ssh clears it`() {
+    fun `turning the multiplexer off clears it`() {
         val form =
             AddServerForm()
                 .withMultiplexer(MultiplexerType.Tmux)
                 .withMultiplexer(null)
-                .withTransport(Transport.Mosh)
-                .withTransport(Transport.SSH)
+                .withTransport(Transport.TailscaleSSH)
 
         assertNull(form.effectiveMultiplexer)
     }
@@ -66,13 +52,6 @@ class AddServerFormTest {
         assertEquals(0, AddServerForm(keepaliveInterval = "0").keepaliveIntervalSeconds)
         assertEquals(15, AddServerForm(keepaliveInterval = "15").keepaliveIntervalSeconds)
         assertEquals(86_400, AddServerForm(keepaliveInterval = "99999").keepaliveIntervalSeconds)
-    }
-
-    @Test
-    fun `only ssh transports show the keepalive`() {
-        assertTrue(AddServerForm().withTransport(Transport.SSH).usesKeepalive)
-        assertTrue(AddServerForm().withTransport(Transport.TailscaleSSH).usesKeepalive)
-        assertFalse(AddServerForm().withTransport(Transport.Mosh).usesKeepalive)
     }
 
     @Test

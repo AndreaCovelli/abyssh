@@ -30,6 +30,6 @@ class TmuxControlSupportTest {
         assertTrue(spec.copy(transport = Transport.TailscaleSSH).usesTmuxControlMode)
         assertFalse(spec.copy(tmuxControlMode = false).usesTmuxControlMode)
         assertFalse(spec.copy(multiplexer = MultiplexerType.Zmx).usesTmuxControlMode)
-        assertFalse(spec.copy(transport = Transport.Mosh).usesTmuxControlMode)
+        assertFalse(spec.copy(transport = Transport.LocalShell).usesTmuxControlMode)
     }
 }

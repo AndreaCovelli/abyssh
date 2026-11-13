@@ -17,8 +17,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * One tab's terminal session: a Ghostty terminal and the SSH, Mosh, or local shell
- * connection that feeds it. Calls return at once and run in order on the session's own
+ * One tab's terminal session: a Ghostty terminal and the SSH or local shell connection
+ * that feeds it. Calls return at once and run in order on the session's own
  * thread; the suspending queries wait for that thread.
  */
 class TerminalSessionEngine internal constructor(
@@ -191,9 +191,8 @@ class TerminalSessionEngine internal constructor(
      * Something now shows this tab's terminal, such as its pane or the tab switcher's
      * preview; pair each call with [removeViewer]. While nothing shows it, output builds
      * no snapshots, the title and bell update about once a second, and Kitty animations
-     * pause. After [QUIET_AFTER_HIDDEN_MS] hidden, a Mosh tab stops its network traffic
-     * and a tmux window's panes pause until it is shown again, as does an SSH tab's output
-     * when the pauseHiddenOutput setting is on. An SSH connection shown again after that
+     * pause. After [QUIET_AFTER_HIDDEN_MS] hidden, a tmux window's panes pause until it is
+     * shown again, as does an SSH tab's output when the pauseHiddenOutput setting is on. An SSH connection shown again after that
      * long checks that its server still answers.
      */
     fun addViewer() {

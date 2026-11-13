@@ -61,7 +61,6 @@
     <string name="key_change">Change key</string>
     <string name="key_use_existing">Use existing key</string>
     <string name="server_section_persistence">Session persistence</string>
-    <string name="server_persistence_unsupported">%1$s connections can\'t keep sessions in a multiplexer.</string>
     <string name="multiplexer_off">Off</string>
     <string name="server_auto_run">Auto-run on connect</string>
     <string name="server_auto_run_placeholder">e.g. tmux attach -t main</string>
@@ -196,7 +195,7 @@
     <string name="settings_keep_screen_awake">Keep screen awake</string>
     <string name="settings_keep_screen_awake_hint">Prevent the display from sleeping while a session is connected</string>
     <string name="settings_pause_hidden_output">Pause output in hidden SSH tabs</string>
-    <string name="settings_pause_hidden_output_hint">Saves battery when a program keeps printing in a tab you aren\'t viewing. Once an SSH tab has been hidden for 30 seconds, programs printing in it pause until you show it again, and no output is lost. Mosh and tmux control mode tabs don\'t pause</string>
+    <string name="settings_pause_hidden_output_hint">Saves battery when a program keeps printing in a tab you aren\'t viewing. Once an SSH tab has been hidden for 30 seconds, programs printing in it pause until you show it again, and no output is lost. tmux control mode tabs don\'t pause</string>
     <string name="settings_match_display_refresh_rate">Match screen refresh rate</string>
     <string name="settings_match_display_refresh_rate_hint">Redraw the terminal as often as the display refreshes, such as 120 times a second, instead of 60. Uses more battery while output streams</string>
     <string name="settings_hide_screen_contents">Hide screen contents</string>
@@ -599,7 +598,6 @@
     <string name="error_native_terminal_unavailable">Native terminal library %1$s. Check the ABI and NDK build.</string>
     <string name="error_native_terminal_backend">Native terminal backend unavailable: %1$s</string>
     <string name="error_native_ssh_unavailable">Native SSH unavailable. Check the ABI and NDK build.</string>
-    <string name="error_native_mosh_unavailable">Native Mosh unavailable. Check the ABI and NDK build.</string>
     <string name="error_local_network_denied">This host is on your local network. Allow Abyssh to find and connect to devices on your local network in its app settings, then try again</string>
     <string name="error_username_required">Username required</string>
     <string name="error_connection_lost">Connection lost: %1$s</string>
@@ -613,8 +611,6 @@
     <string name="tmux_control_unsupported">This host\'s tmux is older than 3.2, so it opened without control mode</string>
     <string name="error_connection_interrupted_reason">Connection interrupted: %1$s</string>
     <string name="error_local_shell_failed">Local shell failed: %1$s</string>
-    <string name="error_mosh_session_lost">Mosh session lost</string>
-    <string name="error_mosh_session_lost_code">Mosh session lost (failure code %1$d)</string>
     <string name="error_resize_failed">Resize failed: %1$s</string>
     <string name="error_reconnect_failed">Reconnect failed: %1$s</string>
     <string name="error_connection_cancelled">Connection cancelled</string>
@@ -650,8 +646,6 @@
     <string name="backup_read_failed">Import failed. Could not read the selected backup file.</string>
     <string name="backup_import_complete">Import complete: %1$s</string>
     <string name="backup_import_nothing_changed">Import failed. Nothing was changed.</string>
-    <string name="error_mosh_bootstrap_timeout">mosh-server is still running after the timeout without printing anything</string>
-    <string name="error_mosh_bootstrap_no_output">mosh-server printed nothing. Check that mosh is installed on the host</string>
     <string name="files_cannot_open_destination">Cannot open the destination</string>
     <string name="files_cannot_open_source">Cannot open the file</string>
     <string name="session_notification_fallback">Active session</string>

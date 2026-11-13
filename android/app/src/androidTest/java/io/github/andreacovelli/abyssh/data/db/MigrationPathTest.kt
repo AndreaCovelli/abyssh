@@ -10,6 +10,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.andreacovelli.abyssh.data.secure.SecretBox
 import io.github.andreacovelli.abyssh.model.MultiplexerType
+import io.github.andreacovelli.abyssh.model.Transport
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -50,6 +51,7 @@ class MigrationPathTest {
         helper.runMigrationsAndValidate(name, 14, true).close()
         helper.runMigrationsAndValidate(name, 15, true, Migration14To15 { box }).close()
         helper.runMigrationsAndValidate(name, 16, true).close()
+        helper.runMigrationsAndValidate(name, 17, true).close()
     }
 
     @Test
@@ -82,6 +84,8 @@ class MigrationPathTest {
             assertEquals("pem", db.sshKeyDao().getById(1)!!.privateKeyPem)
             // Version 15 adds the foreign key, so a dangling keyId is cleared.
             assertNull(db.hostProfileDao().getById(2)!!.keyId)
+            // Version 17 moves the hosts saved with the removed Mosh transport to SSH.
+            assertEquals(Transport.SSH, db.hostProfileDao().getById(3)!!.transport)
         } finally {
             db.close()
         }
@@ -103,6 +107,11 @@ class MigrationPathTest {
             "INSERT INTO host_profiles (id, name, host, port, username, password, keyId, keyPassphrase, " +
                 "transport, authMethod, requireAuthOnConnect) " +
                 "VALUES (2, 'orphan', 'example.net', 22, 'me', '', 99, '', 'SSH', 'Key', 0)",
+        )
+        db.execSQL(
+            "INSERT INTO host_profiles (id, name, host, port, username, password, keyId, keyPassphrase, " +
+                "transport, authMethod, requireAuthOnConnect) " +
+                "VALUES (3, 'mosh', 'example.com', 22, 'me', '', NULL, '', 'Mosh', 'Password', 0)",
         )
     }
 

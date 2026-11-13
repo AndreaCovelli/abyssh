@@ -179,7 +179,7 @@ object AbysshBackupCodec {
                 val password = readStringField("password")
                 val keyId = reader.readNullableLong()
                 val keyPassphrase = readStringField("key passphrase")
-                val transport = readEnumField("transport", enumValues<Transport>())
+                val transport = transportFromBackup(readStringField("transport"))
                 val authMethod = readEnumField("auth method", enumValues<AuthMethod>())
                 val requireAuthOnConnect = reader.readBoolean()
                 val postConnectCommand = readNullableStringField("post-connect command")
@@ -386,3 +386,14 @@ object AbysshBackupCodec {
         if (count > MAX_ITEMS) throw BackupFormatException("$label is too large")
     }
 }
+
+/**
+ * The transport a backup names. Mosh was removed, so its hosts, from backups made
+ * before, open over SSH, the connection Mosh started from.
+ */
+internal fun transportFromBackup(name: String): Transport =
+    if (name == "Mosh") {
+        Transport.SSH
+    } else {
+        Transport.entries.firstOrNull { it.name == name } ?: throw BackupFormatException("Unknown transport")
+    }

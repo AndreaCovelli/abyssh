@@ -39,7 +39,6 @@ class RemoteMultiplexerProbeTest {
     fun onlySshTransportsRunRemoteCommands() {
         assertTrue(Transport.SSH.runsRemoteCommands)
         assertTrue(Transport.TailscaleSSH.runsRemoteCommands)
-        assertFalse(Transport.Mosh.runsRemoteCommands)
         assertFalse(Transport.LocalShell.runsRemoteCommands)
     }
 
@@ -51,16 +50,16 @@ class RemoteMultiplexerProbeTest {
             MultiplexerAvailability.Missing(MultiplexerType.Tmux).errorMessage(MultiplexerType.Tmux),
         )
         assertEquals(
-            UiText.Resource(R.string.multiplexer_unsupported_transport, "zmx", "Mosh"),
-            MultiplexerAvailability.UnsupportedTransport(Transport.Mosh).errorMessage(MultiplexerType.Zmx),
+            UiText.Resource(R.string.multiplexer_unsupported_transport, "zmx", "LocalShell"),
+            MultiplexerAvailability.UnsupportedTransport(Transport.LocalShell).errorMessage(MultiplexerType.Zmx),
         )
         assertEquals(
             UiText.Resource(
                 R.string.multiplexer_unsupported_transport,
                 UiText.Resource(R.string.multiplexer_generic),
-                "Mosh",
+                "LocalShell",
             ),
-            MultiplexerAvailability.UnsupportedTransport(Transport.Mosh).errorMessage(null),
+            MultiplexerAvailability.UnsupportedTransport(Transport.LocalShell).errorMessage(null),
         )
         val raw = UiText.Raw("boom")
         assertEquals(raw, MultiplexerAvailability.Error(raw).errorMessage(MultiplexerType.Tmux))
@@ -73,6 +72,6 @@ class RemoteMultiplexerProbeTest {
         assertNull(spec.copy(multiplexerSessionName = " ").multiplexerStartupCommand())
         assertNull(spec.copy(multiplexer = null).multiplexerStartupCommand())
         assertNull(spec.copy(multiplexer = MultiplexerType.Zellij).multiplexerStartupCommand())
-        assertNull(spec.copy(transport = Transport.Mosh).multiplexerStartupCommand())
+        assertNull(spec.copy(transport = Transport.LocalShell).multiplexerStartupCommand())
     }
 }

@@ -4,8 +4,8 @@ const ndk = @import("src/ndk.zig");
 const Translator = @import("translate_c").Translator;
 
 // aarch64 stays on the generic CPU. Zig chooses its AES implementation at compile
-// time, so +aes would make Mosh and backups crash with SIGILL on ARMv8 cores without the
-// optional crypto extension. Their traffic is small enough for software AES.
+// time, so +aes would make backups crash with SIGILL on ARMv8 cores without the
+// optional crypto extension. They are small enough for software AES.
 //
 // No 32-bit x86: Ghostty 1.4 fails a comptime layout assert there under Zig 0.17
 // (u64 is 4-byte aligned on i386), and x86 devices are not a supported target.
@@ -189,13 +189,6 @@ fn buildNativeLibrary(
     root_module.addImport("ghostty-vt", ghostty_dep.module("ghostty-vt"));
     root_module.addImport("zigimg", zigimg_dep.module("zigimg"));
 
-    const mosh_dep = b.dependency("mosh", .{
-        .target = target,
-        .optimize = optimize,
-        .libc_file = libc_config,
-    });
-    root_module.addImport("mosh", mosh_dep.module("mosh"));
-
     const lib = b.addLibrary(.{
         .linkage = .dynamic,
         .name = "abyssh_jni",
@@ -220,7 +213,6 @@ fn buildNativeLibrary(
     lib.setLibCFile(libc_config);
     root_module.linkLibrary(libssh2);
     root_module.linkSystemLibrary("log", .{});
-    root_module.linkSystemLibrary("z", .{});
     // AHardwareBuffer, which holds Kitty images in GPU memory.
     root_module.linkSystemLibrary("android", .{});
     lib.setVersionScript(b.path("src/bridge/version-script.map"));
@@ -280,10 +272,9 @@ pub fn build(b: *std.Build) void {
     // Zig tests that need no JNI or NDK, on the host: the backup container format, the
     // fling cap for full-screen programs, how a paused SSH channel is read, when an SSH
     // connection that hears nothing counts as lost, the scaling of oversized Kitty
-    // images, the Kitty image cache, which runs Ghostty's terminal, the key encoding
-    // options, checked against Ghostty's encoder, and the vendored Mosh client, which
-    // links zlib built from source.
-    const test_step = b.step("test", "Run the backup, scroll, output pause, keepalive, Kitty image, key encoding, and Mosh tests on the host");
+    // images, the Kitty image cache, which runs Ghostty's terminal, and the key encoding
+    // options, checked against Ghostty's encoder.
+    const test_step = b.step("test", "Run the backup, scroll, output pause, keepalive, Kitty image, and key encoding tests on the host");
     const host = b.graph.host;
     const backup_tests = b.addTest(.{
         .name = "backup-tests",
@@ -351,13 +342,6 @@ pub fn build(b: *std.Build) void {
     }).module("ghostty-vt"));
     const key_encode_tests = b.addTest(.{ .name = "key-encode-options-tests", .root_module = key_encode_module });
     test_step.dependOn(&b.addRunArtifact(key_encode_tests).step);
-    const host_mosh = b.dependency("mosh", .{
-        .target = host,
-        .optimize = .safe,
-        .bundled_zlib = true,
-    });
-    const mosh_tests = b.addTest(.{ .name = "mosh-tests", .root_module = host_mosh.module("mosh") });
-    test_step.dependOn(&b.addRunArtifact(mosh_tests).step);
 
     const fmt_check = b.addFmt(.{ .paths = &.{ b.path("src"), b.path("build.zig"), b.path("build.zig.zon") } });
     const fmt_step = b.step("fmt", "Format Zig files");

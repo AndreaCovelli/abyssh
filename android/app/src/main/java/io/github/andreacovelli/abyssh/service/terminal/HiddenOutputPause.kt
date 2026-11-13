@@ -4,9 +4,8 @@ package io.github.andreacovelli.abyssh.service.terminal
  * Pauses an SSH shell's output while its tab is quiet, when the user turned that on, so
  * a program streaming into a hidden tab stops instead of keeping the radio awake; the
  * output resumes, with nothing lost, once the tab is shown. Only a shell over the tab's
- * own SSH connection pauses, never the SSH command that starts Mosh. [apply] pauses or
- * resumes the open channel and returns false when there is none. Every call must run on
- * the session thread.
+ * own SSH connection pauses. [apply] pauses or resumes the open channel and returns
+ * false when there is none. Every call must run on the session thread.
  */
 internal class HiddenOutputPause(private val apply: (paused: Boolean) -> Boolean) {
     private var quiet = false
