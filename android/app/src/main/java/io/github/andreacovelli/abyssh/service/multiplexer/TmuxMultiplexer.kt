@@ -12,10 +12,12 @@ object TmuxMultiplexer : Multiplexer {
 
     override fun availabilityCommand(): String = "command -v tmux >/dev/null 2>&1"
 
+    // The exit code goes in `rc`, not `status`: zsh, a common login shell, makes `status` a
+    // read-only alias of `$?`, and assigning it aborts the command before the exit marker.
     override fun listSessionsCommand(): String =
         "if ! command -v tmux >/dev/null 2>&1; then printf 'tmux executable not found\\n' >&2; (exit 127); " +
             "else tmux list-sessions -F '$LIST_SESSIONS_FORMAT' 2>/dev/null; " +
-            "status=\$?; if [ \"\$status\" -eq 1 ]; then true; else [ \"\$status\" -eq 0 ]; fi; fi"
+            "rc=\$?; if [ \"\$rc\" -eq 1 ]; then true; else [ \"\$rc\" -eq 0 ]; fi; fi"
 
     override fun parseSessions(output: String): List<RemoteMultiplexerSession> =
         output

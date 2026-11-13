@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.service.multiplexer
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class TmuxMultiplexerTest {
@@ -80,9 +81,15 @@ class TmuxMultiplexerTest {
         assertEquals(
             "if ! command -v tmux >/dev/null 2>&1; then printf 'tmux executable not found\\n' >&2; (exit 127); " +
                 "else tmux list-sessions -F '#{session_attached} #{session_name}' 2>/dev/null; " +
-                "status=\$?; if [ \"\$status\" -eq 1 ]; then true; else [ \"\$status\" -eq 0 ]; fi; fi",
+                "rc=\$?; if [ \"\$rc\" -eq 1 ]; then true; else [ \"\$rc\" -eq 0 ]; fi; fi",
             command,
         )
+    }
+
+    @Test
+    fun listSessionsCommandDoesNotAssignZshReadOnlyStatus() {
+        // zsh rejects `status=` as a read-only variable and stops before the exit marker.
+        assertFalse(Regex("\\bstatus=").containsMatchIn(TmuxMultiplexer.listSessionsCommand()))
     }
 
     @Test
