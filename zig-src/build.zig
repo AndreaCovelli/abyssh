@@ -278,11 +278,11 @@ pub fn build(b: *std.Build) void {
     }
 
     // Zig tests that need no JNI or NDK, on the host: the backup container format, the
-    // fling cap for full-screen programs, the scaling of oversized Kitty images, the
-    // Kitty image cache, which runs Ghostty's terminal, the key encoding options, checked
-    // against Ghostty's encoder, and the vendored Mosh client, which links zlib built from
-    // source.
-    const test_step = b.step("test", "Run the backup, scroll, Kitty image, key encoding, and Mosh tests on the host");
+    // fling cap for full-screen programs, how a paused SSH channel is read, the scaling
+    // of oversized Kitty images, the Kitty image cache, which runs Ghostty's terminal,
+    // the key encoding options, checked against Ghostty's encoder, and the vendored Mosh
+    // client, which links zlib built from source.
+    const test_step = b.step("test", "Run the backup, scroll, output pause, Kitty image, key encoding, and Mosh tests on the host");
     const host = b.graph.host;
     const backup_tests = b.addTest(.{
         .name = "backup-tests",
@@ -303,6 +303,14 @@ pub fn build(b: *std.Build) void {
         }),
     });
     test_step.dependOn(&b.addRunArtifact(scroll_tests).step);
+    const output_pause_tests = b.addTest(.{
+        .name = "output-pause-tests",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/bridge/output_pause.zig"),
+            .target = host,
+        }),
+    });
+    test_step.dependOn(&b.addRunArtifact(output_pause_tests).step);
     const downscale_module = b.createModule(.{
         .root_source_file = b.path("src/bridge/image_downscale.zig"),
         .target = host,

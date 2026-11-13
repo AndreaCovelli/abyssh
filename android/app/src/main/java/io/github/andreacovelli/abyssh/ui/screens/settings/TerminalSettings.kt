@@ -128,6 +128,12 @@ internal fun TerminalSettings(
             onCheckedChange = actions::setKeepScreenAwake,
         )
         SettingSwitchCard(
+            title = stringResource(R.string.settings_pause_hidden_output),
+            hint = stringResource(R.string.settings_pause_hidden_output_hint),
+            checked = state.pauseHiddenOutput,
+            onCheckedChange = actions.connection::setPauseHiddenOutput,
+        )
+        SettingSwitchCard(
             title = stringResource(R.string.settings_match_display_refresh_rate),
             hint = stringResource(R.string.settings_match_display_refresh_rate_hint),
             checked = state.matchDisplayRefreshRate,

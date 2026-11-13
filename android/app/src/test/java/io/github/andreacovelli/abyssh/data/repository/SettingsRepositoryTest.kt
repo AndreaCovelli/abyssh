@@ -55,6 +55,7 @@ class SettingsRepositoryTest {
         assertEquals(true, repo.localShellEnabled.first())
         assertEquals(false, repo.showCustomActionsFab.first())
         assertEquals(true, repo.remoteClipboardWriteEnabled.first())
+        assertEquals(false, repo.pauseHiddenOutput.first())
         assertEquals(SettingsRepository.DEFAULT_TERMINAL_SCROLLBACK_MB, repo.terminalScrollbackMb.first())
     }
 
@@ -69,6 +70,7 @@ class SettingsRepositoryTest {
         repo.setTerminalTabMode(TerminalTabMode.Strip)
         repo.setAppLockEnabled(true)
         repo.setLocalShellEnabled(false)
+        repo.setPauseHiddenOutput(true)
 
         // Simulate a process restart: a brand-new instance over the same pref files.
         val reloaded = newRepository()
@@ -79,6 +81,7 @@ class SettingsRepositoryTest {
         assertEquals(TerminalTabMode.Strip, reloaded.terminalTabMode.first())
         assertEquals(true, reloaded.appLockEnabled.first())
         assertEquals(false, reloaded.localShellEnabled.first())
+        assertEquals(true, reloaded.pauseHiddenOutput.first())
     }
 
     @Test

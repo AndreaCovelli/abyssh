@@ -134,13 +134,15 @@ internal class SessionConnection(
         runCatching { transports.write(data) }
     }
 
-    // Mosh stops its heartbeats and SSH stretches its keepalive interval. A quiet tab
-    // also stops retrying a failed reconnect until it is shown.
+    // Mosh stops its heartbeats and SSH stretches its keepalive interval, and pauses the
+    // shell's output when the user asked for it. A quiet tab also stops retrying a failed
+    // reconnect until it is shown.
     override fun setQuiet(quiet: Boolean) {
-        transports.mosh.setQuiet(quiet)
-        transports.ssh.setQuiet(quiet)
+        transports.setQuiet(quiet)
         reconnectWait.setHidden(quiet)
     }
+
+    override fun setPauseHiddenOutput(enabled: Boolean) = transports.setPauseHiddenOutput(enabled)
 
     override fun flushPtyWrites() {
         repeat(MAX_PTY_DRAINS) {

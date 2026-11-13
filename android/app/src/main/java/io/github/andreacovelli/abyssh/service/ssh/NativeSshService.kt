@@ -283,6 +283,18 @@ class NativeSshService(
     }
 
     /**
+     * Pauses or resumes the open channel's output. While paused, [read] returns nothing but
+     * still handles keepalives and notices the channel ending, and the server stops sending
+     * once about one receive window, 2 MiB, waits unread. Resuming makes the next [read]
+     * return what waited, with nothing lost. Opening another channel resumes. Returns false
+     * when no channel is open.
+     */
+    fun setOutputPaused(paused: Boolean): Boolean {
+        if (handle == 0L) return false
+        return bridge.nativeSetOutputPaused(handle, paused)
+    }
+
+    /**
      * Checks that the server still answers: sends a keepalive at once and makes reads fail
      * when nothing arrives for a few seconds, until [endProbe]. Returns false when no
      * connection is open. The read loop must be waiting in [waitReadable] or about to,

@@ -252,6 +252,7 @@ class TerminalSessionRepository private constructor(application: Application) {
                 },
                 snapshotIntervalMs = { frameInterval.ms },
                 echoPredictionMode = { settingsRepository.keyboard.echoPrediction.value },
+                pauseHiddenOutput = settingsRepository.pauseHiddenOutput,
                 scope = scope,
                 localShellService = NativeLocalShellService(appContext.filesDir, appContext.cacheDir),
                 hostKeyStore = hostKeyStore,
