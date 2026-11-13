@@ -95,6 +95,7 @@ fun KeyboardAccessoryBar(
     useSingleRow: Boolean = false,
     horizontalPadding: Dp = 8.dp,
     verticalPadding: Dp = 6.dp,
+    topPadding: Dp = verticalPadding,
 ) {
     // A minimum, so keys grow with the system font size.
     val buttonHeight = 30.dp
@@ -181,7 +182,7 @@ fun KeyboardAccessoryBar(
         }
         val rowModifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = horizontalPadding, vertical = verticalPadding)
+            .padding(start = horizontalPadding, end = horizontalPadding, top = topPadding, bottom = verticalPadding)
         if (useSingleRow) {
             ScrollingKeyRow(keys, modifier = rowModifier)
         } else {
