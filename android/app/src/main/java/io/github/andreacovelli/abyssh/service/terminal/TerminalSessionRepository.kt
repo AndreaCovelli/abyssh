@@ -188,8 +188,8 @@ class TerminalSessionRepository private constructor(application: Application) {
                 .collect {
                     Log.i(TAG, "Default network changed; probing SSH connections")
                     val tabs = _tabs.value
-                    tabs.forEach { it.engine.networkProbe?.probe() }
-                    tabs.mapNotNull { it.engine.tmuxControl }.distinct().forEach { it.networkProbe.probe() }
+                    tabs.forEach { it.engine.keepaliveProbe?.networkChanged() }
+                    tabs.mapNotNull { it.engine.tmuxControl }.distinct().forEach { it.keepaliveProbe.networkChanged() }
                 }
         }
     }

@@ -57,6 +57,23 @@ internal class TmuxPaneConnection(
     // Whether anything has shown the tab yet; until then tmux sends nothing for its panes.
     private var shown = false
 
+    // Whether anything shows the tab now.
+    private var visible = false
+
+    // The control session's connection carries every window, so it is hidden only while
+    // all of its tabs are.
+    override val activity =
+        object : TabActivity {
+            override fun setVisible(visible: Boolean) {
+                this@TmuxPaneConnection.visible = visible
+                if (attached) control.keepaliveProbe.setVisible(this@TmuxPaneConnection, visible)
+            }
+
+            override fun onTyped() {
+                if (attached) control.keepaliveProbe.onTyped()
+            }
+        }
+
     override fun connect(spec: TabSpec, sessionKey: String) {
         scope.launch(dispatcher) {
             if (attached) {
@@ -72,11 +89,13 @@ internal class TmuxPaneConnection(
             }
             control.attach(this@TmuxPaneConnection, windowId, shown)
             if (quiet) control.setWindowVisibility(this@TmuxPaneConnection, shown, quiet = true)
+            if (visible) control.keepaliveProbe.setVisible(this@TmuxPaneConnection, true)
         }
     }
 
     override fun disconnect(onClosed: () -> Unit) {
         control.detach(this)
+        control.keepaliveProbe.setVisible(this, false)
         scope.launch(dispatcher) {
             statusJob?.cancel()
             statusJob = null

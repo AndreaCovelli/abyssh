@@ -27,9 +27,16 @@ class NativeSshService(
 
     private var handle: Long = 0L
 
-    private val keepalive = SshKeepalive { intervalSeconds, maxMissed ->
-        if (handle != 0L) bridge.nativeSetKeepalive(handle, intervalSeconds, maxMissed)
-    }
+    private val keepalive =
+        SshKeepalive(
+            apply = { intervalSeconds, maxMissed ->
+                if (handle != 0L) bridge.nativeSetKeepalive(handle, intervalSeconds, maxMissed)
+            },
+            startNativeProbe = { intervalSeconds, maxMissed ->
+                if (handle != 0L) bridge.nativeStartProbe(handle, intervalSeconds, maxMissed)
+            },
+            endNativeProbe = { if (handle != 0L) bridge.nativeEndProbe(handle) },
+        )
     private val cancellation = ConnectionCancel()
 
     /** SFTP over this connection. */
@@ -171,6 +178,7 @@ class NativeSshService(
         pendingOffset = 0
         pendingBytes = 0
         // The adopting service sets its own keepalive and cancel descriptor.
+        keepalive.endProbe()
         bridge.nativeSetKeepalive(handle, 0, KEEPALIVE_MAX_MISSED)
         bridge.nativeSetCancelFd(handle, -1)
         val login = SshLogin(bridge, handle)
@@ -295,18 +303,20 @@ class NativeSshService(
     }
 
     /**
-     * Checks that the server still answers: sends a keepalive at once and makes reads fail
-     * when nothing arrives for a few seconds, until [endProbe]. Returns false when no
-     * connection is open. The read loop must be waiting in [waitReadable] or about to,
-     * so it sends the keepalive and times the wait.
+     * Checks that the server still answers: sends keepalives at [kind]'s interval and makes
+     * reads fail when nothing arrives for its limit, until [endProbe]. The host's own count
+     * of missed keepalives carries on, so a probe never makes a dead connection fail later.
+     * Returns false when it didn't start: no connection is open, a probe that [kind]
+     * doesn't replace is running, or the host's keepalive would fail no later. The read
+     * loop must be waiting in [waitReadable] or about to, so it sends the keepalive and
+     * times the wait.
      */
-    fun startProbe(): Boolean {
-        if (handle == 0L) return false
-        keepalive.startProbe()
-        return true
-    }
+    internal fun startProbe(kind: SshProbe): Boolean = handle != 0L && keepalive.startProbe(kind)
 
-    /** Returns to the keepalive [setKeepalive] and [setQuiet] chose, after [startProbe]. */
+    /**
+     * Returns to the keepalive [setKeepalive] and [setQuiet] chose, after [startProbe],
+     * without starting the host's count over.
+     */
     fun endProbe() {
         keepalive.endProbe()
     }

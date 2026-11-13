@@ -101,8 +101,22 @@ class NativeSshBridge {
      */
     external fun nativeSetOutputPaused(handle: Long, paused: Boolean): Boolean
 
-    /** Sends a keepalive every `intervalSeconds`, 0 for none; reads fail after `maxMissed` silent intervals. */
+    /**
+     * Sends a keepalive every `intervalSeconds`, 0 for none; reads fail after `maxMissed`
+     * silent intervals, counted from now. A running probe carries on.
+     */
     external fun nativeSetKeepalive(handle: Long, intervalSeconds: Int, maxMissed: Int)
+
+    /**
+     * Starts a probe, in place of any that is running: keepalives go out every
+     * `intervalSeconds`, unless the host's come sooner, and reads fail after `maxMissed`
+     * of those intervals with nothing received, counted from now. The count
+     * [nativeSetKeepalive] started carries on, so reads fail when either runs out.
+     */
+    external fun nativeStartProbe(handle: Long, intervalSeconds: Int, maxMissed: Int)
+
+    /** Ends the probe and returns to [nativeSetKeepalive]'s interval, without starting its count over. */
+    external fun nativeEndProbe(handle: Long)
 
     external fun nativeSftpInit(handle: Long): Boolean
 

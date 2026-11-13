@@ -28,9 +28,25 @@ internal interface TabConnection {
      */
     fun setQuiet(quiet: Boolean)
 
+    /** Hears what the user does with the tab that bears on whether its connection still works. */
+    val activity: TabActivity
+
     /**
      * Whether a quiet tab also pauses its output, so programs writing to it wait until it
      * is shown. Only a shell over the tab's own SSH connection pauses.
      */
     fun setPauseHiddenOutput(enabled: Boolean) {}
+}
+
+/**
+ * What the user does with a tab that an SSH connection takes as a reason to check that
+ * its server still answers, as [KeepaliveProbe] describes. Calls run on the tab's session
+ * thread.
+ */
+internal interface TabActivity {
+    /** Whether anything shows the tab now. */
+    fun setVisible(visible: Boolean)
+
+    /** The user typed into the tab. */
+    fun onTyped()
 }

@@ -133,8 +133,10 @@ internal class TmuxControlSession(
     /** SFTP over the control session's SSH connection. */
     val sftp = SftpSession(link.ssh, dispatcher)
 
-    /** Checks the control connection after a network change. */
-    val networkProbe = KeepaliveProbe(scope, dispatcher, link.ssh) { !disposed && readJob?.isActive == true }
+    private val probe = KeepaliveProbe(scope, dispatcher, link.ssh) { !disposed && readJob?.isActive == true }
+
+    /** Checks the control connection, which every window's tab shares, when it may have died unnoticed. */
+    val keepaliveProbe = SharedKeepaliveProbe(scope, dispatcher, probe)
 
     /** Pane output the tabs haven't written yet; the read loop waits while there is too much. */
     val paneBacklog = TmuxPaneBacklog()
@@ -283,6 +285,7 @@ internal class TmuxControlSession(
             readJob?.cancel()
             reconnectJob?.cancel()
             resizeJob?.cancel()
+            probe.cancel()
             if (attached) link.detachAndClose() else link.close()
             attached = false
         }
@@ -345,7 +348,7 @@ internal class TmuxControlSession(
 
     private suspend fun read() {
         val failure = try {
-            link.read(paneBacklog::awaitRoom, ::onEvent)
+            link.read(paneBacklog::awaitRoom, probe::onOutput, ::onEvent)
             null
         } catch (e: CancellationException) {
             throw e

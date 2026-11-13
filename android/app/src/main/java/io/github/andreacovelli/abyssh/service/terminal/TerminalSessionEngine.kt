@@ -62,8 +62,11 @@ class TerminalSessionEngine internal constructor(
     /** SFTP over this session's SSH connection, which a tmux window's tab shares with its control session. */
     val sftp: SftpSession
 
-    /** Checks this tab's own SSH connection after a network change; null for a tmux window's tab. */
-    internal val networkProbe: KeepaliveProbe?
+    /**
+     * Checks this tab's own SSH connection when it may have died unnoticed; null for a
+     * tmux window's tab, whose control session has its own.
+     */
+    internal val keepaliveProbe: KeepaliveProbe?
 
     init {
         if (tmuxControl != null) {
@@ -93,7 +96,7 @@ class TerminalSessionEngine internal constructor(
             connection = tmux
             terminals = tmux.panes
             sftp = tmuxControl.sftp
-            networkProbe = null
+            keepaliveProbe = null
         } else {
             val emulator = TerminalEmulator(
                 bridge,
@@ -107,6 +110,9 @@ class TerminalSessionEngine internal constructor(
                 echoPredictionMode = echoPredictionMode,
             )
             val transports = SessionTransports(hostKeys, localShellService, thread)
+            val probe = KeepaliveProbe(scope, dispatcher, transports.ssh) {
+                transports.usesSsh && _state.value.status == SessionStatus.Connected
+            }
             connection =
                 SessionConnection(
                     scope = scope,
@@ -115,20 +121,21 @@ class TerminalSessionEngine internal constructor(
                     emulator = emulator,
                     transports = transports,
                     multiplexers = RemoteMultiplexerProbe(hostKeys),
+                    keepaliveProbe = probe,
                     localNetwork = localNetwork,
                     network = network,
                     onShellExited = onShellExited,
                 )
             terminals = SingleTerminal(emulator, connection)
             sftp = SftpSession(transports.ssh, dispatcher)
-            networkProbe = KeepaliveProbe(scope, dispatcher, transports.ssh) {
-                transports.usesSsh && _state.value.status == SessionStatus.Connected
-            }
+            keepaliveProbe = probe
         }
     }
 
-    // A tab stops the traffic that only keeps it fresh while nothing shows it.
-    private val quietWhenHidden = QuietWhenHidden(scope, dispatcher, setQuiet = connection::setQuiet)
+    // A tab stops the traffic that only keeps it fresh while nothing shows it, and checks
+    // its connection when it is shown again after a while.
+    private val quietWhenHidden =
+        QuietWhenHidden(scope, dispatcher, setQuiet = connection::setQuiet, setVisible = connection.activity::setVisible)
 
     private val pauseHiddenOutputSetting =
         scope.launch(dispatcher) { pauseHiddenOutput.collect(connection::setPauseHiddenOutput) }
@@ -186,7 +193,8 @@ class TerminalSessionEngine internal constructor(
      * no snapshots, the title and bell update about once a second, and Kitty animations
      * pause. After [QUIET_AFTER_HIDDEN_MS] hidden, a Mosh tab stops its network traffic
      * and a tmux window's panes pause until it is shown again, as does an SSH tab's output
-     * when the pauseHiddenOutput setting is on.
+     * when the pauseHiddenOutput setting is on. An SSH connection shown again after that
+     * long checks that its server still answers.
      */
     fun addViewer() {
         scope.launch(dispatcher) {
@@ -328,14 +336,18 @@ class TerminalSessionEngine internal constructor(
         if (disposed) return
         disposed = true
         pauseHiddenOutputSetting.cancel()
-        scope.launch(dispatcher) { quietWhenHidden.cancel() }
+        scope.launch(dispatcher) {
+            quietWhenHidden.cancel()
+            keepaliveProbe?.cancel()
+        }
         disconnect()
         thread.close()
     }
 
     /**
      * Sends the bytes [encode] returns for the terminal keys go to, when there are any.
-     * When the user [typed] them, the terminal may show their echo before it arrives.
+     * When the user [typed] them, the terminal may show their echo before it arrives, and
+     * an SSH connection that then sends nothing back is checked.
      */
     private fun sendEncoded(typed: Boolean = false, encode: (handle: Long) -> ByteArray?) {
         scope.launch(dispatcher) {
@@ -344,6 +356,7 @@ class TerminalSessionEngine internal constructor(
             if (encoded == null || encoded.isEmpty()) return@launch
             if (typed) target.emulator.echoPredictions.onInput(encoded)
             target.send(encoded)
+            if (typed) connection.activity.onTyped()
         }
     }
 
