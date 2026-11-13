@@ -48,6 +48,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LifecycleStartEffect
@@ -123,8 +126,12 @@ internal fun TerminalSessionContent(
                 selectedPane == ConnectionTab.Files && files.supported -> TerminalFilesPane(vm, Modifier.weight(1f))
                 else -> TerminalPane(vm, sessionState, snapshot, host, input, Modifier.weight(1f))
             }
-            Spacer(modifier = Modifier.height(6.dp))
-            if (selectedPane == ConnectionTab.Terminal) TerminalFooter(vm, host, input, files)
+            // The footer leaves only a small gap above its keys, so the terminal gets the height.
+            if (selectedPane == ConnectionTab.Terminal) {
+                TerminalFooter(vm, host, input, files)
+            } else {
+                Spacer(modifier = Modifier.height(6.dp))
+            }
         }
     }
 
@@ -469,11 +476,22 @@ private fun TerminalFooter(
     val activeTab by vm.activeTab.collectAsStateWithLifecycle()
     val activeHostCount = remember(tabs) { tabs.map { it.spec.hostId ?: it.spec.sessionKey }.distinct().size }
     val hostName = activeTab?.spec?.hostLabel()
+    val shownHostName = hostName?.takeIf { activeHostCount > 1 }
     Column(modifier = Modifier.fillMaxWidth()) {
-        if (activeHostCount > 1 && hostName != null) {
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.End) {
-                AbyssText(text = hostName, style = typography.labelSmall, color = colors.textMuted.copy(alpha = 0.7f))
-            }
+        shownHostName?.let { name ->
+            // Trimmed to its glyphs, so the label adds little more than its text to the gap above the keys.
+            AbyssText(
+                text = name,
+                style = typography.labelSmall.copy(
+                    lineHeight = typography.labelSmall.fontSize,
+                    lineHeightStyle = TIGHT_LINE_HEIGHT,
+                    textAlign = TextAlign.End,
+                ),
+                color = colors.textMuted.copy(alpha = 0.7f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 2.dp),
+            )
         }
         files.message?.let { message ->
             AbyssText(
@@ -501,10 +519,13 @@ private fun TerminalFooter(
             onEndSession = host.onEndSession,
             endSessionLabel = activeTab?.let { stringResource(endTabLabel(it)) },
             useSingleRow = host.settings.singleRowAccessoryBar,
+            topPadding = if (shownHostName != null) 3.dp else 2.dp,
             modifier = Modifier.padding(bottom = 2.dp),
         )
     }
 }
+
+private val TIGHT_LINE_HEIGHT = LineHeightStyle(alignment = LineHeightStyle.Alignment.Center, trim = LineHeightStyle.Trim.Both)
 
 /** List mode's tab switcher, with the accessory bar driving its tab list. */
 @Composable
