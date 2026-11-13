@@ -8,7 +8,6 @@ const image_downscale = @import("image_downscale.zig");
 comptime {
     _ = @import("abyssh_snapshot.zig");
     _ = @import("abyssh_ssh.zig");
-    _ = @import("abyssh_mosh.zig");
     _ = @import("abyssh_local_shell.zig");
     _ = @import("abyssh_backup.zig");
     _ = @import("abyssh_wake.zig");

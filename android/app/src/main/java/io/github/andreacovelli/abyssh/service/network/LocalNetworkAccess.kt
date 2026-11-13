@@ -12,7 +12,7 @@ import java.net.InetAddress
 
 /**
  * Android 17 blocks traffic to the local network until the user grants
- * ACCESS_LOCAL_NETWORK, and a blocked SSH or Mosh connection only times out. This says
+ * ACCESS_LOCAL_NETWORK, and a blocked SSH connection only times out. This says
  * whether a host is affected, so the app can ask first and fail with a clear message.
  */
 class LocalNetworkAccess(context: Context) {

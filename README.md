@@ -4,21 +4,21 @@
 
 <h1 align="center">Abyssh</h1>
 
-<p align="center">An Android terminal for SSH and Mosh, built on libghostty.</p>
+<p align="center">An Android terminal for SSH, built on libghostty.</p>
 
 ---
 
-Abyssh connects your Android phone to remote machines over SSH, Tailscale SSH, or
-Mosh, and renders the session with the same terminal engine as
-[Ghostty](https://ghostty.org). It is a fork of
-[jossephus/chuchu](https://github.com/jossephus/chuchu).
+Abyssh connects your Android phone to remote machines over SSH or Tailscale SSH, and
+renders the session with the same terminal engine as [Ghostty](https://ghostty.org). It
+is a fork of [jossephus/chuchu](https://github.com/jossephus/chuchu).
 
 ## Features
 
 **Connections**
 
-- SSH with a password, a key, or a key with a passphrase; Tailscale SSH; and Mosh,
-  which keeps a session alive across network changes and sleep
+- SSH with a password, a key, or a key with a passphrase, and Tailscale SSH
+- Reconnects when the network changes or a connection goes quiet, and predictive echo
+  that shows what you type before a slow server echoes it
 - A local shell on the phone
 - Host key checks on first connect, a warning when a known key or its type changes, and
   a list of trusted keys where you can forget one
@@ -108,12 +108,12 @@ Other tasks (`mise tasks ls` lists them all):
 | Path | Contents |
 | --- | --- |
 | `android/` | The Kotlin and Jetpack Compose app, built with Gradle |
-| `zig-src/` | The native library: the terminal engine, SSH, Mosh, the local shell, and backup encryption, built with Zig |
+| `zig-src/` | The native library: the terminal engine, SSH, the local shell, and backup encryption, built with Zig |
 | `.github/workflows/` | CI checks and releases |
 | `assets/` | The logo used in this README |
 
 The native library links [libghostty-vt](https://github.com/ghostty-org/ghostty) for
-terminal emulation, libssh2 and OpenSSL for SSH, and a Zig Mosh client.
+terminal emulation, and libssh2 and OpenSSL for SSH.
 
 ## Releases
 

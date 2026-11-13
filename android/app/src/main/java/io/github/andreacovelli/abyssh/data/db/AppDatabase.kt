@@ -15,12 +15,13 @@ import io.github.andreacovelli.abyssh.model.SshKey
 
 @Database(
     entities = [HostProfile::class, SshKey::class],
-    version = 16,
+    version = 17,
     autoMigrations = [
         AutoMigration(from = 11, to = 12),
         AutoMigration(from = 12, to = 13),
         AutoMigration(from = 13, to = 14),
         AutoMigration(from = 15, to = 16),
+        AutoMigration(from = 16, to = 17, spec = Migration16To17::class),
     ],
 )
 @TypeConverters(Converters::class)

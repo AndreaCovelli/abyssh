@@ -3,14 +3,12 @@ package io.github.andreacovelli.abyssh.service.terminal
 import io.github.andreacovelli.abyssh.service.network.LocalNetworkAccess
 import io.github.andreacovelli.abyssh.service.network.NetworkWaiter
 
-import android.os.SystemClock
 import android.util.Log
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.UiText
 import io.github.andreacovelli.abyssh.model.UiTextException
 import io.github.andreacovelli.abyssh.model.toUiText
 import io.github.andreacovelli.abyssh.model.Transport
-import io.github.andreacovelli.abyssh.service.mosh.MoshRuntimeState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -31,7 +29,6 @@ private const val MAX_PTY_DRAINS = 8
 private class ReadOutcome(
     val failed: Boolean = false,
     val shellExited: Boolean = false,
-    val moshFailureCode: Int? = null,
 )
 
 /**
@@ -55,15 +52,6 @@ internal class SessionConnection(
     private val network: NetworkWaiter,
     private val onShellExited: () -> Unit,
 ) : TabConnection {
-    private val moshStaleness = MoshConnectionStalenessTracker()
-    private val moshEvents =
-        MoshEvents(
-            onHostBytes = ::feed,
-            onResize = emulator::resizeGrid,
-            onRuntimeState = ::onMoshRuntime,
-            onScreenChanged = { emulator.requestSnapshot() },
-        )
-
     @Volatile private var spec: TabSpec? = null
 
     @Volatile private var disconnectRequested = false
@@ -77,9 +65,6 @@ internal class SessionConnection(
     private val reconnectWait = ReconnectWait()
 
     private val attempts = ReconnectAttempts()
-
-    // When the Mosh client last resumed after a network failure.
-    private var moshResumedAtMs: Long? = null
 
     override val activity: TabActivity get() = keepaliveProbe
 
@@ -138,8 +123,8 @@ internal class SessionConnection(
         runCatching { transports.write(data) }
     }
 
-    // Mosh stops its heartbeats and SSH stretches its keepalive interval, and pauses the
-    // shell's output when the user asked for it. A quiet tab also stops retrying a failed
+    // SSH stretches its keepalive interval, and pauses the shell's output when the user
+    // asked for it. A quiet tab also stops retrying a failed
     // reconnect until it is shown.
     override fun setQuiet(quiet: Boolean) {
         transports.setQuiet(quiet)
@@ -197,7 +182,6 @@ internal class SessionConnection(
         transports.closeAll()
         emulator.open()
         emulator.echoPredictions.enabled = spec.transport == Transport.SSH || spec.transport == Transport.TailscaleSSH
-        if (spec.transport == Transport.Mosh) moshStaleness.reset()
         val geometry = emulator.geometry
         transports.open(spec, geometry)
         resizer.opened(geometry)
@@ -243,10 +227,6 @@ internal class SessionConnection(
 
     private suspend fun read(transport: Transport): ReadOutcome = try {
         when (transport) {
-            Transport.Mosh -> {
-                val result = transports.mosh.read(moshEvents)
-                ReadOutcome(shellExited = result.shellExited, moshFailureCode = result.failureCode)
-            }
             Transport.LocalShell -> {
                 transports.readLocalShell(::feed)
                 ReadOutcome(shellExited = currentCoroutineContext().isActive)
@@ -270,44 +250,17 @@ internal class SessionConnection(
 
     private fun onReadLoopEnded(transport: Transport, outcome: ReadOutcome) {
         resizer.remoteClosed()
-        if (transport == Transport.Mosh && outcome.moshFailureCode != null && !disconnectRequested && resumeMosh()) return
         when (readLoopExitAction(transport, outcome.shellExited && !outcome.failed)) {
             ReadLoopExitAction.Disconnect -> {
-                when (transport) {
-                    Transport.LocalShell -> transports.localShell.close()
-                    Transport.Mosh -> transports.mosh.close()
-                    else -> transports.ssh.close()
-                }
+                if (transport == Transport.LocalShell) transports.localShell.close() else transports.ssh.close()
                 if (!disconnectRequested && !outcome.failed) {
                     state.update { it.copy(status = SessionStatus.Disconnected) }
                     if (outcome.shellExited) onShellExited()
                 }
             }
-            ReadLoopExitAction.AutomaticReconnect -> scheduleReconnect(
-                when {
-                    transport != Transport.Mosh -> UiText.Resource(R.string.error_connection_interrupted)
-                    outcome.moshFailureCode != null -> UiText.Resource(R.string.error_mosh_session_lost_code, outcome.moshFailureCode)
-                    else -> UiText.Resource(R.string.error_mosh_session_lost)
-                },
-            )
+            ReadLoopExitAction.AutomaticReconnect ->
+                scheduleReconnect(UiText.Resource(R.string.error_connection_interrupted))
         }
-    }
-
-    /**
-     * Resumes a Mosh session that failed on its network on a new socket, which keeps its
-     * mosh-server and shell. One that fails again within [STABLE_SESSION_MS] of resuming
-     * isn't resumed again, so the reconnect bootstraps a new session instead.
-     */
-    private fun resumeMosh(): Boolean {
-        val now = SystemClock.elapsedRealtime()
-        val lastResume = moshResumedAtMs
-        if (lastResume != null && now - lastResume < STABLE_SESSION_MS) return false
-        if (!transports.mosh.resume()) return false
-        moshResumedAtMs = now
-        moshStaleness.reset()
-        updateStatus(SessionStatus.Reconnecting)
-        startReadLoop(Transport.Mosh)
-        return true
     }
 
     private fun onResizeFailed(error: Exception) {
@@ -384,11 +337,6 @@ internal class SessionConnection(
             wasImageLoading && !isImageLoading -> emulator.requestSnapshot(force = true)
             !isImageLoading -> emulator.requestSnapshot()
         }
-    }
-
-    private fun onMoshRuntime(runtime: MoshRuntimeState) {
-        sessionStatusForMoshState(runtime.state)?.let(::updateStatus)
-        moshStaleness.observe(runtime, SystemClock.elapsedRealtime())?.let(::updateStatus)
     }
 
     private fun updateStatus(status: SessionStatus) {

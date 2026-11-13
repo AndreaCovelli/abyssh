@@ -259,6 +259,16 @@ class AbysshBackupCoreTest {
     }
 
     @Test
+    fun payloadDecodeReadsMoshHostsFromOlderBackupsAsSsh() {
+        val encoded = replaceStringField(AbysshBackupCodec.encodePayload(samplePayload()), "SSH", "Mosh")
+
+        val decoded = AbysshBackupCodec.decodePayload(encoded)
+
+        assertEquals(Transport.SSH, decoded.hosts.single().transport)
+        assertEquals("server", decoded.hosts.single().name)
+    }
+
+    @Test
     fun payloadV2PreservesMultiplexerWithStableLowercaseId() {
         val encoded = AbysshBackupCodec.encodePayload(samplePayload())
         val encodedText = String(encoded, Charsets.ISO_8859_1)
@@ -471,7 +481,7 @@ class AbysshBackupCoreTest {
         name: String = "server",
         keyId: Long? = 1L,
         authMethod: AuthMethod = AuthMethod.KeyWithPassphrase,
-        transport: Transport = Transport.Mosh,
+        transport: Transport = Transport.SSH,
     ): HostProfile = HostProfile(
         id = id,
         name = name,
@@ -512,6 +522,18 @@ class AbysshBackupCoreTest {
         bytes[offset + 1] = (value ushr 16).toByte()
         bytes[offset + 2] = (value ushr 8).toByte()
         bytes[offset + 3] = value.toByte()
+    }
+
+    /** [bytes] with the one length-prefixed string field holding [oldValue] holding [newValue]. */
+    private fun replaceStringField(bytes: ByteArray, oldValue: String, newValue: String): ByteArray {
+        fun field(value: String): ByteArray {
+            val text = value.toByteArray(Charsets.UTF_8)
+            return ByteArray(Int.SIZE_BYTES).also { writeIntAt(it, offset = 0, value = text.size) } + text
+        }
+        val old = field(oldValue)
+        val matches = (0..bytes.size - old.size).filter { index -> old.indices.all { bytes[index + it] == old[it] } }
+        val index = matches.single()
+        return bytes.copyOfRange(0, index) + field(newValue) + bytes.copyOfRange(index + old.size, bytes.size)
     }
 
     private fun replaceLastAscii(bytes: ByteArray, oldValue: String, newValue: String) {

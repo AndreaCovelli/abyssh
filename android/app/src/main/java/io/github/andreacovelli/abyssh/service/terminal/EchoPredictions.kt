@@ -28,8 +28,7 @@ internal class EchoPredictions(
 
     /**
      * Whether what the user types is drawn before the host echoes it, for the SSH
-     * connections and tmux panes that set it. Mosh doesn't, since its server sends screen
-     * updates rather than echoes, and the local shell has nothing to wait for.
+     * connections and tmux panes that set it. The local shell has nothing to wait for.
      */
     var enabled: Boolean = false
         set(value) {

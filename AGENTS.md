@@ -1,9 +1,9 @@
 # AGENTS.md
 
-Abyssh is an Android SSH, Tailscale SSH, and Mosh client. A Kotlin and Jetpack Compose
-app (`android/`) drives a native library written in Zig (`zig-src/`) that holds the
-terminal engine (libghostty-vt), SSH (libssh2 and OpenSSL), Mosh, the local shell, and
-backup encryption. It is a fork of jossephus/chuchu.
+Abyssh is an Android SSH and Tailscale SSH client. A Kotlin and Jetpack Compose app
+(`android/`) drives a native library written in Zig (`zig-src/`) that holds the terminal
+engine (libghostty-vt), SSH (libssh2 and OpenSSL), the local shell, and backup
+encryption. It is a fork of jossephus/chuchu.
 
 ## Commands
 
@@ -24,7 +24,7 @@ version catalog pins AGP, Kotlin, and libraries. Run `mise install` once.
 | `mise run test:device:compile` | Compile the instrumented tests without a device. Part of `mise run check` |
 | `mise run install` | Install the debug APK on a connected device and launch it |
 | `mise run release` | Tag the next version from the commits since the last tag (`mise-tasks/release`). Before 1.0, breaking changes bump minor and everything else bumps patch. Never tag by hand |
-| `cd zig-src && zig build test` | Run the Zig tests (the backup format, the fling cap, the reading of a paused SSH channel, the scaling of oversized PNGs, the Kitty image cache, the key encoding options, and the vendored Mosh client) on the host |
+| `cd zig-src && zig build test` | Run the Zig tests (the backup format, the fling cap, the reading of a paused SSH channel, the scaling of oversized PNGs, the Kitty image cache, and the key encoding options) on the host |
 | `cd zig-src && zig build fmt` | Format the Zig sources |
 
 Run one Gradle build at a time. The native build takes several minutes for all ABIs;
@@ -36,18 +36,18 @@ build arm64 only while iterating.
 android/app/src/main/java/io/github/andreacovelli/abyssh/
   data/       Room database, DAOs, repositories, backup planning
   model/      Plain data types (HostProfile, Transport, AuthMethod, SshKey)
-  service/    Connections and sessions: ssh/, mosh/, terminal/, multiplexer/, backup/
+  service/    Connections and sessions: ssh/, terminal/, multiplexer/, backup/
   ui/         Navigation, screens/, shared components/, terminal/ rendering and input, theme/
 android/app/schemas/   Committed Room schema JSON, one file per database version
 zig-src/src/bridge/    JNI exports, one file per Kotlin bridge class
-zig-src/src/vendor/    Vendored Mosh client, build scripts for libssh2 and mbedtls
+zig-src/src/vendor/    Build scripts for libssh2 and mbedtls
 ```
 
 ## The native bridge
 
-Kotlin declares `external fun native*` methods in six bridge classes: `GhosttyBridge`,
-`NativeLocalShellBridge`, `NativeSshBridge`, `NativeMoshBridge`, `NativeBackupBridge`,
-and `NativeWakeBridge`. Zig implements each one as
+Kotlin declares `external fun native*` methods in five bridge classes: `GhosttyBridge`,
+`NativeLocalShellBridge`, `NativeSshBridge`, `NativeBackupBridge`, and
+`NativeWakeBridge`. Zig implements each one as
 `export fn Java_io_github_andreacovelli_abyssh_<package>_<Class>_<method>` in
 `zig-src/src/bridge/abyssh_*.zig`.
 
@@ -146,16 +146,16 @@ and `NativeWakeBridge`. Zig implements each one as
   lost (`src/bridge/keepalive.zig`), the decoding and scaling of PNGs too large to store
   (`src/bridge/image_downscale.zig`), checked against zigimg, the cache that restores
   evicted Kitty images (`src/bridge/kitty_image_cache.zig`),
-  which runs Ghostty's terminal, the options keys are encoded with
-  (`src/bridge/key_encode_options.zig`), checked against Ghostty's encoder, and the
-  vendored Mosh client. Keep such code out of the JNI files so it can be tested; test
-  the rest of the bridge logic through its Kotlin callers.
+  which runs Ghostty's terminal, and the options keys are encoded with
+  (`src/bridge/key_encode_options.zig`), checked against Ghostty's encoder. Keep such
+  code out of the JNI files so it can be tested; test the rest of the bridge logic
+  through its Kotlin callers.
 - The instrumented `MigrationPathTest` migrates a version 11 database through every
   version and checks each against the committed schema. Extend it when you add a
   migration.
-- Changes to the bridge, SSH, Mosh, or the terminal need a check on a device: build the
-  native library, run `mise run install`, open a connection, and read
-  `adb logcat` for `UnsatisfiedLinkError` or crashes.
+- Changes to the bridge, SSH, or the terminal need a check on a device: build the native
+  library, run `mise run install`, open a connection, and read `adb logcat` for
+  `UnsatisfiedLinkError` or crashes.
 
 ## Zig
 

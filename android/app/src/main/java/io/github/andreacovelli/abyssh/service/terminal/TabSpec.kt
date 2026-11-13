@@ -63,9 +63,7 @@ data class TabSpec(
 
     val usesRuntimeMultiplexer: Boolean
         get() =
-            multiplexer?.runtimeSupported == true &&
-                transport != Transport.Mosh &&
-                transport != Transport.LocalShell
+            multiplexer?.runtimeSupported == true && transport != Transport.LocalShell
 
     /** Whether this tab attaches to tmux in control mode, where each tmux window is a tab. */
     val usesTmuxControlMode: Boolean
@@ -96,11 +94,7 @@ data class TabSpec(
             keyPassphrase = keyPassphrase,
             transport = host.transport,
             postConnectCommand = host.postConnectCommand,
-            multiplexer = host.multiplexer?.takeIf {
-                it.runtimeSupported &&
-                    host.transport != Transport.Mosh &&
-                    host.transport != Transport.LocalShell
-            },
+            multiplexer = host.multiplexer?.takeIf { it.runtimeSupported && host.transport != Transport.LocalShell },
             tmuxControlMode = host.tmuxControlMode,
             chooseSessionOnConnect = host.chooseSessionOnConnect,
             keepaliveIntervalSeconds = host.keepaliveIntervalSeconds,

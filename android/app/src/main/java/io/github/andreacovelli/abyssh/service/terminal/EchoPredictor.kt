@@ -3,7 +3,7 @@ package io.github.andreacovelli.abyssh.service.terminal
 import io.github.andreacovelli.abyssh.model.EchoPredictionMode
 
 /**
- * Guesses the echo of what the user types, as VS Code's terminal and Mosh do, so text
+ * Guesses the echo of what the user types, as VS Code's terminal does, so text
  * appears before the round trip to the host ends. A guess is a character expected at a
  * cell, and only typing at the end of a line is guessed. The terminal's snapshots check
  * the guesses: once the real cursor has moved past a guess's cell, the guess is right if

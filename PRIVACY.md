@@ -5,11 +5,10 @@ and the app itself sends nothing to its developer or to any other third party.
 
 ## Network connections
 
-Abyssh connects only to the hosts you choose, using SSH, Tailscale SSH, or Mosh. Links you
-tap in a terminal, and files you open from the file browser, go to another app on your
-phone.
+Abyssh connects only to the hosts you choose, using SSH or Tailscale SSH. Links you tap
+in a terminal, and files you open from the file browser, go to another app on your phone.
 
-The hosts you connect to see what any SSH or Mosh server sees, such as your IP address and
+The hosts you connect to see what any SSH server sees, such as your IP address and
 username. Downloading Abyssh from GitHub Releases is subject to GitHub's own privacy
 policy.
 

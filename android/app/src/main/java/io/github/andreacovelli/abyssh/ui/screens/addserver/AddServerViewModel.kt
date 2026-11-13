@@ -31,7 +31,6 @@ import io.github.andreacovelli.abyssh.service.terminal.HostKeyPrompt
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
 import io.github.andreacovelli.abyssh.service.terminal.TabSpec
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionRepository
-import io.github.andreacovelli.abyssh.service.terminal.runsRemoteCommands
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -411,21 +410,11 @@ val AddServerForm.keepaliveIntervalSeconds: Int
     get() = keepaliveInterval.toIntOrNull()?.coerceIn(0, MAX_KEEPALIVE_INTERVAL_SECONDS)
         ?: DEFAULT_KEEPALIVE_INTERVAL_SECONDS
 
-/** Whether the transport keeps an SSH connection open for the session, which keepalives watch. */
-val AddServerForm.usesKeepalive: Boolean
-    get() = transport == Transport.SSH || transport == Transport.TailscaleSSH
-
-/**
- * The multiplexer the host uses: the chosen one, or none while the transport can't run it.
- * [AddServerForm.multiplexer] keeps the choice across transport changes.
- */
+/** The multiplexer the host uses: the chosen one, unless Abyssh can't run it yet. */
 val AddServerForm.effectiveMultiplexer: MultiplexerType?
-    get() = multiplexer?.takeIf { transport.runsRemoteCommands && it.runtimeSupported }
+    get() = multiplexer?.takeIf { it.runtimeSupported }
 
-/**
- * Switches the transport. The multiplexer choice is kept even when [transport] can't run it,
- * so switching back to a transport that can restores it.
- */
+/** Switches the transport. */
 fun AddServerForm.withTransport(transport: Transport): AddServerForm = copy(
     transport = transport,
     // Only Tailscale SSH can connect without credentials.
@@ -434,12 +423,9 @@ fun AddServerForm.withTransport(transport: Transport): AddServerForm = copy(
             ?: AuthMethod.Password,
 )
 
-/**
- * Chooses a multiplexer. While the transport can't run one the control is locked to off, so the
- * earlier choice stays.
- */
+/** Chooses a multiplexer, or none for one Abyssh can't run yet. */
 fun AddServerForm.withMultiplexer(multiplexer: MultiplexerType?): AddServerForm =
-    if (transport.runsRemoteCommands) copy(multiplexer = multiplexer?.takeIf { it.runtimeSupported }) else this
+    copy(multiplexer = multiplexer?.takeIf { it.runtimeSupported })
 
 fun AddServerForm.canSave(): Boolean {
     if (name.isBlank() || host.isBlank() || username.isBlank() || portNumber == null) return false

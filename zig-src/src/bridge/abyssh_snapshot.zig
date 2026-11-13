@@ -296,8 +296,8 @@ fn clampI32(value: c.jint, minimum: i32, fallback: i32) i32 {
     return @intCast(value);
 }
 
-// The largest grid the terminal accepts, so a resize from a server (Mosh sends its own)
-// can't wrap the u16 or ask for gigabytes. MoshTransport.kt uses the same bounds.
+// The largest grid the terminal accepts, so a resize can't wrap the u16 or ask for
+// gigabytes.
 const max_grid_cols: i32 = 2048;
 const max_grid_rows: i32 = 1024;
 

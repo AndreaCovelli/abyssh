@@ -196,7 +196,7 @@ private class RunningCommand(val ssh: NativeSshService) {
 
 /** Whether a transport can run remote commands, which multiplexers need. */
 internal val Transport.runsRemoteCommands: Boolean
-    get() = this != Transport.Mosh && this != Transport.LocalShell
+    get() = this != Transport.LocalShell
 
 /** Why a session can't use [selected], or null when it can. */
 internal fun MultiplexerAvailability.errorMessage(selected: MultiplexerType?): UiText? = when (this) {

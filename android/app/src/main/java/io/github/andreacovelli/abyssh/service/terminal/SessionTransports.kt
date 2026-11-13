@@ -3,7 +3,6 @@ package io.github.andreacovelli.abyssh.service.terminal
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.model.UiText
-import io.github.andreacovelli.abyssh.service.mosh.NativeMoshService
 import io.github.andreacovelli.abyssh.service.ssh.HostKeyPolicy
 import io.github.andreacovelli.abyssh.service.ssh.NativeSshService
 import io.github.andreacovelli.abyssh.service.ssh.RemoteTerm
@@ -63,8 +62,8 @@ internal class ReadPacer(private val clock: () -> Long = System::currentTimeMill
 }
 
 /**
- * The SSH, Mosh, and local shell services behind one session, and which of them the
- * session uses. Every call must run on the session thread, which [outputWaiter] blocks
+ * The SSH and local shell services behind one session, and which of them the session
+ * uses. Every call must run on the session thread, which [outputWaiter] blocks
  * while the SSH or local shell read loop waits for output.
  */
 internal class SessionTransports(
@@ -75,21 +74,19 @@ internal class SessionTransports(
 ) {
     val ssh = NativeSshService(hostKeyPolicy = hostKeyPolicy)
     private val pacer = ReadPacer()
-    val mosh = MoshTransport(ssh, NativeMoshService(), pacer, outputWaiter)
     private var transport: Transport = Transport.SSH
     private val outputPause = HiddenOutputPause(ssh::setOutputPaused)
 
-    /** Whether the session runs over its own SSH connection, rather than Mosh or a local shell. */
+    /** Whether the session runs over its own SSH connection, rather than a local shell. */
     val usesSsh: Boolean get() = transport == Transport.SSH || transport == Transport.TailscaleSSH
 
     /** Why [transport]'s native library can't run, or null when it can. */
     fun unavailableReason(transport: Transport): UiText? = when {
-        transport == Transport.Mosh && !mosh.isLoaded -> UiText.Resource(R.string.error_native_mosh_unavailable)
         transport.runsRemoteCommands && !ssh.isAvailable() -> UiText.Resource(R.string.error_native_ssh_unavailable)
         else -> null
     }
 
-    /** Cancels an SSH or Mosh connection that is still connecting. Safe from any thread. */
+    /** Cancels an SSH connection that is still connecting. Safe from any thread. */
     fun cancelConnect() = ssh.cancelConnect()
 
     /**
@@ -97,7 +94,6 @@ internal class SessionTransports(
      * [setPauseHiddenOutput] asked for it.
      */
     fun setQuiet(quiet: Boolean) {
-        mosh.setQuiet(quiet)
         ssh.setQuiet(quiet)
         outputPause.setQuiet(quiet)
     }
@@ -108,8 +104,6 @@ internal class SessionTransports(
     fun closeAll() {
         outputPause.onShellClosed()
         ssh.close()
-        mosh.shutdown()
-        mosh.close()
         localShell.close()
     }
 
@@ -117,7 +111,6 @@ internal class SessionTransports(
         outputPause.onShellClosed()
         transport = spec.transport
         when (spec.transport) {
-            Transport.Mosh -> mosh.open(spec, geometry)
             Transport.LocalShell ->
                 localShell.start(geometry.cols, geometry.rows, geometry.screenWidth, geometry.screenHeight)
             else -> openSsh(spec, geometry)
@@ -127,7 +120,6 @@ internal class SessionTransports(
     fun write(data: ByteArray) {
         pacer.onInput()
         when (transport) {
-            Transport.Mosh -> mosh.sendInput(data)
             Transport.LocalShell -> localShell.write(data)
             else -> ssh.write(data)
         }
@@ -135,12 +127,10 @@ internal class SessionTransports(
 
     /** Gives the far end [geometry]; false when an SSH connection is too busy to take it now. */
     fun resize(geometry: TerminalGeometry): Boolean {
-        when (transport) {
-            Transport.Mosh -> mosh.resize(geometry.cols, geometry.rows)
-            Transport.LocalShell ->
-                localShell.resize(geometry.cols, geometry.rows, geometry.ptyWidthPx, geometry.ptyHeightPx)
-            else -> return ssh.resize(geometry.cols, geometry.rows, geometry.ptyWidthPx, geometry.ptyHeightPx)
+        if (transport != Transport.LocalShell) {
+            return ssh.resize(geometry.cols, geometry.rows, geometry.ptyWidthPx, geometry.ptyHeightPx)
         }
+        localShell.resize(geometry.cols, geometry.rows, geometry.ptyWidthPx, geometry.ptyHeightPx)
         return true
     }
 

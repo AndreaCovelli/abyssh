@@ -73,8 +73,7 @@ internal class SessionResize(
 
     /**
      * Gives the far end the view's size, unless it already has it or nothing is open. The
-     * view's, not the terminal's: a Mosh server can still be resizing the terminal to an
-     * older size.
+     * view's, not the terminal's: a held grid is still at an older size.
      */
     fun sync() {
         val sent = remoteGeometry ?: return

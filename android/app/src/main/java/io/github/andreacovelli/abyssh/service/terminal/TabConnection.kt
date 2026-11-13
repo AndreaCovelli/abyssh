@@ -1,7 +1,7 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
 /**
- * What feeds a tab's terminal: its own SSH, Mosh, or local shell connection, or one
+ * What feeds a tab's terminal: its own SSH or local shell connection, or one
  * window of a tmux control session. [connect] and [disconnect] may be called from any
  * thread; every other call runs on the tab's session thread.
  */

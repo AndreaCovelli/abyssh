@@ -53,7 +53,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.andreacovelli.abyssh.model.AuthMethod
 import io.github.andreacovelli.abyssh.model.MultiplexerType
-import io.github.andreacovelli.abyssh.service.terminal.runsRemoteCommands
 import io.github.andreacovelli.abyssh.model.SshKey
 import io.github.andreacovelli.abyssh.model.Transport
 import io.github.andreacovelli.abyssh.ui.components.AbyssButton
@@ -254,22 +253,14 @@ private fun ConnectionSection(form: AddServerForm, vm: AddServerViewModel) {
     }
 }
 
-/** Product names stay in code; only the local shell has a translated name. */
-@Composable
-private fun transportLabel(transport: Transport): String = when (transport) {
-    Transport.SSH -> "SSH"
-    Transport.TailscaleSSH -> "Tailscale"
-    Transport.Mosh -> "Mosh"
-    Transport.LocalShell -> stringResource(R.string.server_list_local_shell)
-}
-
 @Composable
 private fun TransportSection(selected: Transport, onSelect: (Transport) -> Unit) {
     AbyssSectionHeader(stringResource(R.string.server_section_transport))
-    val options = listOf(Transport.SSH, Transport.TailscaleSSH, Transport.Mosh)
+    // Product names stay in code.
+    val labels = mapOf(Transport.SSH to "SSH", Transport.TailscaleSSH to "Tailscale")
     AbyssSegmentedControl(
-        options = options,
-        labels = options.associateWith { transportLabel(it) },
+        options = labels.keys.toList(),
+        labels = labels,
         selected = selected,
         onSelect = onSelect,
     )
@@ -447,7 +438,6 @@ private fun AdditionalSettingsSection(form: AddServerForm, vm: AddServerViewMode
     }
     SectionDivider()
     MultiplexerSection(
-        transport = form.transport,
         selected = form.effectiveMultiplexer,
         onSelect = vm::updateMultiplexer,
         tmuxControlMode = form.tmuxControlMode,
@@ -461,10 +451,8 @@ private fun AdditionalSettingsSection(form: AddServerForm, vm: AddServerViewMode
         onCommandChange = vm::updatePostConnectCommand,
     )
     SectionDivider()
-    if (form.usesKeepalive) {
-        KeepaliveSection(seconds = form.keepaliveInterval, onSecondsChange = vm::updateKeepaliveInterval)
-        SectionDivider()
-    }
+    KeepaliveSection(seconds = form.keepaliveInterval, onSecondsChange = vm::updateKeepaliveInterval)
+    SectionDivider()
 }
 
 @Composable
@@ -667,7 +655,6 @@ private enum class MultiplexerOption(val type: MultiplexerType?) {
 
 @Composable
 private fun MultiplexerSection(
-    transport: Transport,
     selected: MultiplexerType?,
     onSelect: (MultiplexerType?) -> Unit,
     tmuxControlMode: Boolean,
@@ -680,8 +667,6 @@ private fun MultiplexerSection(
     AbyssSectionHeader(stringResource(R.string.server_section_persistence))
     val options = MultiplexerOption.entries.toList()
     val selectedOption = options.firstOrNull { it.type == selected } ?: MultiplexerOption.Off
-    // Multiplexers attach over a remote command, which Mosh can't run.
-    val transportSupported = transport.runsRemoteCommands
     AbyssSegmentedControl(
         options = options,
         labels =
@@ -694,17 +679,10 @@ private fun MultiplexerSection(
         selected = selectedOption,
         onSelect = { onSelect(it.type) },
         disabledOptions = options.filterTo(mutableSetOf()) {
-            it.type != null && (!transportSupported || !it.type.runtimeSupported)
+            it.type != null && !it.type.runtimeSupported
         },
     )
-    if (!transportSupported) {
-        AbyssText(
-            stringResource(R.string.server_persistence_unsupported, transportLabel(transport)),
-            style = typography.bodySmall,
-            color = colors.textMuted,
-        )
-    }
-    if (selected != null && transportSupported && selected.runtimeSupported) {
+    if (selected != null && selected.runtimeSupported) {
         PersistenceSwitchRow(
             title = stringResource(R.string.server_choose_session),
             description = stringResource(R.string.server_choose_session_description),

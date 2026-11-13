@@ -23,7 +23,6 @@ internal const val UNANSWERED_INPUT_MS = 3_000L
  * reconnects as for any dropped link; one that answers carries on untouched. Without a
  * probe, a link that died without a network change goes unnoticed until the host's own
  * keepalive count runs out, 90 seconds at the default, or for good with keepalives off.
- * Mosh roams on its own and has nothing to probe.
  *
  * Apart from [networkChanged], calls must run on [dispatcher].
  */

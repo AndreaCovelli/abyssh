@@ -106,8 +106,8 @@ class ThemeScreenshotTest {
                         autoFocus = false,
                     )
                     AbyssSegmentedControl(
-                        options = listOf("ssh", "mosh", "local"),
-                        labels = mapOf("ssh" to "SSH", "mosh" to "Mosh", "local" to "Local"),
+                        options = listOf("ssh", "tailscale", "local"),
+                        labels = mapOf("ssh" to "SSH", "tailscale" to "Tailscale", "local" to "Local"),
                         selected = "ssh",
                         onSelect = {},
                     )
