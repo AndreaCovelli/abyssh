@@ -3,6 +3,7 @@
  * the same structures as the rest of the library.
  */
 #include "libssh2_priv.h"
+#include "channel.h"
 #include "transport.h"
 
 /*
@@ -89,4 +90,59 @@ int ssh2ext_channel_setenv_noreply(LIBSSH2_CHANNEL *channel,
         return _libssh2_error(session, LIBSSH2_ERROR_SOCKET_SEND,
                               "Unable to send setenv request");
     return 0;
+}
+
+/*
+ * Whether the server has sent EOF or closed the channel. Unlike libssh2_channel_eof,
+ * true while data from before the EOF is still queued.
+ */
+int ssh2ext_channel_remote_finished(LIBSSH2_CHANNEL *channel)
+{
+    if(!channel)
+        return 1;
+    return (channel->remote.eof || channel->remote.close) ? 1 : 0;
+}
+
+/*
+ * Processes what the socket holds, as libssh2_channel_read does, without growing the
+ * channel's receive window: libssh2 widens it only when a read takes data off the
+ * queue, so once the queue fills the window the server has no credit left and stops
+ * sending on this channel. Key exchange, keepalives and their replies, the server's
+ * own global requests, the window the server grants for our writes, and its EOF and
+ * close are all still handled, and the data that arrives within the window stays
+ * queued for a later read.
+ *
+ * A window adjust a read left half-sent is finished first, since libssh2 can send
+ * nothing else on the session until it is. Returns 1 once the server has sent EOF or
+ * closed the channel, 0 otherwise, including when the socket has nothing more yet, or
+ * a negative libssh2 error when the connection fails.
+ */
+int ssh2ext_channel_pump(LIBSSH2_CHANNEL *channel)
+{
+    LIBSSH2_SESSION *session;
+    int rc;
+
+    if(!channel)
+        return LIBSSH2_ERROR_BAD_USE;
+    session = channel->session;
+
+    if(channel->adjust_state != libssh2_NB_state_idle) {
+        /* The held packet carries its own size; pass the same one so the window
+         * libssh2 counts grows by what the server is told. */
+        uint32_t held = _libssh2_ntohu32(&channel->adjust_adjust[5]);
+        rc = _libssh2_channel_receive_window_adjust(channel, held, 1, NULL);
+        if(rc == 0)
+            channel->read_state = libssh2_NB_state_idle;
+        else if(rc != LIBSSH2_ERROR_EAGAIN)
+            return rc;
+    }
+
+    do {
+        rc = _libssh2_transport_read(session);
+    } while(rc > 0);
+
+    if(rc < 0 && rc != LIBSSH2_ERROR_EAGAIN)
+        return _libssh2_error(session, rc, "transport read");
+
+    return ssh2ext_channel_remote_finished(channel);
 }

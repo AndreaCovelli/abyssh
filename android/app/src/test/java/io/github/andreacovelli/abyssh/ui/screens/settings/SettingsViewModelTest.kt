@@ -30,12 +30,14 @@ class SettingsViewModelTest {
     fun `initial state mirrors the repository`() {
         repository.setAppLockEnabled(true)
         repository.setTerminalFontSize(18f)
+        repository.setPauseHiddenOutput(true)
 
         val state = SettingsViewModel(repository).uiState.value
 
         assertEquals(true, state.general.appLockEnabled)
         assertEquals(18f, state.terminal.fontSize)
         assertEquals(TerminalTabMode.Classic, state.terminal.tabMode)
+        assertEquals(true, state.terminal.pauseHiddenOutput)
     }
 
     @Test
@@ -46,10 +48,12 @@ class SettingsViewModelTest {
         vm.setFontSize(20f)
         vm.setLocalShellEnabled(false)
         vm.setScrollbackMb(25)
+        vm.connection.setPauseHiddenOutput(true)
 
         assertEquals(true, repository.appLockEnabled.value)
         assertEquals(20f, repository.terminalFontSize.value)
         assertEquals(false, repository.localShellEnabled.value)
         assertEquals(25, repository.terminalScrollbackMb.value)
+        assertEquals(true, repository.pauseHiddenOutput.value)
     }
 }

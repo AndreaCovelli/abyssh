@@ -71,6 +71,12 @@ class SettingsRepository(context: Context) {
     private val _keepScreenAwake = MutableStateFlow(prefs.getBoolean(KEY_KEEP_SCREEN_AWAKE, false))
     val keepScreenAwake: StateFlow<Boolean> = _keepScreenAwake.asStateFlow()
 
+    // Off by default: pausing stops the programs in hidden tabs, not only their output.
+    private val _pauseHiddenOutput = MutableStateFlow(prefs.getBoolean(KEY_PAUSE_HIDDEN_OUTPUT, false))
+
+    /** Whether an SSH tab hidden for a while stops taking output, so the program writing it waits. */
+    val pauseHiddenOutput: StateFlow<Boolean> = _pauseHiddenOutput.asStateFlow()
+
     // Off by default: on a 90 or 120 Hz display, streaming output redraws more often.
     private val _matchDisplayRefreshRate = MutableStateFlow(prefs.getBoolean(KEY_MATCH_DISPLAY_REFRESH_RATE, false))
     val matchDisplayRefreshRate: StateFlow<Boolean> = _matchDisplayRefreshRate.asStateFlow()
@@ -171,6 +177,11 @@ class SettingsRepository(context: Context) {
         _keepScreenAwake.value = enabled
     }
 
+    fun setPauseHiddenOutput(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_PAUSE_HIDDEN_OUTPUT, enabled) }
+        _pauseHiddenOutput.value = enabled
+    }
+
     fun setMatchDisplayRefreshRate(enabled: Boolean) {
         prefs.edit { putBoolean(KEY_MATCH_DISPLAY_REFRESH_RATE, enabled) }
         _matchDisplayRefreshRate.value = enabled
@@ -259,6 +270,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_REQUIRE_AUTH_ON_CONNECT = "require_auth_on_connect"
         private const val KEY_LOCAL_SHELL_ENABLED = "local_shell_enabled"
         private const val KEY_KEEP_SCREEN_AWAKE = "keep_screen_awake"
+        private const val KEY_PAUSE_HIDDEN_OUTPUT = "pause_hidden_output"
         private const val KEY_MATCH_DISPLAY_REFRESH_RATE = "match_display_refresh_rate"
         private const val KEY_HIDE_SCREEN_CONTENTS = "hide_screen_contents"
         private const val KEY_VOLUME_KEYS_AS_ARROWS = "volume_keys_as_arrows"

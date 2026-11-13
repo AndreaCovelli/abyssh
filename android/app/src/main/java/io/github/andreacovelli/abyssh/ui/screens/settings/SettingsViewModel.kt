@@ -45,6 +45,7 @@ data class TerminalSettingsState(
     val tmuxPrefixKeys: Boolean = false,
     val volumeKeysAsArrows: Boolean = false,
     val keepScreenAwake: Boolean = false,
+    val pauseHiddenOutput: Boolean = false,
     val matchDisplayRefreshRate: Boolean = false,
     val hideScreenContents: Boolean = false,
     val disableAutocorrect: Boolean = true,
@@ -101,6 +102,12 @@ interface TerminalSettingsActions {
     val keys: TerminalKeyActions
     val text: TerminalTextActions
     val menu: ShortcutMenuActions
+    val connection: TerminalConnectionActions
+}
+
+/** How a tab's connection behaves while the tab is hidden. */
+interface TerminalConnectionActions {
+    fun setPauseHiddenOutput(enabled: Boolean)
 }
 
 /** The order of the ⚡ shortcut menu and the items it hides. */
@@ -142,7 +149,8 @@ class SettingsViewModel(
                 settings.shortcutMenu.layout,
                 settings.localShellEnabled, settings.remoteClipboardWriteEnabled, settings.ctrlVPastes,
                 settings.tmuxPrefixKeys,
-                settings.keepScreenAwake, settings.matchDisplayRefreshRate, settings.hideScreenContents,
+                settings.keepScreenAwake, settings.pauseHiddenOutput, settings.matchDisplayRefreshRate,
+                settings.hideScreenContents,
                 settings.keyboard.disableAutocorrect, settings.keyboard.swipeTyping, settings.keyboard.echoPrediction,
                 settings.volumeKeysAsArrows, settings.keyboard.showWithPhysicalKeyboard,
                 settings.text.wordSeparators, settings.text.ligatures, settings.text.cursorBlink,
@@ -177,6 +185,7 @@ class SettingsViewModel(
             tmuxPrefixKeys = settings.tmuxPrefixKeys.value,
             volumeKeysAsArrows = settings.volumeKeysAsArrows.value,
             keepScreenAwake = settings.keepScreenAwake.value,
+            pauseHiddenOutput = settings.pauseHiddenOutput.value,
             matchDisplayRefreshRate = settings.matchDisplayRefreshRate.value,
             hideScreenContents = settings.hideScreenContents.value,
             disableAutocorrect = settings.keyboard.disableAutocorrect.value,
@@ -223,6 +232,10 @@ class SettingsViewModel(
         override fun setCtrlVPastes(enabled: Boolean) = settings.setCtrlVPastes(enabled)
         override fun setTmuxPrefixKeys(enabled: Boolean) = settings.setTmuxPrefixKeys(enabled)
         override fun setVolumeKeysAsArrows(enabled: Boolean) = settings.setVolumeKeysAsArrows(enabled)
+    }
+
+    override val connection = object : TerminalConnectionActions {
+        override fun setPauseHiddenOutput(enabled: Boolean) = settings.setPauseHiddenOutput(enabled)
     }
 
     override val text = object : TerminalTextActions {

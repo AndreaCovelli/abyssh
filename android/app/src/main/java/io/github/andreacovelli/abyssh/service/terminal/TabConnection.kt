@@ -27,4 +27,10 @@ internal interface TabConnection {
      * later connections too.
      */
     fun setQuiet(quiet: Boolean)
+
+    /**
+     * Whether a quiet tab also pauses its output, so programs writing to it wait until it
+     * is shown. Only a shell over the tab's own SSH connection pauses.
+     */
+    fun setPauseHiddenOutput(enabled: Boolean) {}
 }

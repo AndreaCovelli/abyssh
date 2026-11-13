@@ -77,6 +77,7 @@ internal class SessionTransports(
     private val pacer = ReadPacer()
     val mosh = MoshTransport(ssh, NativeMoshService(), pacer, outputWaiter)
     private var transport: Transport = Transport.SSH
+    private val outputPause = HiddenOutputPause(ssh::setOutputPaused)
 
     /** Whether the session runs over its own SSH connection, rather than Mosh or a local shell. */
     val usesSsh: Boolean get() = transport == Transport.SSH || transport == Transport.TailscaleSSH
@@ -91,7 +92,21 @@ internal class SessionTransports(
     /** Cancels an SSH or Mosh connection that is still connecting. Safe from any thread. */
     fun cancelConnect() = ssh.cancelConnect()
 
+    /**
+     * Whether nothing shows the session. A quiet SSH shell pauses its output when
+     * [setPauseHiddenOutput] asked for it.
+     */
+    fun setQuiet(quiet: Boolean) {
+        mosh.setQuiet(quiet)
+        ssh.setQuiet(quiet)
+        outputPause.setQuiet(quiet)
+    }
+
+    /** Whether a quiet SSH shell pauses its output, so programs writing to it wait. */
+    fun setPauseHiddenOutput(enabled: Boolean) = outputPause.setEnabled(enabled)
+
     fun closeAll() {
+        outputPause.onShellClosed()
         ssh.close()
         mosh.shutdown()
         mosh.close()
@@ -99,6 +114,7 @@ internal class SessionTransports(
     }
 
     suspend fun open(spec: TabSpec, geometry: TerminalGeometry) {
+        outputPause.onShellClosed()
         transport = spec.transport
         when (spec.transport) {
             Transport.Mosh -> mosh.open(spec, geometry)
@@ -188,5 +204,6 @@ internal class SessionTransports(
             true
         }
         ssh.setKeepalive(spec.keepaliveIntervalSeconds)
+        outputPause.onShellOpened()
     }
 }

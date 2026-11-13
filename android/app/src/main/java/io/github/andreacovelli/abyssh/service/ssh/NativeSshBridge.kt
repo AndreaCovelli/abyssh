@@ -94,6 +94,13 @@ class NativeSshBridge {
     /** Waits for output or for `wakeFd`; returns a `NativeWait` value. */
     external fun nativeWaitReadable(handle: Long, wakeFd: Int, timeoutMs: Int): Int
 
+    /**
+     * Pauses or resumes the open channel's output: while paused, reads handle keepalives and
+     * the channel's end but leave the output queued, so the server stops sending once it
+     * fills the receive window. False when no channel is open.
+     */
+    external fun nativeSetOutputPaused(handle: Long, paused: Boolean): Boolean
+
     /** Sends a keepalive every `intervalSeconds`, 0 for none; reads fail after `maxMissed` silent intervals. */
     external fun nativeSetKeepalive(handle: Long, intervalSeconds: Int, maxMissed: Int)
 

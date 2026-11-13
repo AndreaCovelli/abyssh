@@ -8,9 +8,11 @@ import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
 import io.github.andreacovelli.abyssh.model.UiText
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -27,6 +29,8 @@ class TerminalSessionEngine internal constructor(
     snapshotIntervalMs: () -> Long = { DEFAULT_SNAPSHOT_INTERVAL_MS },
     // Whether typed text shows before its echo, read each time a key is typed or a snapshot published.
     echoPredictionMode: () -> EchoPredictionMode = { EchoPredictionMode.Off },
+    // Whether a hidden SSH tab pauses its output; the tab follows each change.
+    pauseHiddenOutput: Flow<Boolean> = flowOf(false),
     private val scope: CoroutineScope,
     localShellService: NativeLocalShellService,
     hostKeyStore: HostKeyStore,
@@ -126,6 +130,9 @@ class TerminalSessionEngine internal constructor(
     // A tab stops the traffic that only keeps it fresh while nothing shows it.
     private val quietWhenHidden = QuietWhenHidden(scope, dispatcher, setQuiet = connection::setQuiet)
 
+    private val pauseHiddenOutputSetting =
+        scope.launch(dispatcher) { pauseHiddenOutput.collect(connection::setPauseHiddenOutput) }
+
     /** The tab's view of its tmux window, when it is part of a control session. */
     internal val tmuxView: TmuxPaneView? get() = connection as? TmuxPaneConnection
 
@@ -178,7 +185,8 @@ class TerminalSessionEngine internal constructor(
      * preview; pair each call with [removeViewer]. While nothing shows it, output builds
      * no snapshots, the title and bell update about once a second, and Kitty animations
      * pause. After [QUIET_AFTER_HIDDEN_MS] hidden, a Mosh tab stops its network traffic
-     * and a tmux window's panes pause until it is shown again.
+     * and a tmux window's panes pause until it is shown again, as does an SSH tab's output
+     * when the pauseHiddenOutput setting is on.
      */
     fun addViewer() {
         scope.launch(dispatcher) {
@@ -319,6 +327,7 @@ class TerminalSessionEngine internal constructor(
     fun dispose() {
         if (disposed) return
         disposed = true
+        pauseHiddenOutputSetting.cancel()
         scope.launch(dispatcher) { quietWhenHidden.cancel() }
         disconnect()
         thread.close()

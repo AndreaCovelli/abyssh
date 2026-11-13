@@ -4,6 +4,7 @@ const time = @import("time.zig");
 const c = @import("c");
 const jni_string = @import("jni_string.zig");
 const wake = @import("abyssh_wake.zig");
+const output_pause = @import("output_pause.zig");
 
 const allocator = std.heap.c_allocator;
 const LOG_TAG = "AbyssKittySSH";
@@ -62,6 +63,10 @@ const NativeSshSession = struct {
     // A window-change libssh2 holds half-sent. The next resize must finish it first,
     // because libssh2 resends the held packet and ignores the new size until it has.
     resize_in_flight: bool = false,
+    // Whether the channel's output is paused: reads process the socket but leave the
+    // output queued, so the receive window stays shut once the queue fills it. Belongs
+    // to the channel, so opening another one clears it.
+    output_paused: bool = false,
     // Seconds between keepalives, or 0 for none, and how many intervals may pass with
     // nothing received before reads fail, as OpenSSH's ServerAliveInterval and
     // ServerAliveCountMax do. Set once the shell is open.
@@ -802,12 +807,27 @@ fn writeChannel(session: *NativeSshSession, bytes: []const u8) c.jint {
 }
 
 /// Reads stdout and stderr into the session's read buffer. The bytes stay valid until
-/// the next read.
+/// the next read. While the output is paused it only processes the socket and returns
+/// nothing, until the server ends the channel.
 fn readChannel(session: *NativeSshSession, max_bytes: usize) ?[]const u8 {
     const channel = session.channel orelse {
         setError(session, "Shell not open", .{});
         return null;
     };
+    if (session.output_paused) {
+        const pumped = c.ssh2ext_channel_pump(channel);
+        if (pumped < 0) {
+            setLibssh2Error(session, "Read failed", pumped);
+            return null;
+        }
+        if (output_pause.readMode(true, pumped == 1) == .pump) {
+            if (keepaliveLost(session)) {
+                setError(session, "Connection lost: no reply to keepalives for {} seconds", .{(keepaliveLimitMs(session) orelse 0) / std.time.ms_per_s});
+                return null;
+            }
+            return session.read_buffer[0..0];
+        }
+    }
     const cap = std.math.clamp(max_bytes, 1, max_read_bytes);
     if (session.read_buffer.len < cap) {
         const grown = allocator.alloc(u8, cap) catch {
@@ -1299,6 +1319,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     }
     session.channel = channel;
     session.resize_in_flight = false;
+    session.output_paused = false;
     c.libssh2_channel_set_blocking(channel.?, 0);
     var term_buf = allocator.allocSentinel(u8, term_slice.len, 0) catch {
         setError(session, "TERM alloc failed", .{});
@@ -1394,6 +1415,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     }
     session.channel = channel;
     session.resize_in_flight = false;
+    session.output_paused = false;
     setSocketNonBlocking(session.socket_fd);
     c.libssh2_session_set_blocking(ssh_session, 0);
     c.libssh2_channel_set_blocking(channel.?, 0);
@@ -1437,6 +1459,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     }
     session.channel = channel;
     session.resize_in_flight = false;
+    session.output_paused = false;
     c.libssh2_channel_set_blocking(channel.?, 0);
 
     var term_buf = allocator.allocSentinel(u8, term_slice.len, 0) catch {
@@ -1553,15 +1576,32 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     // reading stdout, or data beyond what fit in the buffer; the socket won't show them.
     // Not libssh2_poll_channel_read: it fails on any queued packet under 5 bytes, as a
     // global request's reply is, and a failure here would end every wait at once.
+    // A paused channel leaves its output queued, so only the end of the channel ends
+    // its wait at once.
     var queued: c_ulong = 0;
     _ = c.libssh2_channel_window_read_ex(channel, &queued, null);
-    if (queued > 0) return wake.wait_ready;
-    if (c.libssh2_channel_eof(channel) != 0) return wake.wait_ready;
+    const eof = c.libssh2_channel_eof(channel) != 0;
+    const finished = c.ssh2ext_channel_remote_finished(channel) != 0;
+    if (output_pause.waitReadyAtOnce(session.output_paused, queued, eof, finished)) return wake.wait_ready;
     const sending = (c.libssh2_session_block_directions(ssh_session) & c.LIBSSH2_SESSION_BLOCK_OUTBOUND) != 0;
     const events: c_short = if (sending) c.POLLIN | c.POLLOUT else c.POLLIN;
     // The read that follows reports the lost connection.
     if (keepaliveLost(session)) return wake.wait_ready;
     return wake.wait(session.socket_fd, events, wake_fd, keepaliveWaitMs(session, ssh_session, timeout_ms));
+}
+
+/// Pauses or resumes the open channel's output. While paused, reads still process the
+/// socket, so keepalives and the server's EOF and close are handled, but they leave the
+/// output queued; once it fills the channel's receive window, about 2 MiB, the server
+/// stops sending. Resuming makes the next read return the queued output, which widens
+/// the window again. Returns false when no channel is open.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeSetOutputPaused(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, paused: c.jboolean) callconv(.c) c.jboolean {
+    _ = env;
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return c.JNI_FALSE;
+    if (session.channel == null) return c.JNI_FALSE;
+    session.output_paused = paused != c.JNI_FALSE;
+    return c.JNI_TRUE;
 }
 
 /// Sends a keepalive every `interval_s` seconds, 0 for none, and fails reads once
@@ -1635,6 +1675,7 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     if (session.channel) |channel| {
         freeChannel(session, channel, deadline_ms);
         session.channel = null;
+        session.output_paused = false;
     }
     if (session.session) |ssh_session| {
         freeSession(session, ssh_session, deadline_ms);
