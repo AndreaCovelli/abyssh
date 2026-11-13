@@ -279,9 +279,10 @@ pub fn build(b: *std.Build) void {
 
     // Zig tests that need no JNI or NDK, on the host: the backup container format, the
     // fling cap for full-screen programs, the scaling of oversized Kitty images, the
-    // Kitty image cache, which runs Ghostty's terminal, and the vendored Mosh client,
-    // which links zlib built from source.
-    const test_step = b.step("test", "Run the backup, scroll, Kitty image, and Mosh tests on the host");
+    // Kitty image cache, which runs Ghostty's terminal, the key encoding options, checked
+    // against Ghostty's encoder, and the vendored Mosh client, which links zlib built from
+    // source.
+    const test_step = b.step("test", "Run the backup, scroll, Kitty image, key encoding, and Mosh tests on the host");
     const host = b.graph.host;
     const backup_tests = b.addTest(.{
         .name = "backup-tests",
@@ -322,6 +323,17 @@ pub fn build(b: *std.Build) void {
     kitty_cache_module.addImport("zigimg", b.dependency("zigimg", .{ .target = host }).module("zigimg"));
     const kitty_cache_tests = b.addTest(.{ .name = "kitty-image-cache-tests", .root_module = kitty_cache_module });
     test_step.dependOn(&b.addRunArtifact(kitty_cache_tests).step);
+    const key_encode_module = b.createModule(.{
+        .root_source_file = b.path("src/bridge/key_encode_options.zig"),
+        .target = host,
+        .link_libc = true,
+    });
+    key_encode_module.addImport("ghostty-vt", b.dependency("ghostty", .{
+        .target = host,
+        .simd = false,
+    }).module("ghostty-vt"));
+    const key_encode_tests = b.addTest(.{ .name = "key-encode-options-tests", .root_module = key_encode_module });
+    test_step.dependOn(&b.addRunArtifact(key_encode_tests).step);
     const host_mosh = b.dependency("mosh", .{
         .target = host,
         .optimize = .safe,
