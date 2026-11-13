@@ -12,13 +12,15 @@ internal const val QUIET_AFTER_HIDDEN_MS = 30_000L
 
 /**
  * Counts what shows a tab and calls [setQuiet] with true once nothing has shown it for
- * [delayMs], and with false as soon as something shows it again. A tab starts hidden.
- * Calls must run on the session thread, [dispatcher], where [setQuiet] runs too.
+ * [delayMs], and with false as soon as something shows it again. [setVisible] hears at
+ * once whether anything shows it. A tab starts hidden. Calls must run on the session
+ * thread, [dispatcher], where [setQuiet] and [setVisible] run too.
  */
 internal class QuietWhenHidden(
     private val scope: CoroutineScope,
     private val dispatcher: CoroutineDispatcher,
     private val setQuiet: (Boolean) -> Unit,
+    private val setVisible: (Boolean) -> Unit = {},
     private val delayMs: Long = QUIET_AFTER_HIDDEN_MS,
 ) {
     private var viewers = 0
@@ -30,6 +32,7 @@ internal class QuietWhenHidden(
         if (viewers > 1) return
         pending?.cancel()
         pending = null
+        setVisible(true)
         if (quiet) {
             quiet = false
             setQuiet(false)
@@ -42,6 +45,7 @@ internal class QuietWhenHidden(
         if (viewers == 0) {
             pending?.cancel()
             pending = scheduleQuiet()
+            setVisible(false)
         }
     }
 

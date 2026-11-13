@@ -49,6 +49,8 @@ internal class SessionConnection(
     private val emulator: TerminalEmulator,
     private val transports: SessionTransports,
     private val multiplexers: RemoteMultiplexerProbe,
+    // Checks the SSH connection when it may have died unnoticed.
+    private val keepaliveProbe: KeepaliveProbe,
     private val localNetwork: LocalNetworkAccess?,
     private val network: NetworkWaiter,
     private val onShellExited: () -> Unit,
@@ -78,6 +80,8 @@ internal class SessionConnection(
 
     // When the Mosh client last resumed after a network failure.
     private var moshResumedAtMs: Long? = null
+
+    override val activity: TabActivity get() = keepaliveProbe
 
     private val resizer = SessionResize(scope, dispatcher, emulator, transports::resize, ::flushPtyWrites, ::onResizeFailed)
 
@@ -247,7 +251,12 @@ internal class SessionConnection(
                 transports.readLocalShell(::feed)
                 ReadOutcome(shellExited = currentCoroutineContext().isActive)
             }
-            else -> ReadOutcome(shellExited = transports.readSsh(::feed))
+            else -> ReadOutcome(
+                shellExited = transports.readSsh { chunk ->
+                    keepaliveProbe.onOutput()
+                    feed(chunk)
+                },
+            )
         }
     } catch (e: CancellationException) {
         throw e

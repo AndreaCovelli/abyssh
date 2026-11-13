@@ -142,7 +142,8 @@ and `NativeWakeBridge`. Zig implements each one as
   need Android: the backup format (`src/bridge/backup_container.zig`), the cap on how
   much of a fling reaches a full-screen program (`src/bridge/scroll_momentum.zig`),
   how an SSH channel whose output is paused is read and waited on
-  (`src/bridge/output_pause.zig`), the decoding and scaling of PNGs too large to store
+  (`src/bridge/output_pause.zig`), when an SSH connection that hears nothing counts as
+  lost (`src/bridge/keepalive.zig`), the decoding and scaling of PNGs too large to store
   (`src/bridge/image_downscale.zig`), checked against zigimg, the cache that restores
   evicted Kitty images (`src/bridge/kitty_image_cache.zig`),
   which runs Ghostty's terminal, the options keys are encoded with

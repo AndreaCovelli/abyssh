@@ -80,9 +80,10 @@ internal class TmuxControlLink(
     /**
      * Passes tmux's notifications to [onEvent] and its replies to their callbacks until the
      * channel closes or the loop is cancelled. Before each read it waits for [awaitRoom],
-     * which holds off while the panes have too much output to write.
+     * which holds off while the panes have too much output to write. [onOutput] hears of
+     * everything that arrives, before it is parsed.
      */
-    suspend fun read(awaitRoom: suspend () -> Unit = {}, onEvent: (TmuxControlEvent) -> Unit) {
+    suspend fun read(awaitRoom: suspend () -> Unit = {}, onOutput: () -> Unit = {}, onEvent: (TmuxControlEvent) -> Unit) {
         pacer.onActivity()
         while (currentCoroutineContext().isActive) {
             awaitRoom()
@@ -90,6 +91,7 @@ internal class TmuxControlLink(
             when {
                 chunk.isNotEmpty() -> {
                     pacer.onActivity()
+                    onOutput()
                     parser.feed(chunk) { event ->
                         if (event is TmuxControlEvent.Reply) replies.removeFirstOrNull()?.invoke(event) else onEvent(event)
                     }

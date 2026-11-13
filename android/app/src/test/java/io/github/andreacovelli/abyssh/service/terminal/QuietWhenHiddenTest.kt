@@ -13,11 +13,13 @@ import org.junit.Test
 class QuietWhenHiddenTest {
     private class Recorder(test: TestScope) {
         val calls = mutableListOf<Boolean>()
+        val visible = mutableListOf<Boolean>()
         val quiet =
             QuietWhenHidden(
                 scope = test.backgroundScope,
                 dispatcher = StandardTestDispatcher(test.testScheduler),
                 setQuiet = { calls += it },
+                setVisible = { visible += it },
             )
     }
 
@@ -73,6 +75,20 @@ class QuietWhenHiddenTest {
         r.quiet.removeViewer()
         passMs(QUIET_AFTER_HIDDEN_MS)
         assertEquals(listOf(true), r.calls)
+    }
+
+    @Test
+    fun visibilityFollowsTheFirstAndLastViewerAtOnce() = runTest {
+        val r = Recorder(this)
+        r.quiet.addViewer()
+        r.quiet.addViewer()
+        assertEquals(listOf(true), r.visible)
+
+        r.quiet.removeViewer()
+        assertEquals(listOf(true), r.visible)
+        r.quiet.removeViewer()
+        r.quiet.removeViewer()
+        assertEquals(listOf(true, false), r.visible)
     }
 
     @Test
