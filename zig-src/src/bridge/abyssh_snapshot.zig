@@ -1,6 +1,7 @@
 const std = @import("std");
 const time = @import("time.zig");
 const scroll_momentum = @import("scroll_momentum.zig");
+const key_encode_options = @import("key_encode_options.zig");
 const ghostty = @import("ghostty-vt");
 const kitty_image_cache = @import("kitty_image_cache.zig");
 const zignal_png = @import("zignal_png.zig");
@@ -877,7 +878,8 @@ export fn Java_io_github_andreacovelli_abyssh_service_terminal_GhosttyBridge_nat
         .unshifted_codepoint = if (codepoint > 0 and codepoint <= std.math.maxInt(u21)) @intCast(codepoint) else 0,
         .utf8 = utf8_slice,
     };
-    ghostty.input.encodeKey(&writer, event, ghostty.input.KeyEncodeOptions.fromTerminal(&terminal.terminal)) catch return jniEmptyByteArray(env);
+    const options = key_encode_options.forEvent(ghostty.input.KeyEncodeOptions.fromTerminal(&terminal.terminal), event);
+    ghostty.input.encodeKey(&writer, event, options) catch return jniEmptyByteArray(env);
     return jniByteArrayFromBytes(env, writer.buffered());
 }
 
