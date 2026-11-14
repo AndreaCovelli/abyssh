@@ -18,9 +18,9 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// How often a plain tmux drag held on its pane's edge row is reported again: tmux's own
-// copy-mode scroll interval.
-private const val TMUX_EDGE_REPEAT_MS = 50L
+// How often a plain tmux drag resting where tmux should scroll is reported again. Shorter
+// than tmux's own 50 ms timer, so that where the timer works it adds no rows of its own.
+private const val TMUX_EDGE_SCROLL_MS = 40L
 
 /**
  * One tab's terminal session: a Ghostty terminal and the SSH or local shell connection
@@ -146,9 +146,9 @@ class TerminalSessionEngine internal constructor(
     // On plain tmux, a drag stays in the pane it started in.
     private val tmuxDrag = TmuxDragConfinement(connection::listTmuxPanes)
 
-    // Reports a plain tmux drag held on its pane's top or bottom row again, until the next
-    // mouse event, so that tmux keeps scrolling; see TmuxDragConfinement.
-    private var tmuxEdgeRepeat: Job? = null
+    // Keeps tmux scrolling the selection of a drag that rests on its pane's top or bottom
+    // row, until the next mouse event; see TmuxDragConfinement.
+    private var tmuxEdgeScroll: Job? = null
 
     private val pauseHiddenOutputSetting =
         scope.launch(dispatcher) { pauseHiddenOutput.collect(connection::setPauseHiddenOutput) }
@@ -185,46 +185,35 @@ class TerminalSessionEngine internal constructor(
         trackLastCell: Boolean,
     ) {
         scope.launch(dispatcher) {
-            tmuxEdgeRepeat?.cancel()
-            tmuxEdgeRepeat = null
+            tmuxEdgeScroll?.cancel()
+            tmuxEdgeScroll = null
             val target = terminals.pointer(x, y, action) ?: return@launch
             val geometry = target.emulator.geometry
-            val at = tmuxDrag.confine(button, action, x, y, geometry.cellWidth, geometry.cellHeight)
-            val mouse = EncodedMouse(target, action, button, mods, at.x - target.xPx, at.y - target.yPx, anyButtonPressed)
-            mouse.send(trackLastCell)
-            if (at.edgeRepeats > 0) {
-                tmuxEdgeRepeat = scope.launch(dispatcher) {
-                    while (true) {
-                        delay(TMUX_EDGE_REPEAT_MS)
-                        repeat(at.edgeRepeats) { mouse.send(trackLastCell = false) }
+            val mouse = tmuxDrag.confine(button, action, MousePoint(x, y), geometry.cellWidth, geometry.cellHeight)
+            val report = { at: MousePoint ->
+                val encoded = bridge.nativeEncodeMouse(
+                    target.emulator.handle,
+                    action,
+                    button,
+                    mods,
+                    at.x - target.xPx,
+                    at.y - target.yPx,
+                    anyButtonPressed,
+                    trackLastCell,
+                )
+                if (encoded != null && encoded.isNotEmpty()) target.send(encoded)
+            }
+            report(mouse.at)
+            val scroll = mouse.scroll ?: return@launch
+            tmuxEdgeScroll = scope.launch(dispatcher) {
+                while (target.emulator.isOpen) {
+                    delay(TMUX_EDGE_SCROLL_MS)
+                    repeat(scroll.rows) {
+                        report(scroll.inner)
+                        report(mouse.at)
                     }
                 }
             }
-        }
-    }
-
-    /** A mouse event for [target], at a point in pixels from its top left. */
-    private inner class EncodedMouse(
-        private val target: TerminalTarget,
-        private val action: Int,
-        private val button: Int,
-        private val mods: Int,
-        private val x: Float,
-        private val y: Float,
-        private val anyButtonPressed: Boolean,
-    ) {
-        fun send(trackLastCell: Boolean) {
-            val encoded = bridge.nativeEncodeMouse(
-                target.emulator.handle,
-                action,
-                button,
-                mods,
-                x,
-                y,
-                anyButtonPressed,
-                trackLastCell,
-            )
-            if (encoded != null && encoded.isNotEmpty()) target.send(encoded)
         }
     }
 

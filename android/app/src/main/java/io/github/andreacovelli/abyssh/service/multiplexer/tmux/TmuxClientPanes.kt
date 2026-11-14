@@ -3,6 +3,14 @@ package io.github.andreacovelli.abyssh.service.multiplexer.tmux
 import io.github.andreacovelli.abyssh.service.multiplexer.shellQuote
 
 /**
+ * A pane on a plain tmux client's screen: its cells ([rect]), and whether tmux selects
+ * text in it when the mouse drags there ([dragSelects]). With tmux's own key bindings it
+ * does unless the pane's program reads the mouse and the pane isn't in copy mode, when
+ * the drag goes to the program.
+ */
+internal data class TmuxClientPane(val rect: TmuxPaneRect, val dragSelects: Boolean)
+
+/**
  * Where the panes of a session's current window sit on a plain tmux client's screen,
  * which tmux draws itself. tmux reports each pane's cells from the window's top left;
  * a status line at the top moves them down on the screen.
@@ -10,10 +18,12 @@ import io.github.andreacovelli.abyssh.service.multiplexer.shellQuote
 internal object TmuxClientPanes {
     // tmux allows up to five status lines.
     private const val MAX_STATUS_LINES = 5
-    private const val PANE_FIELDS = 7
+    private const val PANE_FLAGS = 5
+    private const val PANE_FIELDS = PANE_FLAGS + 4
 
     private const val PANE_FORMAT =
-        "#{pane_id} #{pane_active} #{window_zoomed_flag} #{pane_left} #{pane_top} #{pane_right} #{pane_bottom}"
+        "#{pane_id} #{pane_active} #{window_zoomed_flag} #{pane_in_mode} #{mouse_any_flag} " +
+            "#{pane_left} #{pane_top} #{pane_right} #{pane_bottom}"
 
     /** The command whose output [parse] reads: the status line's place, then one line per pane. */
     fun command(sessionName: String): String {
@@ -26,23 +36,24 @@ internal object TmuxClientPanes {
      * The panes [output] lists, in cells from the top left of the client's screen, or null
      * when it lists none. A zoomed window shows only its active pane.
      */
-    fun parse(output: String): List<TmuxPaneRect>? {
+    fun parse(output: String): List<TmuxClientPane>? {
         val lines = output.lines().map(String::trim).filter(String::isNotEmpty)
         val status = lines.firstOrNull()?.split(' ') ?: return null
         val statusTop = if (status.getOrNull(1) == "top") statusLines(status[0]) else 0
         val panes = lines.drop(1).map { parsePane(it) ?: return null }
         if (panes.isEmpty()) return null
         val zoomed = panes.any { it.zoomed }
-        return panes.filter { !zoomed || it.active }.map { it.rect.copy(y = it.rect.y + statusTop) }
+        return panes.filter { !zoomed || it.active }
+            .map { TmuxClientPane(it.rect.copy(y = it.rect.y + statusTop), it.dragSelects) }
     }
 
-    private class ListedPane(val rect: TmuxPaneRect, val active: Boolean, val zoomed: Boolean)
+    private class ListedPane(val rect: TmuxPaneRect, val active: Boolean, val zoomed: Boolean, val dragSelects: Boolean)
 
     private fun parsePane(line: String): ListedPane? {
         val fields = line.split(' ')
         if (fields.size != PANE_FIELDS) return null
         val paneId = fields[0].removePrefix("%").toIntOrNull() ?: return null
-        val edges = fields.subList(3, PANE_FIELDS).map { it.toIntOrNull() ?: return null }
+        val edges = fields.subList(PANE_FLAGS, PANE_FIELDS).map { it.toIntOrNull() ?: return null }
         val left = edges[0]
         val top = edges[1]
         val cols = edges[2] - left + 1
@@ -52,6 +63,7 @@ internal object TmuxClientPanes {
             rect = TmuxPaneRect(paneId, left, top, cols, rows),
             active = fields[1] == "1",
             zoomed = fields[2] == "1",
+            dragSelects = fields[3] != "0" || fields[4] != "1",
         )
     }
 

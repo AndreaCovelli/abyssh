@@ -9,8 +9,8 @@ import io.github.andreacovelli.abyssh.model.UiText
 import io.github.andreacovelli.abyssh.model.UiTextException
 import io.github.andreacovelli.abyssh.model.toUiText
 import io.github.andreacovelli.abyssh.model.Transport
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxClientPane
 import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxClientPanes
-import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneRect
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -138,7 +138,7 @@ internal class SessionConnection(
 
     override fun setPauseHiddenOutput(enabled: Boolean) = transports.setPauseHiddenOutput(enabled)
 
-    override fun listTmuxPanes(): List<TmuxPaneRect>? {
+    override fun listTmuxPanes(): List<TmuxClientPane>? {
         val sessionName = spec?.plainTmuxSessionName ?: return null
         if (!transports.usesSsh || state.value.status != SessionStatus.Connected) return null
         val output = transports.ssh.runSideCommand(TmuxClientPanes.command(sessionName), TMUX_PANES_TIMEOUT_MS)

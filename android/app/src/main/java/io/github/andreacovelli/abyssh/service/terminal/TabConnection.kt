@@ -1,6 +1,6 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
-import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxPaneRect
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxClientPane
 
 /**
  * What feeds a tab's terminal: its own SSH or local shell connection, or one
@@ -44,7 +44,7 @@ internal interface TabConnection {
      * when the tab doesn't attach to tmux itself or tmux can't say. Blocks for a round trip
      * to the host; call it on the session thread.
      */
-    fun listTmuxPanes(): List<TmuxPaneRect>? = null
+    fun listTmuxPanes(): List<TmuxClientPane>? = null
 }
 
 /**
