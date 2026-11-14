@@ -25,6 +25,7 @@ internal class SessionResize(
     private val scope: CoroutineScope,
     private val dispatcher: CoroutineDispatcher,
     private val emulator: TerminalEmulator,
+    private val viewSize: TerminalViewSize,
     private val sendRemote: (TerminalGeometry) -> Boolean,
     private val flushPtyWrites: () -> Unit,
     private val onFailed: (Exception) -> Unit,
@@ -52,6 +53,22 @@ internal class SessionResize(
             delay(REMOTE_RESIZE_SETTLE_MS)
             sync()
         }
+    }
+
+    /**
+     * Waits for the view to settle on a size, gives it to the grid, and returns it for the
+     * far end to open at, so nothing is resized once the terminal shows. The grid keeps
+     * its size when the view was never laid out.
+     */
+    suspend fun awaitOpeningSize(): TerminalGeometry {
+        val settled = viewSize.awaitSettled() ?: return emulator.geometry
+        viewGeometry = settled
+        if (settled != emulator.geometry) {
+            emulator.geometry = settled
+            emulator.applyGeometry()
+            emulator.setMouseEncodingSize()
+        }
+        return settled
     }
 
     /** The far end opened at [geometry]. */

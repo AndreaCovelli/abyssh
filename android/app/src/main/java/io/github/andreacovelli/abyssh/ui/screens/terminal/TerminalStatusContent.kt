@@ -30,28 +30,23 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 
 /**
  * The frame around a status message: below the tab strip in strip mode, or padded on its
- * own otherwise. [centered] puts the content in the middle instead of the top start.
+ * own otherwise.
  */
 @Composable
 private fun TerminalStatusFrame(
     tabStrip: (@Composable () -> Unit)?,
     modifier: Modifier = Modifier,
-    centered: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
     if (tabStrip == null) {
-        Box(
-            modifier = modifier.fillMaxSize().padding(16.dp),
-            contentAlignment = if (centered) Alignment.CenterStart else Alignment.TopStart,
-            content = content,
-        )
+        Box(modifier = modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.TopStart, content = content)
         return
     }
     Column(modifier = modifier.fillMaxSize()) {
         tabStrip()
         Box(
-            modifier = Modifier.weight(1f).fillMaxWidth().then(if (centered) Modifier else Modifier.padding(16.dp)),
-            contentAlignment = if (centered) Alignment.Center else Alignment.TopStart,
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(16.dp),
+            contentAlignment = Alignment.TopStart,
             content = content,
         )
     }
@@ -102,33 +97,28 @@ internal fun TerminalDisconnectedContent(
     }
 }
 
-@Composable
-internal fun TerminalConnectingContent(
-    label: String,
-    tabStrip: (@Composable () -> Unit)?,
-    onCancel: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    TerminalStatusFrame(tabStrip = tabStrip, modifier = modifier) {
-        Column {
-            AbyssText(stringResource(R.string.terminal_connecting_to, label), style = AbyssTypography.current.body)
-            CancelConnectButton(onCancel)
-        }
-    }
-}
+/**
+ * What the terminal pane says in place of the terminal while its session opens: that it
+ * is connecting, or, [centered], that the connection is up and its first screen is on the
+ * way. [onCancel] stops the attempt, where that can be done.
+ */
+internal class TerminalWaiting(val message: String, val centered: Boolean, val onCancel: (() -> Unit)?)
 
-/** Connected or reconnecting, before the first screen of output arrives. */
+/** [waiting]'s message, filling the room the terminal will take. */
 @Composable
-internal fun TerminalPreparingContent(
-    message: String,
-    tabStrip: (@Composable () -> Unit)?,
-    modifier: Modifier = Modifier,
-    onCancel: (() -> Unit)? = null,
-) {
-    TerminalStatusFrame(tabStrip = tabStrip, modifier = modifier, centered = true) {
-        Column(horizontalAlignment = if (tabStrip == null) Alignment.Start else Alignment.CenterHorizontally) {
-            AbyssText(message, style = AbyssTypography.current.body)
-            onCancel?.let { CancelConnectButton(it) }
+internal fun TerminalWaitingStatus(waiting: TerminalWaiting, stripMode: Boolean, modifier: Modifier = Modifier) {
+    val centeredInStrip = waiting.centered && stripMode
+    Box(
+        modifier = modifier.fillMaxSize().then(if (centeredInStrip) Modifier else Modifier.padding(16.dp)),
+        contentAlignment = when {
+            centeredInStrip -> Alignment.Center
+            waiting.centered -> Alignment.CenterStart
+            else -> Alignment.TopStart
+        },
+    ) {
+        Column(horizontalAlignment = if (centeredInStrip) Alignment.CenterHorizontally else Alignment.Start) {
+            AbyssText(waiting.message, style = AbyssTypography.current.body)
+            waiting.onCancel?.let { CancelConnectButton(it) }
         }
     }
 }

@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.screens.terminal
 
 import io.github.andreacovelli.abyssh.service.terminal.ScrollUnit
+import io.github.andreacovelli.abyssh.service.terminal.TerminalGeometry
 import io.github.andreacovelli.abyssh.service.terminal.TerminalMouseAction
 import io.github.andreacovelli.abyssh.service.terminal.TerminalMouseButton
 import io.github.andreacovelli.abyssh.service.terminal.TerminalSessionEngine
@@ -28,7 +29,19 @@ class TerminalInput internal constructor(
         screenWidth: Int,
         screenHeight: Int,
     ) {
+        if (cols > 0 && rows > 0 && cellWidth > 0 && cellHeight > 0) {
+            // Kept for the tabs that open later, which have no engine to size yet.
+            sessionRepository.viewSize.set(TerminalGeometry(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight))
+        }
         activeEngine?.resize(cols, rows, cellWidth, cellHeight, screenWidth, screenHeight)
+    }
+
+    /**
+     * Whether the keyboard was asked for and isn't up yet. A connection that is about to
+     * open waits for it, so it opens at the size the terminal has above the keyboard.
+     */
+    fun onKeyboardPending(pending: Boolean) {
+        sessionRepository.viewSize.setKeyboardPending(pending)
     }
 
     fun onScroll(delta: Int, x: Float, y: Float, momentum: Boolean) {

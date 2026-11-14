@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.Flow
 import io.github.andreacovelli.abyssh.R
@@ -107,26 +108,32 @@ fun TerminalScreen(
                 modifier = screenModifier,
                 onEndSession = endSession::request.takeIf { activeTab != null },
             )
-            status == SessionStatus.Connecting -> TerminalConnectingContent(
-                label = connectingLabel(multiplexer, stripMode, activeTab, routeTab),
-                tabStrip = tabStrip,
-                onCancel = if (preparing) {
-                    { vm.multiplexer.dismissRecovery(onBack) }
-                } else {
-                    vm::cancelConnect
-                },
-                modifier = screenModifier,
-            )
-            !session.hasSnapshot -> TerminalPreparingContent(
-                message = preparingMessage(status == SessionStatus.Reconnecting, stripMode, activeTab, routeTab),
-                tabStrip = tabStrip,
-                onCancel = vm::cancelConnect.takeIf { status == SessionStatus.Reconnecting },
-                modifier = screenModifier,
-            )
+            // One branch for a session that opens and one that is open, so the keyboard
+            // and the layout around the terminal stay as they are when its screen arrives.
             else -> TerminalSessionContent(
                 vm = vm,
                 sessionState = sessionState,
                 snapshot = session.snapshot.also { session.keepCurrent() },
+                waiting = when {
+                    status == SessionStatus.Connecting -> TerminalWaiting(
+                        message = stringResource(
+                            R.string.terminal_connecting_to,
+                            connectingLabel(multiplexer, stripMode, activeTab, routeTab),
+                        ),
+                        centered = false,
+                        onCancel = if (preparing) {
+                            { vm.multiplexer.dismissRecovery(onBack) }
+                        } else {
+                            vm::cancelConnect
+                        },
+                    )
+                    !session.hasSnapshot -> TerminalWaiting(
+                        message = preparingMessage(status == SessionStatus.Reconnecting, stripMode, activeTab, routeTab),
+                        centered = true,
+                        onCancel = vm::cancelConnect.takeIf { status == SessionStatus.Reconnecting },
+                    )
+                    else -> null
+                },
                 host = TerminalSessionHost(
                     settings = settings,
                     fontSize = fontSize,

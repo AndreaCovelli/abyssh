@@ -16,6 +16,7 @@ internal class TmuxControlTabs(
     private val hostKeyStore: HostKeyStore,
     private val localNetwork: LocalNetworkAccess,
     private val network: NetworkWaiter,
+    private val viewSize: TerminalViewSize,
     private val tabs: () -> List<TabSession>,
     private val addTab: (spec: TabSpec, control: TmuxControlSession, windowId: Int?, select: Boolean) -> TabSession,
     private val removeTab: (TabSession) -> Unit,
@@ -40,7 +41,7 @@ internal class TmuxControlTabs(
                 return tab
             }
         }
-        val control = TmuxControlSession(spec, scope, this, hostKeyStore, localNetwork, network)
+        val control = TmuxControlSession(spec, scope, this, hostKeyStore, localNetwork, viewSize, network)
         sessions += control
         val tab = addTab(spec, control, null, true)
         control.start()

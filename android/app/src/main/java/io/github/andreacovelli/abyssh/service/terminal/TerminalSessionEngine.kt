@@ -40,6 +40,8 @@ class TerminalSessionEngine internal constructor(
     private val scope: CoroutineScope,
     localShellService: NativeLocalShellService,
     hostKeyStore: HostKeyStore,
+    // The size of the terminal view on screen, which a connection opens at.
+    private val viewSize: TerminalViewSize,
     localNetwork: LocalNetworkAccess? = null,
     // Reconnects wait here while the device is offline.
     network: NetworkWaiter = NetworkWaiter.None,
@@ -128,6 +130,7 @@ class TerminalSessionEngine internal constructor(
                     transports = transports,
                     multiplexers = RemoteMultiplexerProbe(hostKeys),
                     keepaliveProbe = probe,
+                    viewSize = viewSize,
                     localNetwork = localNetwork,
                     network = network,
                     onShellExited = onShellExited,
@@ -159,7 +162,12 @@ class TerminalSessionEngine internal constructor(
     internal fun showsTmuxView(view: TmuxPaneView): Boolean = connection === view
 
     /** Opens [spec], replacing whatever this session had open. */
-    fun connect(spec: TabSpec, sessionKey: String) = connection.connect(spec, sessionKey)
+    fun connect(spec: TabSpec, sessionKey: String) {
+        // The screen swaps what it shows for the tab's status, which can move the terminal's
+        // edges a frame or two later.
+        viewSize.unsettle()
+        connection.connect(spec, sessionKey)
+    }
 
     /** [consumedMods] are the modifiers that went into typing [utf8], such as Shift for `:`. */
     fun writeKey(key: Int, codepoint: Int, mods: Int, action: Int, utf8: String? = null, consumedMods: Int = 0) =

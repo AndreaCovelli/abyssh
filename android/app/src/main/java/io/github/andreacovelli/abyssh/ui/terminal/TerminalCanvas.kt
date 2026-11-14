@@ -4,6 +4,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.DisposableEffect
 import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -103,8 +104,7 @@ fun TerminalCanvas(
     currentSearchMatchColor: Color = Color(0xCCF97316),
 ) {
     val fonts = rememberTerminalFonts()
-    val fontSizePx = with(LocalDensity.current) { fontSizeSp.sp.toPx() }
-    val paints = remember(fonts, fontSizePx, ligatures) { TerminalTextPaints(fonts, fontSizePx, ligatures) }
+    val paints = rememberTerminalTextPaints(fonts, fontSizeSp, ligatures)
     val cell = remember(paints) { paints.cellMetrics() }
     val renderer = remember(fonts) { TerminalRenderer(fonts) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
@@ -303,6 +303,31 @@ private fun TerminalSelectionEffects(
             currentOnSelectionChange(sel.shiftedBy(deltaCells, focusToo = !gestures.autoScrollingSelection))
         }
     }
+}
+
+/**
+ * Reports to [onResize] the grid a [TerminalCanvas] with the same size and font would
+ * have, for when the terminal's size is needed before it has a screen to draw.
+ */
+@Composable
+fun TerminalGridProbe(
+    fontSizeSp: Float,
+    ligatures: Boolean,
+    onResize: (cols: Int, rows: Int, cellWidth: Int, cellHeight: Int, widthPx: Int, heightPx: Int) -> Unit,
+    modifier: Modifier = Modifier,
+    resizeTarget: Any? = null,
+) {
+    val paints = rememberTerminalTextPaints(rememberTerminalFonts(), fontSizeSp, ligatures)
+    val cell = remember(paints) { paints.cellMetrics() }
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    TerminalResizeEffect(size, cell, resizeTarget, onResize)
+    Box(modifier.fillMaxSize().onSizeChanged { size = it })
+}
+
+@Composable
+private fun rememberTerminalTextPaints(fonts: TerminalFonts, fontSizeSp: Float, ligatures: Boolean): TerminalTextPaints {
+    val fontSizePx = with(LocalDensity.current) { fontSizeSp.sp.toPx() }
+    return remember(fonts, fontSizePx, ligatures) { TerminalTextPaints(fonts, fontSizePx, ligatures) }
 }
 
 /** Tells the terminal its grid size whenever the canvas, the cell size, or [target] changes it. */

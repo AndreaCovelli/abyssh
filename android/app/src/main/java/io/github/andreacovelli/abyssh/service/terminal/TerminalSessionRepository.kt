@@ -63,6 +63,9 @@ class TerminalSessionRepository private constructor(application: Application) {
     )
     private val foreground = SessionForegroundTracker(appContext)
 
+    /** The size of the terminal view on screen, which the screen reports and connections open at. */
+    internal val viewSize = TerminalViewSize()
+
     /** File transfers, which keep running while the terminal screen is closed. */
     val fileTransfers = FileTransferQueue(scope, Dispatchers.IO, ContentResolverFiles(appContext)) { tabId ->
         withSftp(tabId) { it }
@@ -163,6 +166,7 @@ class TerminalSessionRepository private constructor(application: Application) {
             hostKeyStore = hostKeyStore,
             localNetwork = localNetwork,
             network = network,
+            viewSize = viewSize,
             tabs = { _tabs.value },
             addTab = { spec, control, windowId, select -> addTab(spec, control, windowId, select) },
             removeTab = ::removeTab,
@@ -256,6 +260,7 @@ class TerminalSessionRepository private constructor(application: Application) {
                 scope = scope,
                 localShellService = NativeLocalShellService(appContext.filesDir, appContext.cacheDir),
                 hostKeyStore = hostKeyStore,
+                viewSize = viewSize,
                 localNetwork = localNetwork,
                 network = network,
                 onShellExited = { scope.launch { endTab(id) } },

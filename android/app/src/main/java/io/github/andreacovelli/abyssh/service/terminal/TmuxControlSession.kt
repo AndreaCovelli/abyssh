@@ -122,6 +122,8 @@ internal class TmuxControlSession(
     private val host: TmuxControlHost,
     hostKeyStore: HostKeyStore,
     private val localNetwork: LocalNetworkAccess?,
+    // The size of the terminal view on screen, which the client gives tmux when it attaches.
+    private val viewSize: TerminalViewSize,
     private val network: NetworkWaiter = NetworkWaiter.None,
 ) : TmuxSessionLister {
     private val thread = SessionThread(name = "tmux-control")
@@ -318,7 +320,13 @@ internal class TmuxControlSession(
         }
         // Every pane is captured again once tmux reports the session.
         windows.forgetPanes()
-        readJob = scope.launch(dispatcher) { read() }
+        readJob = scope.launch(dispatcher) {
+            // tmux lays its windows out for the size the client gives as it attaches, which
+            // happens once this reads what tmux says. Waiting for the view to settle first
+            // keeps the windows from being laid out again as soon as they show.
+            viewSize.awaitSettled()?.let { clientGeometry = it }
+            read()
+        }
     }
 
     /** Logs in and starts tmux; returns why that failed, or null when it started. */
@@ -332,7 +340,7 @@ internal class TmuxControlSession(
                 // Once tmux has attached, a reconnect must find the same session: creating it
                 // again would show an empty session where the user expects theirs.
                 val createIfMissing = spec.multiplexerCreateIfMissing && !identity.attachedOnce
-                link.open(spec, sessionName, createIfMissing, clientGeometry ?: TerminalGeometry())
+                link.open(spec, sessionName, createIfMissing, clientGeometry ?: viewSize.current ?: TerminalGeometry())
                 null
             }
         }
