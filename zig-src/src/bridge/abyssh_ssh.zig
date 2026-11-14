@@ -1462,6 +1462,106 @@ export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_native
     return if (c.libssh2_channel_eof(channel) == 1) c.JNI_TRUE else c.JNI_FALSE;
 }
 
+// The most output a side command hands back; the rest is read and dropped.
+const side_command_max_output = 64 * 1024;
+
+/// Waits for the socket until `deadline_ms`; false once it passes or the connection fails.
+fn waitSocketUntil(session: *NativeSshSession, deadline_ms: i64) bool {
+    const left_ms = deadline_ms - nowMs();
+    if (left_ms <= 0) return false;
+    return waitSocket(session, @intCast(@min(left_ms, std.math.maxInt(c_int))));
+}
+
+/// Runs `command` on a channel of its own beside the shell, without a PTY, and returns
+/// its stdout once it ends; null, with the last error set, when it fails or takes past
+/// `timeout_ms`. The shell's channel stays as it is: its output that arrives meanwhile
+/// stays queued for its next read, which the read loop's wait sees.
+export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeRunSideCommand(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, command: c.jstring, timeout_ms: c.jint) callconv(.c) c.jbyteArray {
+    _ = thiz;
+    const session = sessionFromHandle(handle) orelse return null;
+    const ssh_session = session.session orelse {
+        setError(session, "Not connected", .{});
+        return null;
+    };
+    // libssh2 sends nothing new while a packet is half-sent: it fails the new one, and
+    // a packet of ours left half-sent would then fail the shell's writes.
+    const sending = (c.libssh2_session_block_directions(ssh_session) & c.LIBSSH2_SESSION_BLOCK_OUTBOUND) != 0;
+    if (sending or session.resize_in_flight) {
+        setError(session, "Side command skipped: the connection is busy sending", .{});
+        return null;
+    }
+    const command_slice = jniDupString(env, command) orelse {
+        setError(session, "Missing side command", .{});
+        return null;
+    };
+    defer allocator.free(command_slice);
+    const deadline_ms = nowMs() + std.math.clamp(timeout_ms, 1, 30_000);
+
+    var channel: ?*c.LIBSSH2_CHANNEL = null;
+    while (channel == null) {
+        channel = c.libssh2_channel_open_ex(ssh_session, "session", 7, c.LIBSSH2_CHANNEL_WINDOW_DEFAULT, c.LIBSSH2_CHANNEL_PACKET_DEFAULT, null, 0);
+        if (channel != null) break;
+        const open_rc = c.libssh2_session_last_errno(ssh_session);
+        if (open_rc != c.LIBSSH2_ERROR_EAGAIN) {
+            setLibssh2Error(session, "Side channel open failed", open_rc);
+            return null;
+        }
+        if (!waitSocketUntil(session, deadline_ms)) {
+            setError(session, "Side channel open timed out", .{});
+            return null;
+        }
+    }
+    defer freeChannel(session, channel.?, nowMs() + teardown_wait_ms);
+    c.libssh2_channel_set_blocking(channel.?, 0);
+
+    while (true) {
+        const startup_rc = c.libssh2_channel_process_startup(channel.?, "exec", 4, command_slice.ptr, @intCast(command_slice.len));
+        if (startup_rc == 0) break;
+        if (startup_rc != c.LIBSSH2_ERROR_EAGAIN) {
+            setLibssh2Error(session, "Side command start failed", startup_rc);
+            return null;
+        }
+        if (!waitSocketUntil(session, deadline_ms)) {
+            setError(session, "Side command start timed out", .{});
+            return null;
+        }
+    }
+
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(allocator);
+    var buf: [4096]u8 = undefined;
+    while (true) {
+        var progressed = false;
+        // stderr is read too, and dropped, so a command that writes to it can't stall.
+        for ([_]c_int{ 0, 1 }) |stream_id| {
+            while (true) {
+                const rc = c.libssh2_channel_read_ex(channel.?, stream_id, @ptrCast(&buf), buf.len);
+                if (rc == c.LIBSSH2_ERROR_EAGAIN or rc == 0) break;
+                if (rc < 0) {
+                    setLibssh2Error(session, "Side command read failed", @intCast(rc));
+                    return null;
+                }
+                progressed = true;
+                const bytes = buf[0..@intCast(rc)];
+                if (stream_id == 0 and output.items.len < side_command_max_output) {
+                    const room = side_command_max_output - output.items.len;
+                    output.appendSlice(allocator, bytes[0..@min(bytes.len, room)]) catch {
+                        setError(session, "Out of memory", .{});
+                        return null;
+                    };
+                }
+            }
+        }
+        if (c.libssh2_channel_eof(channel.?) != 0) break;
+        if (progressed) continue;
+        if (!waitSocketUntil(session, deadline_ms)) {
+            setError(session, "Side command timed out", .{});
+            return null;
+        }
+    }
+    return jniNewByteArrayOrNull(env, output.items);
+}
+
 /// Sends the PTY size: 1 once it is sent, 0 when the send buffer stays full and the
 /// caller should try again later, -1 with the last error set when it fails.
 export fn Java_io_github_andreacovelli_abyssh_service_ssh_NativeSshBridge_nativeResize(env: *c.JNIEnv, thiz: c.jobject, handle: c.jlong, cols: c.jint, rows: c.jint, width_px: c.jint, height_px: c.jint) callconv(.c) c.jint {

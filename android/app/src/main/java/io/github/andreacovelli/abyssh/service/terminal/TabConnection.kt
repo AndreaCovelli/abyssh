@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.service.terminal
 
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxClientPane
+
 /**
  * What feeds a tab's terminal: its own SSH or local shell connection, or one
  * window of a tmux control session. [connect] and [disconnect] may be called from any
@@ -36,6 +38,13 @@ internal interface TabConnection {
      * is shown. Only a shell over the tab's own SSH connection pauses.
      */
     fun setPauseHiddenOutput(enabled: Boolean) {}
+
+    /**
+     * The panes of the tmux window the tab shows, on the screen plain tmux draws, or null
+     * when the tab doesn't attach to tmux itself or tmux can't say. Blocks for a round trip
+     * to the host; call it on the session thread.
+     */
+    fun listTmuxPanes(): List<TmuxClientPane>? = null
 }
 
 /**

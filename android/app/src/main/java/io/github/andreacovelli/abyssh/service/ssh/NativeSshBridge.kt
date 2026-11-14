@@ -74,6 +74,9 @@ class NativeSshBridge {
 
     external fun nativeChannelEof(handle: Long): Boolean
 
+    /** Runs [command] on a channel beside the shell; its stdout, or null on failure or after [timeoutMs]. */
+    external fun nativeRunSideCommand(handle: Long, command: String, timeoutMs: Int): ByteArray?
+
     /** Sends the PTY size: 1 once sent, 0 when the send buffer stays full, -1 on failure. */
     external fun nativeResize(
         handle: Long,

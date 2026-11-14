@@ -9,6 +9,8 @@ import io.github.andreacovelli.abyssh.model.UiText
 import io.github.andreacovelli.abyssh.model.UiTextException
 import io.github.andreacovelli.abyssh.model.toUiText
 import io.github.andreacovelli.abyssh.model.Transport
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxClientPane
+import io.github.andreacovelli.abyssh.service.multiplexer.tmux.TmuxClientPanes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +26,9 @@ import kotlinx.coroutines.launch
 
 private const val TAG = "TerminalSession"
 private const val MAX_PTY_DRAINS = 8
+
+// How long a drag waits for tmux to list its panes before it goes on without them.
+private const val TMUX_PANES_TIMEOUT_MS = 1_500
 
 /** How a read loop ended. */
 private class ReadOutcome(
@@ -132,6 +137,13 @@ internal class SessionConnection(
     }
 
     override fun setPauseHiddenOutput(enabled: Boolean) = transports.setPauseHiddenOutput(enabled)
+
+    override fun listTmuxPanes(): List<TmuxClientPane>? {
+        val sessionName = spec?.plainTmuxSessionName ?: return null
+        if (!transports.usesSsh || state.value.status != SessionStatus.Connected) return null
+        val output = transports.ssh.runSideCommand(TmuxClientPanes.command(sessionName), TMUX_PANES_TIMEOUT_MS)
+        return output?.let(TmuxClientPanes::parse)
+    }
 
     override fun flushPtyWrites() {
         repeat(MAX_PTY_DRAINS) {

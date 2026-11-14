@@ -8,6 +8,8 @@ import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
 import io.github.andreacovelli.abyssh.model.UiText
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +17,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+// How often a plain tmux drag resting where tmux should scroll is reported again. Shorter
+// than tmux's own 50 ms timer, so that where the timer works it adds no rows of its own.
+private const val TMUX_EDGE_SCROLL_MS = 40L
 
 /**
  * One tab's terminal session: a Ghostty terminal and the SSH or local shell connection
@@ -137,6 +143,13 @@ class TerminalSessionEngine internal constructor(
     private val quietWhenHidden =
         QuietWhenHidden(scope, dispatcher, setQuiet = connection::setQuiet, setVisible = connection.activity::setVisible)
 
+    // On plain tmux, a drag stays in the pane it started in.
+    private val tmuxDrag = TmuxDragConfinement(connection::listTmuxPanes)
+
+    // Keeps tmux scrolling the selection of a drag that rests on its pane's top or bottom
+    // row, until the next mouse event; see TmuxDragConfinement.
+    private var tmuxEdgeScroll: Job? = null
+
     private val pauseHiddenOutputSetting =
         scope.launch(dispatcher) { pauseHiddenOutput.collect(connection::setPauseHiddenOutput) }
 
@@ -172,18 +185,35 @@ class TerminalSessionEngine internal constructor(
         trackLastCell: Boolean,
     ) {
         scope.launch(dispatcher) {
+            tmuxEdgeScroll?.cancel()
+            tmuxEdgeScroll = null
             val target = terminals.pointer(x, y, action) ?: return@launch
-            val encoded = bridge.nativeEncodeMouse(
-                target.emulator.handle,
-                action,
-                button,
-                mods,
-                x - target.xPx,
-                y - target.yPx,
-                anyButtonPressed,
-                trackLastCell,
-            )
-            if (encoded != null && encoded.isNotEmpty()) target.send(encoded)
+            val geometry = target.emulator.geometry
+            val mouse = tmuxDrag.confine(button, action, MousePoint(x, y), geometry.cellWidth, geometry.cellHeight)
+            val report = { at: MousePoint ->
+                val encoded = bridge.nativeEncodeMouse(
+                    target.emulator.handle,
+                    action,
+                    button,
+                    mods,
+                    at.x - target.xPx,
+                    at.y - target.yPx,
+                    anyButtonPressed,
+                    trackLastCell,
+                )
+                if (encoded != null && encoded.isNotEmpty()) target.send(encoded)
+            }
+            report(mouse.at)
+            val scroll = mouse.scroll ?: return@launch
+            tmuxEdgeScroll = scope.launch(dispatcher) {
+                while (target.emulator.isOpen) {
+                    delay(TMUX_EDGE_SCROLL_MS)
+                    repeat(scroll.rows) {
+                        report(scroll.inner)
+                        report(mouse.at)
+                    }
+                }
+            }
         }
     }
 
