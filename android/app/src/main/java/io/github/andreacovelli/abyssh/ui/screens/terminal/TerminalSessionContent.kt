@@ -13,14 +13,18 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -40,12 +44,14 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -69,6 +75,7 @@ import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
 import io.github.andreacovelli.abyssh.ui.terminal.KeyboardAccessoryBar
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCanvas
+import io.github.andreacovelli.abyssh.ui.terminal.TerminalGridProbe
 import io.github.andreacovelli.abyssh.ui.terminal.terminalImeMode
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
@@ -77,9 +84,15 @@ import io.github.andreacovelli.abyssh.ui.theme.toRgbIntArray
 import io.github.andreacovelli.abyssh.ui.theme.toTerminalPaletteBytes
 import kotlin.math.roundToInt
 
+// How faint the accessory bar is while its session opens, as a disabled control is.
+private const val WAITING_FOOTER_ALPHA = 0.38f
+
 /**
- * A connected session: the tab strip, the terminal or the file browser, the accessory
- * bar, and in list mode the command palette.
+ * A session that is open or opening: the tab strip, the terminal or the file browser, the
+ * accessory bar, and in list mode the command palette. While it opens, [waiting] takes
+ * the terminal's place with everything around it laid out and the keyboard up, so the
+ * terminal's size is known before the far end is given one, and nothing is resized when
+ * the terminal shows. [snapshot] is read only once [waiting] is null.
  */
 @Composable
 internal fun TerminalSessionContent(
@@ -88,6 +101,7 @@ internal fun TerminalSessionContent(
     snapshot: () -> TerminalSnapshot,
     host: TerminalSessionHost,
     modifier: Modifier = Modifier,
+    waiting: TerminalWaiting? = null,
 ) {
     val context = LocalContext.current
     val overlay = host.overlay
@@ -95,8 +109,8 @@ internal fun TerminalSessionContent(
     val activeTabId by vm.activeTabId.collectAsStateWithLifecycle()
     val activeTab by vm.activeTab.collectAsStateWithLifecycle()
     val selectedPane by vm.files.selectedPane.collectAsStateWithLifecycle()
-    // The terminal takes Esc as a key; the files pane leaves it to act as Back.
-    HoldEscapeKey(enabled = selectedPane == ConnectionTab.Terminal)
+    // The terminal takes Esc as a key; the files pane and a session that still opens leave it to act as Back.
+    HoldEscapeKey(enabled = waiting == null && selectedPane == ConnectionTab.Terminal)
     val input = remember(context, vm, overlay) { TerminalInputController(context, vm, overlay) }
     SideEffect {
         input.abysshKeys = host.abysshKeys
@@ -104,6 +118,7 @@ internal fun TerminalSessionContent(
         input.tabMode = host.settings.tabMode
         input.allTabs = tabs
         input.routeTabs = host.routeTabs
+        input.live = waiting == null
         input.tmuxPrefix.enabled = host.settings.tmuxPrefixKeys && activeTab?.spec?.usesTmuxControlMode == true
     }
     TerminalSessionEffects(vm, input, host.settings.ghosttyTheme, sessionState, activeTabId)
@@ -117,18 +132,25 @@ internal fun TerminalSessionContent(
         ) {
             host.tabStrip?.invoke()
             when {
-                host.tabStrip != null && tabs.isEmpty() -> Box(
+                waiting == null && host.tabStrip != null && tabs.isEmpty() -> Box(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
                     TerminalNoSessions(onNewConnection = host.onNewConnection)
                 }
-                selectedPane == ConnectionTab.Files && files.supported -> TerminalFilesPane(vm, Modifier.weight(1f))
-                else -> TerminalPane(vm, sessionState, snapshot, host, input, Modifier.weight(1f))
+                waiting == null && selectedPane == ConnectionTab.Files && files.supported ->
+                    TerminalFilesPane(vm, Modifier.weight(1f))
+                // One call for a session that opens and one that is open, so the input view,
+                // and with it the keyboard, stays when the terminal shows.
+                else -> TerminalPane(vm, sessionState, snapshot, host, input, waiting, Modifier.weight(1f))
             }
             // The footer leaves only a small gap above its keys, so the terminal gets the height.
-            if (selectedPane == ConnectionTab.Terminal) {
-                TerminalFooter(vm, host, input, files)
+            if (waiting != null || selectedPane == ConnectionTab.Terminal) {
+                // While the session opens the keys take their room, but there is nothing to type into.
+                Box(if (waiting == null) Modifier else Modifier.alpha(WAITING_FOOTER_ALPHA).clearAndSetSemantics {}) {
+                    TerminalFooter(vm, host, input, files)
+                    if (waiting != null) Box(Modifier.matchParentSize().pointerInput(Unit) {})
+                }
             } else {
                 Spacer(modifier = Modifier.height(6.dp))
             }
@@ -199,19 +221,32 @@ private fun rememberFilesShortcut(vm: TerminalViewModel, filesSupported: Boolean
 /**
  * Shows the keyboard while the terminal pane is on screen, and hides it when the pane
  * leaves for the file browser or another screen. The keyboard would otherwise stay up
- * after its input view is gone, with nothing to type into.
+ * after its input view is gone, with nothing to type into. The terminal hears that it
+ * has the focus once it is [live].
  */
 @Composable
-private fun TerminalKeyboardEffect(vm: TerminalViewModel, input: TerminalInputController) {
+private fun TerminalKeyboardEffect(vm: TerminalViewModel, input: TerminalInputController, live: Boolean) {
     // The Compose host view stays attached after the input view goes, so its token
     // still reaches the window that owns the keyboard.
     val hostView = LocalView.current
-    LaunchedEffect(input) {
-        input.requestFocus()
-        vm.input.onFocusChanged(true)
-    }
+    LaunchedEffect(input) { input.requestFocus() }
+    LaunchedEffect(input, live) { if (live) vm.input.onFocusChanged(true) }
     DisposableEffect(input, hostView) {
         onDispose { input.hideKeyboard(hostView.windowToken) }
+    }
+}
+
+/**
+ * Tells the connections that are about to open while the keyboard is [expected] and not
+ * up yet, so they wait for it and open at the size the terminal has above it.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun KeyboardPendingEffect(vm: TerminalViewModel, expected: Boolean) {
+    val pending = expected && !WindowInsets.isImeVisible
+    DisposableEffect(vm, pending) {
+        vm.input.onKeyboardPending(pending)
+        onDispose { vm.input.onKeyboardPending(false) }
     }
 }
 
@@ -238,134 +273,170 @@ private fun TerminalPane(
     snapshot: () -> TerminalSnapshot,
     host: TerminalSessionHost,
     input: TerminalInputController,
+    waiting: TerminalWaiting?,
     modifier: Modifier = Modifier,
+) {
+    val searchState by vm.search.state.collectAsStateWithLifecycle()
+    val activeTab by vm.activeTab.collectAsStateWithLifecycle()
+    TerminalKeyboardEffect(vm, input, live = waiting == null)
+    KeyboardPendingEffect(vm, expected = waiting != null && host.settings.usesOnScreenKeyboard)
+    Column(modifier = modifier) {
+        if (waiting == null) {
+            searchState?.let { search ->
+                TerminalSearchBar(
+                    state = search,
+                    onQueryChange = vm.search::setQuery,
+                    onOlder = vm.search::older,
+                    onNewer = vm.search::newer,
+                    onClose = {
+                        vm.search.close()
+                        input.requestFocus()
+                    },
+                )
+            }
+        }
+        Box(modifier = Modifier.weight(1f)) {
+            // Outside the branches below, so the view and its keyboard outlast the switch between them.
+            TerminalInputHost(input, host.settings)
+            if (waiting != null) {
+                // Sizes the tab as its terminal will, so its connection opens at that size.
+                TerminalGridProbe(
+                    fontSizeSp = host.fontSize.floatValue,
+                    ligatures = host.settings.ligatures,
+                    onResize = vm.input::onCanvasSizeChanged,
+                    resizeTarget = activeTab?.engine,
+                )
+                TerminalWaitingStatus(waiting, stripMode = host.tabStrip != null)
+            } else {
+                TerminalLayers(vm, sessionState, snapshot, host, input)
+            }
+        }
+    }
+}
+
+/** The hidden view that takes the keyboard's input for the terminal. */
+@Composable
+private fun BoxScope.TerminalInputHost(input: TerminalInputController, settings: TerminalUiSettings) {
+    val inputLabel = stringResource(R.string.terminal_input_label)
+    AndroidView(
+        modifier = Modifier.align(Alignment.BottomStart).size(1.dp).alpha(0f),
+        factory = input::createInputView,
+        update = { view ->
+            view.contentDescription = inputLabel
+            view.imeMode = terminalImeMode(settings.disableAutocorrect, settings.swipeTyping)
+            view.volumeKeysAsArrows = settings.volumeKeysAsArrows
+            view.usesOnScreenKeyboard = settings.usesOnScreenKeyboard
+        },
+        onRelease = input::releaseInputView,
+    )
+}
+
+/** The terminal and what floats over it: the zoom and link prompts, the status badges, and the action buttons. */
+@Composable
+private fun BoxScope.TerminalLayers(
+    vm: TerminalViewModel,
+    sessionState: SessionState,
+    snapshot: () -> TerminalSnapshot,
+    host: TerminalSessionHost,
+    input: TerminalInputController,
 ) {
     val colors = AbyssColors.current
     val theme = host.settings.ghosttyTheme
     val searchState by vm.search.state.collectAsStateWithLifecycle()
     val multiplexer by vm.multiplexer.state.collectAsStateWithLifecycle()
     val activeTab by vm.activeTab.collectAsStateWithLifecycle()
-    TerminalKeyboardEffect(vm, input)
-    Column(modifier = modifier) {
-        searchState?.let { search ->
-            TerminalSearchBar(
-                state = search,
-                onQueryChange = vm.search::setQuery,
-                onOlder = vm.search::older,
-                onNewer = vm.search::newer,
-                onClose = {
-                    vm.search.close()
-                    input.requestFocus()
-                },
-            )
-        }
-        Box(modifier = Modifier.weight(1f)) {
-            var pinchZoomSteps by remember { mutableIntStateOf(0) }
-            SideEffect {
-                input.onViewKey = { viewKey ->
-                    when (viewKey) {
-                        is TerminalViewKey.ScrollPages -> vm.input.scrollPages(viewKey.pages)
-                        is TerminalViewKey.FontSize -> stepFontSize(host.fontSize, viewKey.step.toFloat())
-                        TerminalViewKey.ResetFontSize -> host.fontSize.floatValue = SettingsRepository.DEFAULT_TERMINAL_FONT_SIZE
-                    }
-                    // Shows the new size, as pinch zoom does.
-                    if (viewKey !is TerminalViewKey.ScrollPages) pinchZoomSteps++
-                }
+    var pinchZoomSteps by remember { mutableIntStateOf(0) }
+    SideEffect {
+        input.onViewKey = { viewKey ->
+            when (viewKey) {
+                is TerminalViewKey.ScrollPages -> vm.input.scrollPages(viewKey.pages)
+                is TerminalViewKey.FontSize -> stepFontSize(host.fontSize, viewKey.step.toFloat())
+                TerminalViewKey.ResetFontSize -> host.fontSize.floatValue = SettingsRepository.DEFAULT_TERMINAL_FONT_SIZE
             }
-            TerminalZoomFrame(zoom = host.overlay.zoom, snapshot = snapshot, onTap = input::requestFocus) {
-                TerminalCanvas(
-                    snapshot = snapshot,
-                    fontSizeSp = host.fontSize.floatValue,
-                    minFontSizeSp = SettingsRepository.MIN_TERMINAL_FONT_SIZE,
-                    maxFontSizeSp = SettingsRepository.MAX_TERMINAL_FONT_SIZE,
-                    cursorColor = theme?.cursorColor ?: Color.White.copy(alpha = 0.28f),
-                    cursorTextColor = theme?.cursorText,
-                    selectionBackgroundColor = theme?.selectionBackground ?: colors.accent.copy(alpha = 0.45f),
-                    selectionForegroundColor = theme?.selectionForeground ?: colors.onAccent,
-                    selection = input.selection,
-                    onSelectionChange = { input.selection = it },
-                    selectionText = vm.search::selectionText,
-                    modifier = Modifier.fillMaxSize(),
-                    onResize = vm.input::onCanvasSizeChanged,
-                    resizeTarget = activeTab?.engine,
-                    onTap = input::requestFocus,
-                    onPrimaryClick = vm.input::onPrimaryMouseClick,
-                    onLinkTap = vm.search::onLinkTap,
-                    onSecondaryClick = vm.input::onSecondaryMouseClick,
-                    onMouseButton = vm.input::onMouseButton,
-                    onAppSelectionDrag = vm.input::onAppSelectionDrag,
-                    stickyModifiers = input.modifierState,
-                    onShiftSelectionStart = input::spendStickyShift,
-                    onRectangleSelectionStart = input::spendStickyAlt,
-                    wordSeparators = host.settings.wordSeparators,
-                    ligatures = host.settings.ligatures,
-                    cursorBlinkDefault = host.settings.cursorBlink,
-                    onScroll = vm.input::onScroll,
-                    onFontSizeChange = { sizeSp ->
-                        host.fontSize.floatValue = sizeSp
-                        pinchZoomSteps++
-                    },
-                    onSelectionChanged = { state -> input.selectionState = state },
-                    searchMatches = searchState?.matches.orEmpty(),
-                    currentSearchMatch = searchState?.currentMatch,
-                )
-            }
-            TerminalZoomIndicator(
-                text = stringResource(R.string.terminal_zoom_font_size, host.fontSize.floatValue.roundToInt()),
-                changes = pinchZoomSteps,
-                modifier = Modifier.align(Alignment.Center),
-            )
-            TerminalLinkPrompt(vm, Modifier.align(Alignment.BottomCenter))
-            TerminalStatusBadges(
-                sessionState = sessionState,
-                preparingMultiplexer = multiplexer.duplicateLoading,
-                onCancelReconnect = vm::cancelConnect,
-                modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
-            )
-            // Its handles and menu sit at unzoomed positions, which zoom mode moves away from.
-            if (!host.overlay.zoom.active) TerminalSelectionOverlay(input)
-            val inputLabel = stringResource(R.string.terminal_input_label)
-            AndroidView(
-                modifier = Modifier.align(Alignment.BottomStart).size(1.dp).alpha(0f),
-                factory = input::createInputView,
-                update = { view ->
-                    view.contentDescription = inputLabel
-                    view.imeMode = terminalImeMode(host.settings.disableAutocorrect, host.settings.swipeTyping)
-                    view.volumeKeysAsArrows = host.settings.volumeKeysAsArrows
-                    view.usesOnScreenKeyboard = host.settings.usesOnScreenKeyboard
-                },
-                onRelease = input::releaseInputView,
-            )
-            val settings = host.settings
-            val showActionsFab = settings.customKeyGroups.isNotEmpty() &&
-                (settings.showCustomActionsFab || host.overlay.fabFilteredActions != null)
-            // The jump chip sits above the custom actions button, and above its menu when it is open.
-            Column(
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 12.dp),
-                horizontalAlignment = Alignment.End,
-            ) {
-                TerminalJumpToBottom(
-                    scrolledBack = { snapshot().scrolledBack },
-                    onClick = vm.input::scrollToBottom,
-                    modifier = Modifier.padding(bottom = if (showActionsFab) 8.dp else 0.dp),
-                )
-                if (showActionsFab) {
-                    TerminalCustomActionsFab(
-                        groups = settings.customKeyGroups,
-                        expanded = host.overlay.fabExpanded,
-                        onExpandedChange = { host.overlay.fabExpanded = it },
-                        onActionClick = { action ->
-                            vm.input.sendCustomAction(action)
-                            input.requestFocus()
-                        },
-                        filteredActions = host.overlay.fabFilteredActions,
-                        onClearFilter = { host.overlay.fabFilteredActions = null },
-                    )
-                }
-            }
-            AbysshShortcutMenu(host.abysshKeys, Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 8.dp))
+            // Shows the new size, as pinch zoom does.
+            if (viewKey !is TerminalViewKey.ScrollPages) pinchZoomSteps++
         }
     }
+    TerminalZoomFrame(zoom = host.overlay.zoom, snapshot = snapshot, onTap = input::requestFocus) {
+        TerminalCanvas(
+            snapshot = snapshot,
+            fontSizeSp = host.fontSize.floatValue,
+            minFontSizeSp = SettingsRepository.MIN_TERMINAL_FONT_SIZE,
+            maxFontSizeSp = SettingsRepository.MAX_TERMINAL_FONT_SIZE,
+            cursorColor = theme?.cursorColor ?: Color.White.copy(alpha = 0.28f),
+            cursorTextColor = theme?.cursorText,
+            selectionBackgroundColor = theme?.selectionBackground ?: colors.accent.copy(alpha = 0.45f),
+            selectionForegroundColor = theme?.selectionForeground ?: colors.onAccent,
+            selection = input.selection,
+            onSelectionChange = { input.selection = it },
+            selectionText = vm.search::selectionText,
+            modifier = Modifier.fillMaxSize(),
+            onResize = vm.input::onCanvasSizeChanged,
+            resizeTarget = activeTab?.engine,
+            onTap = input::requestFocus,
+            onPrimaryClick = vm.input::onPrimaryMouseClick,
+            onLinkTap = vm.search::onLinkTap,
+            onSecondaryClick = vm.input::onSecondaryMouseClick,
+            onMouseButton = vm.input::onMouseButton,
+            onAppSelectionDrag = vm.input::onAppSelectionDrag,
+            stickyModifiers = input.modifierState,
+            onShiftSelectionStart = input::spendStickyShift,
+            onRectangleSelectionStart = input::spendStickyAlt,
+            wordSeparators = host.settings.wordSeparators,
+            ligatures = host.settings.ligatures,
+            cursorBlinkDefault = host.settings.cursorBlink,
+            onScroll = vm.input::onScroll,
+            onFontSizeChange = { sizeSp ->
+                host.fontSize.floatValue = sizeSp
+                pinchZoomSteps++
+            },
+            onSelectionChanged = { state -> input.selectionState = state },
+            searchMatches = searchState?.matches.orEmpty(),
+            currentSearchMatch = searchState?.currentMatch,
+        )
+    }
+    TerminalZoomIndicator(
+        text = stringResource(R.string.terminal_zoom_font_size, host.fontSize.floatValue.roundToInt()),
+        changes = pinchZoomSteps,
+        modifier = Modifier.align(Alignment.Center),
+    )
+    TerminalLinkPrompt(vm, Modifier.align(Alignment.BottomCenter))
+    TerminalStatusBadges(
+        sessionState = sessionState,
+        preparingMultiplexer = multiplexer.duplicateLoading,
+        onCancelReconnect = vm::cancelConnect,
+        modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+    )
+    // Its handles and menu sit at unzoomed positions, which zoom mode moves away from.
+    if (!host.overlay.zoom.active) TerminalSelectionOverlay(input)
+    val settings = host.settings
+    val showActionsFab = settings.customKeyGroups.isNotEmpty() &&
+        (settings.showCustomActionsFab || host.overlay.fabFilteredActions != null)
+    // The jump chip sits above the custom actions button, and above its menu when it is open.
+    Column(
+        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 14.dp, bottom = 12.dp),
+        horizontalAlignment = Alignment.End,
+    ) {
+        TerminalJumpToBottom(
+            scrolledBack = { snapshot().scrolledBack },
+            onClick = vm.input::scrollToBottom,
+            modifier = Modifier.padding(bottom = if (showActionsFab) 8.dp else 0.dp),
+        )
+        if (showActionsFab) {
+            TerminalCustomActionsFab(
+                groups = settings.customKeyGroups,
+                expanded = host.overlay.fabExpanded,
+                onExpandedChange = { host.overlay.fabExpanded = it },
+                onActionClick = { action ->
+                    vm.input.sendCustomAction(action)
+                    input.requestFocus()
+                },
+                filteredActions = host.overlay.fabFilteredActions,
+                onClearFilter = { host.overlay.fabFilteredActions = null },
+            )
+        }
+    }
+    AbysshShortcutMenu(host.abysshKeys, Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 8.dp))
 }
 
 @Composable

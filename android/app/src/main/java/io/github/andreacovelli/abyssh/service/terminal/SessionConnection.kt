@@ -53,6 +53,7 @@ internal class SessionConnection(
     private val multiplexers: RemoteMultiplexerProbe,
     // Checks the SSH connection when it may have died unnoticed.
     private val keepaliveProbe: KeepaliveProbe,
+    viewSize: TerminalViewSize,
     private val localNetwork: LocalNetworkAccess?,
     private val network: NetworkWaiter,
     private val onShellExited: () -> Unit,
@@ -73,7 +74,7 @@ internal class SessionConnection(
 
     override val activity: TabActivity get() = keepaliveProbe
 
-    private val resizer = SessionResize(scope, dispatcher, emulator, transports::resize, ::flushPtyWrites, ::onResizeFailed)
+    private val resizer = SessionResize(scope, dispatcher, emulator, viewSize, transports::resize, ::flushPtyWrites, ::onResizeFailed)
 
     override fun connect(spec: TabSpec, sessionKey: String) {
         // A Retry shouldn't queue behind an attempt that is still waiting on the network.
@@ -194,9 +195,7 @@ internal class SessionConnection(
         transports.closeAll()
         emulator.open()
         emulator.echoPredictions.enabled = spec.transport == Transport.SSH || spec.transport == Transport.TailscaleSSH
-        val geometry = emulator.geometry
-        transports.open(spec, geometry)
-        resizer.opened(geometry)
+        resizer.opened(transports.open(spec, resizer::awaitOpeningSize))
     }
 
     private fun onOpened(spec: TabSpec) {

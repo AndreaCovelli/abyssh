@@ -206,24 +206,33 @@ class NativeSshService(
      * fails on it, as it does once the connection has dropped, logs in again with
      * [connect] and opens over that. [open] returns whether the channel opened, or throws.
      */
+    fun openReusing(login: SshLogin?, connect: () -> Unit, open: () -> Boolean): Boolean {
+        if (login != null && adopt(login)) return openAdopted(connect, open)
+        connect()
+        return open()
+    }
+
+    /**
+     * Opens a channel with [open] over the connection this service took over with
+     * [adopt]. When [open] fails on it, as it does once the connection has dropped, logs
+     * in again with [connect] and opens over that.
+     */
     // A connection that dropped while it was idle fails in whatever way libssh2 reports
     // first; any of them means logging in again.
     @Suppress("TooGenericExceptionCaught")
-    fun openReusing(login: SshLogin?, connect: () -> Unit, open: () -> Boolean): Boolean {
-        if (login != null && adopt(login)) {
-            val failure =
-                try {
-                    if (open()) return true
-                    null
-                } catch (e: Exception) {
-                    e
-                }
-            if (cancellation.requested) {
-                if (failure != null) throw failure
-                return false
+    fun openAdopted(connect: () -> Unit, open: () -> Boolean): Boolean {
+        val failure =
+            try {
+                if (open()) return true
+                null
+            } catch (e: Exception) {
+                e
             }
-            Log.i(TAG, "Idle SSH login didn't open a channel; logging in again")
+        if (cancellation.requested) {
+            if (failure != null) throw failure
+            return false
         }
+        Log.i(TAG, "Idle SSH login didn't open a channel; logging in again")
         connect()
         return open()
     }

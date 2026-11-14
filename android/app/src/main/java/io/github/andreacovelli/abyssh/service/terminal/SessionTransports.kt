@@ -107,12 +107,17 @@ internal class SessionTransports(
         localShell.close()
     }
 
-    suspend fun open(spec: TabSpec, geometry: TerminalGeometry) {
+    /**
+     * Opens [spec]'s shell or multiplexer at the size [geometry] returns, and returns that
+     * size. [geometry] is asked once nothing else is left to wait for, so it may take the
+     * time the view needs to settle on a size.
+     */
+    suspend fun open(spec: TabSpec, geometry: suspend () -> TerminalGeometry): TerminalGeometry {
         outputPause.onShellClosed()
         transport = spec.transport
-        when (spec.transport) {
+        return when (spec.transport) {
             Transport.LocalShell ->
-                localShell.start(geometry.cols, geometry.rows, geometry.screenWidth, geometry.screenHeight)
+                geometry().also { localShell.start(it.cols, it.rows, it.screenWidth, it.screenHeight) }
             else -> openSsh(spec, geometry)
         }
     }
@@ -180,20 +185,24 @@ internal class SessionTransports(
     }
 
     /** Opens the shell, or the multiplexer, over the login a multiplexer check left idle or a new one. */
-    private fun openSsh(spec: TabSpec, geometry: TerminalGeometry) {
+    private suspend fun openSsh(spec: TabSpec, geometry: suspend () -> TerminalGeometry): TerminalGeometry {
         check(ssh.isAvailable()) { "Native SSH unavailable" }
-        val width = geometry.ptyWidthPx
-        val height = geometry.ptyHeightPx
         val startupCommand = spec.multiplexerStartupCommand()?.trim().orEmpty()
-        ssh.openReusing(idleLogins.take(spec), connect = { ssh.connect(spec) }) {
+        // Logs in before asking for the size: the view often settles while that runs.
+        val reused = idleLogins.take(spec)?.let(ssh::adopt) == true
+        if (!reused) ssh.connect(spec)
+        val size = geometry()
+        val open = {
             if (startupCommand.isNotEmpty()) {
-                ssh.openExecPty(startupCommand, geometry.cols, geometry.rows, width, height, RemoteTerm.SSH)
+                ssh.openExecPty(startupCommand, size.cols, size.rows, size.ptyWidthPx, size.ptyHeightPx, RemoteTerm.SSH)
             } else {
-                ssh.openShell(geometry.cols, geometry.rows, width, height, RemoteTerm.SSH)
+                ssh.openShell(size.cols, size.rows, size.ptyWidthPx, size.ptyHeightPx, RemoteTerm.SSH)
             }
             true
         }
+        if (reused) ssh.openAdopted(connect = { ssh.connect(spec) }, open) else open()
         ssh.setKeepalive(spec.keepaliveIntervalSeconds)
         outputPause.onShellOpened()
+        return size
     }
 }

@@ -63,6 +63,12 @@ internal class TerminalInputController(
     var allTabs: List<TabSession> = emptyList()
     var routeTabs: List<TabSession> = emptyList()
 
+    /**
+     * Whether there is a session to type into. While one still opens, the keyboard is up
+     * so the terminal's size is known, and what it types goes nowhere.
+     */
+    var live = true
+
     /** tmux's prefix keys, on while the active tab shows a tmux window and the setting is on. */
     val tmuxPrefix = TmuxPrefixKeys(tmuxPrefixCommandRunner(vm, overlay))
 
@@ -85,7 +91,7 @@ internal class TerminalInputController(
         onShortcutChord = ::onShortcutChord
         // A lambda, not abysshKeys::togglePrefix: the view is created before the real
         // bindings are set, and they're rebuilt when settings change.
-        onPrefixChord = { abysshKeys.togglePrefix() }
+        onPrefixChord = { if (live) abysshKeys.togglePrefix() }
         onCapsLockChanged = { capsLockOn = it }
         setOnFocusChangeListener { _, hasFocus -> onFocusChanged(hasFocus) }
         inputView = this
@@ -207,6 +213,10 @@ internal class TerminalInputController(
     }
 
     private fun onText(text: String) {
+        if (!live) {
+            inputView?.forgetImeText()
+            return
+        }
         val reachedTerminalAsTyped = when {
             text.isEmpty() -> true
             abysshKeys.handleText(text) -> false
@@ -240,7 +250,7 @@ internal class TerminalInputController(
     }
 
     private fun onKey(key: Int, codepoint: Int, mods: Int, action: Int, charCode: Int) {
-        if (releaseHeldShortcutKey(key, action)) return
+        if (!live || releaseHeldShortcutKey(key, action)) return
         // Esc closes the custom actions menu before it reaches the terminal.
         val escape = key == TerminalSpecialKey.Escape.engineKey && action == GhosttyKeyAction.Press
         if (escape && overlay.closeActionsMenu()) {
@@ -263,12 +273,13 @@ internal class TerminalInputController(
 
     /** A hardware shortcut chord: the same command as tapping the shortcuts key and then [key]. */
     private fun onShortcutChord(key: Char): Boolean {
+        if (!live) return false
         val switcherTabs = if (overlay.isSwitcherOpen) overlay.switcherTabs(allTabs, routeTabs) else null
         return if (switcherTabs.isNullOrEmpty()) abysshKeys.runShortcut(key) else runSwitcherCommand(key)
     }
 
     private fun onFocusChanged(hasFocus: Boolean) {
-        input.onFocusChanged(hasFocus)
+        if (live) input.onFocusChanged(hasFocus)
         if (hasFocus) requestFocus()
     }
 
