@@ -119,6 +119,9 @@ internal class TerminalGestureEnv(
     /** A new selection from [cell] to [cell], kept to the pane it is in. */
     fun selectionAt(cell: Int, rectangle: Boolean = false) = TerminalSelection(cell, cell, rectangle, paneArea(cell))
 
+    /** The cells the selection is kept to: its pane in a split window, else the whole terminal. */
+    fun selectionArea(): TerminalCellArea = selection?.area ?: snapshot.let { TerminalCellArea(0, 0, it.cols, it.rows) }
+
     /** [position], in snapshot pixels, moved to the nearest point inside [area], or as it is without one. */
     fun keepIn(area: TerminalCellArea?, position: Offset): Offset {
         if (area == null || cell.width <= 0f || cell.height <= 0f) return position
@@ -325,8 +328,8 @@ internal class TerminalCanvasGestures(
 
     /**
      * Left button of a physical mouse, from press to release. When the remote app takes
-     * mouse drags the button goes to it as is; otherwise dragging selects text and a
-     * click without moving acts like a tap.
+     * mouse drags the button goes to it as is; otherwise dragging selects text
+     * ([MouseSelection]) and a click without moving acts like a tap.
      */
     private suspend fun AwaitPointerEventScope.mouseLeftButton(down: PointerInputChange, held: HeldModifiers) {
         val start = env.value
@@ -334,38 +337,115 @@ internal class TerminalCanvasGestures(
         val toApp = start.snapshot.handlesSelectionDragAt(downCell) && !held.shift
         if (toApp) start.appDrag(TerminalMouseAction.Press, held.primary, start.toSnapshot(down.position))
         down.consume()
+        val selection = MouseSelection(downCell, held.alt, down.uptimeMillis)
+        var lastPos = start.toSnapshot(down.position)
+        var released = !toApp
+        try {
+            while (true) {
+                val timeout = selection.timeoutMs()
+                val event = if (timeout == null) awaitPointerEvent() else withTimeoutOrNull(timeout) { awaitPointerEvent() }
+                if (event == null) {
+                    selection.onTimeout()
+                    continue
+                }
+                val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.first()
+                val current = env.value
+                val pos = current.toSnapshot(change.position)
+                lastPos = pos
+                if (!change.pressed) {
+                    when {
+                        toApp -> {
+                            released = true
+                            current.appDrag(TerminalMouseAction.Release, held.primary, pos)
+                            current.callbacks.onTap()
+                        }
+                        !selection.selecting -> tap(down.position, change.uptimeMillis, held)
+                    }
+                    return
+                }
+                if (change.position != change.previousPosition) {
+                    if (toApp) {
+                        current.appDrag(TerminalMouseAction.Motion, held.primary, pos)
+                    } else {
+                        selection.onMove(current, pos, change.uptimeMillis)
+                    }
+                }
+                change.consume()
+            }
+        } finally {
+            autoScrollingSelection = false
+            // A drag cut off before the button went up, such as by a tab switch, still ends.
+            if (!released) env.value.appDrag(TerminalMouseAction.Release, held.primary, lastPos)
+        }
+    }
+
+    /**
+     * A selection dragged with the left mouse button from [downCell], which starts once the
+     * pointer leaves that cell. Past the edge of the terminal, or of the selection's pane,
+     * it ends at the nearest cell. Held on or past the first or last row, it scrolls: a row
+     * a step on that row, more the further past it the pointer is, a step every
+     * [AUTO_SCROLL_INTERVAL_MS] whether the pointer moves or not.
+     */
+    private inner class MouseSelection(private val downCell: Int?, private val rectangle: Boolean, startUptime: Long) {
         var selecting = false
-        while (true) {
-            val event = awaitPointerEvent()
-            val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.first()
-            val current = env.value
-            val pos = current.toSnapshot(change.position)
-            if (!change.pressed) {
-                when {
-                    toApp -> {
-                        current.appDrag(TerminalMouseAction.Release, held.primary, pos)
-                        current.callbacks.onTap()
-                    }
-                    !selecting -> tap(down.position, change.uptimeMillis, held)
-                }
-                return
+            private set
+        private var direction = 0
+        private var rows = 0
+        private var at = Offset.Zero
+        private var now = startUptime
+        private var nextStepAt = startUptime
+
+        /** How long to wait for the next event before [onTimeout], or null to wait for it. */
+        fun timeoutMs(): Long? = if (direction == 0) null else (nextStepAt - now).coerceAtLeast(1L)
+
+        fun onTimeout() {
+            now = nextStepAt
+            step()
+        }
+
+        fun onMove(current: TerminalGestureEnv, pos: Offset, uptime: Long) {
+            now = uptime
+            val cell = current.cellAt(pos)
+            if (!selecting && cell != null && downCell != null && cell != downCell) {
+                selecting = true
+                current.callbacks.onSelectionChange(current.selectionAt(downCell, rectangle))
+                if (rectangle) current.callbacks.onRectangleSelectionStart()
             }
-            if (change.position != change.previousPosition) {
-                if (toApp) {
-                    current.appDrag(TerminalMouseAction.Motion, held.primary, pos)
-                } else {
-                    val cell = current.cellAt(pos)
-                    if (!selecting && cell != null && downCell != null && cell != downCell) {
-                        selecting = true
-                        current.callbacks.onSelectionChange(current.selectionAt(downCell, rectangle = held.alt))
-                        if (held.alt) current.callbacks.onRectangleSelectionStart()
-                    }
-                    if (selecting && cell != null) {
-                        updateSelectionDrag(current, cell)
-                    }
-                }
+            if (!selecting) return
+            current.cellAt(current.keepIn(current.selectionArea(), pos))?.let { updateSelectionDrag(current, it) }
+            aim(current, pos)
+            if (direction != 0 && now >= nextStepAt) step()
+        }
+
+        /** Points the scroll at [pos]: which way, and how many rows a step. */
+        private fun aim(current: TerminalGestureEnv, pos: Offset) {
+            val wasScrolling = direction != 0
+            val area = current.selectionArea()
+            val cellHeight = current.cell.height
+            val firstRowBottom = (area.row + 1) * cellHeight
+            val lastRowTop = (area.row + area.rows - 1) * cellHeight
+            val past = when {
+                cellHeight <= 0f -> null
+                pos.y < firstRowBottom -> firstRowBottom - pos.y
+                pos.y >= lastRowTop -> pos.y - lastRowTop
+                else -> null
             }
-            change.consume()
+            direction = when {
+                past == null -> 0
+                pos.y < firstRowBottom -> -1
+                else -> 1
+            }
+            autoScrollingSelection = direction != 0
+            if (past == null) return
+            rows = (past / cellHeight).toInt().coerceIn(1, AUTO_SCROLL_MAX_ROWS)
+            at = current.keepIn(area, pos)
+            if (!wasScrolling) nextStepAt = now + AUTO_SCROLL_INTERVAL_MS
+        }
+
+        private fun step() {
+            if (direction == 0) return
+            scroll(TerminalScrollDelta(direction * rows, at.x, at.y))
+            nextStepAt = now + AUTO_SCROLL_INTERVAL_MS
         }
     }
 

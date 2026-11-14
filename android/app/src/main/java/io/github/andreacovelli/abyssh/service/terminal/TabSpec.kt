@@ -69,6 +69,12 @@ data class TabSpec(
     val usesTmuxControlMode: Boolean
         get() = tmuxControlMode && multiplexer == MultiplexerType.Tmux && usesRuntimeMultiplexer
 
+    /** The tmux session the tab attaches to as an ordinary client, which draws the panes itself, or null. */
+    val plainTmuxSessionName: String?
+        get() = multiplexerSessionName?.takeIf {
+            it.isNotBlank() && multiplexer == MultiplexerType.Tmux && usesRuntimeMultiplexer && !usesTmuxControlMode
+        }
+
     /** Leaves out the password, private key and passphrase, so logging a spec can't leak them. */
     override fun toString(): String =
         "TabSpec(hostId=$hostId, displayName=$displayName, host=$host, port=$port, " +

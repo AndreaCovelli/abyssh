@@ -8,6 +8,8 @@ import io.github.andreacovelli.abyssh.service.ssh.HostKeyStore
 import io.github.andreacovelli.abyssh.model.UiText
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +17,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+// How often a plain tmux drag held on its pane's edge row is reported again: tmux's own
+// copy-mode scroll interval.
+private const val TMUX_EDGE_REPEAT_MS = 50L
 
 /**
  * One tab's terminal session: a Ghostty terminal and the SSH or local shell connection
@@ -137,6 +143,13 @@ class TerminalSessionEngine internal constructor(
     private val quietWhenHidden =
         QuietWhenHidden(scope, dispatcher, setQuiet = connection::setQuiet, setVisible = connection.activity::setVisible)
 
+    // On plain tmux, a drag stays in the pane it started in.
+    private val tmuxDrag = TmuxDragConfinement(connection::listTmuxPanes)
+
+    // Reports a plain tmux drag held on its pane's top or bottom row again, until the next
+    // mouse event, so that tmux keeps scrolling; see TmuxDragConfinement.
+    private var tmuxEdgeRepeat: Job? = null
+
     private val pauseHiddenOutputSetting =
         scope.launch(dispatcher) { pauseHiddenOutput.collect(connection::setPauseHiddenOutput) }
 
@@ -172,14 +185,42 @@ class TerminalSessionEngine internal constructor(
         trackLastCell: Boolean,
     ) {
         scope.launch(dispatcher) {
+            tmuxEdgeRepeat?.cancel()
+            tmuxEdgeRepeat = null
             val target = terminals.pointer(x, y, action) ?: return@launch
+            val geometry = target.emulator.geometry
+            val at = tmuxDrag.confine(button, action, x, y, geometry.cellWidth, geometry.cellHeight)
+            val mouse = EncodedMouse(target, action, button, mods, at.x - target.xPx, at.y - target.yPx, anyButtonPressed)
+            mouse.send(trackLastCell)
+            if (at.edgeRepeats > 0) {
+                tmuxEdgeRepeat = scope.launch(dispatcher) {
+                    while (true) {
+                        delay(TMUX_EDGE_REPEAT_MS)
+                        repeat(at.edgeRepeats) { mouse.send(trackLastCell = false) }
+                    }
+                }
+            }
+        }
+    }
+
+    /** A mouse event for [target], at a point in pixels from its top left. */
+    private inner class EncodedMouse(
+        private val target: TerminalTarget,
+        private val action: Int,
+        private val button: Int,
+        private val mods: Int,
+        private val x: Float,
+        private val y: Float,
+        private val anyButtonPressed: Boolean,
+    ) {
+        fun send(trackLastCell: Boolean) {
             val encoded = bridge.nativeEncodeMouse(
                 target.emulator.handle,
                 action,
                 button,
                 mods,
-                x - target.xPx,
-                y - target.yPx,
+                x,
+                y,
                 anyButtonPressed,
                 trackLastCell,
             )

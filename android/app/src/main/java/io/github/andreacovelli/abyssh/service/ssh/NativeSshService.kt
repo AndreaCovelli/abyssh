@@ -234,6 +234,16 @@ class NativeSshService(
         return bridge.nativeChannelEof(handle)
     }
 
+    /**
+     * Runs [command] on a channel of its own beside the shell and returns its stdout, or
+     * null when it fails, takes past [timeoutMs], or the shell has input still waiting to
+     * go out. Blocks; call it on the thread the shell's reads and writes run on.
+     */
+    fun runSideCommand(command: String, timeoutMs: Int): String? {
+        if (handle == 0L || hasPendingWrites) return null
+        return bridge.nativeRunSideCommand(handle, command, timeoutMs)?.toString(Charsets.UTF_8)
+    }
+
     /** Sends the PTY size; false when the connection is too busy to take it now. */
     fun resize(cols: Int, rows: Int, widthPx: Int, heightPx: Int): Boolean {
         if (handle == 0L) return true
