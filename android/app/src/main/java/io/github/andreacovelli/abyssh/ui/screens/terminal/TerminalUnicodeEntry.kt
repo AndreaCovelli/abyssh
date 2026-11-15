@@ -11,6 +11,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
@@ -35,11 +36,14 @@ internal fun TerminalUnicodeEntry(digits: String, modifier: Modifier = Modifier)
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Underlined like text an input method is still composing. The character is not,
+        // so that it looks as it will once typed: an underlined _ would not.
         AbyssText(
-            text = "U+${digits.uppercase()}" + character?.let { "  $it" }.orEmpty(),
-            style = typography.codeSmall,
+            text = "U+${digits.uppercase()}",
+            style = typography.codeSmall.copy(textDecoration = TextDecoration.Underline),
             color = colors.textPrimary,
         )
+        character?.let { AbyssText(text = it, style = typography.codeSmall, color = colors.textPrimary) }
         AbyssText(
             text = stringResource(R.string.terminal_unicode_entry_hint),
             style = typography.labelSmall,
