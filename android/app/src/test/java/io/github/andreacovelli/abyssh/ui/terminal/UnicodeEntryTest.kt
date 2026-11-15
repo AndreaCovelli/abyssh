@@ -14,8 +14,8 @@ class UnicodeEntryTest {
     private val changes = mutableListOf<String?>()
     private val entry = UnicodeEntry { changes += it }
 
-    private fun down(keyCode: Int, char: Char = '\u0000', typed: Char = char, meta: Int = 0) =
-        entry.onKeyDown(keyCode, char.code, typed.code, meta)
+    private fun down(keyCode: Int, char: Char = '\u0000', typed: Char = char, meta: Int = 0, repeat: Int = 0) =
+        entry.onKeyDown(keyCode, char.code, typed.code, meta, repeat)
 
     private fun start() = down(KeyEvent.KEYCODE_U, 'u', meta = CTRL_SHIFT)
 
@@ -113,6 +113,83 @@ class UnicodeEntryTest {
         assertEquals(UnicodeEntryResult.Consume(), down(KeyEvent.KEYCODE_DPAD_LEFT))
         assertEquals(UnicodeEntryResult.Consume(), entry.onKeyUp(KeyEvent.KEYCODE_G, 0))
         assertEquals("", entry.digits)
+    }
+
+    @Test
+    fun `a backspace held past the end of the entry stays out of the terminal`() {
+        start()
+        digit('7')
+        down(KeyEvent.KEYCODE_DEL)
+        assertEquals(UnicodeEntryResult.Consume(), down(KeyEvent.KEYCODE_DEL, repeat = 1))
+        assertNull(entry.digits)
+        assertEquals(UnicodeEntryResult.Consume(), down(KeyEvent.KEYCODE_DEL, repeat = 2))
+        assertEquals(UnicodeEntryResult.Consume(), entry.onKeyUp(KeyEvent.KEYCODE_DEL, 0))
+        assertEquals(UnicodeEntryResult.Pass, down(KeyEvent.KEYCODE_DEL))
+        assertEquals(UnicodeEntryResult.Pass, down(KeyEvent.KEYCODE_DEL, repeat = 1))
+    }
+
+    @Test
+    fun `an enter held after typing the character stays out of the terminal`() {
+        start()
+        "7e".forEach { digit(it) }
+        assertEquals(UnicodeEntryResult.Consume("~"), down(KeyEvent.KEYCODE_ENTER))
+        assertEquals(UnicodeEntryResult.Consume(), down(KeyEvent.KEYCODE_ENTER, repeat = 1))
+    }
+
+    @Test
+    fun `a key held when ctrl shift is released stays out of the terminal`() {
+        start()
+        digit('7', meta = CTRL_SHIFT)
+        digit('e', meta = CTRL_SHIFT)
+        assertEquals(UnicodeEntryResult.TypeThenPass("~"), entry.onKeyUp(KeyEvent.KEYCODE_CTRL_LEFT, 0))
+        assertEquals(UnicodeEntryResult.Consume(), down(KeyEvent.KEYCODE_E, 'e', repeat = 1))
+    }
+
+    @Test
+    fun `a key pressed again after its release was missed passes`() {
+        start()
+        down(KeyEvent.KEYCODE_G, 'g')
+        entry.cancel()
+        assertEquals(UnicodeEntryResult.Pass, down(KeyEvent.KEYCODE_G, 'g'))
+        assertEquals(UnicodeEntryResult.Pass, down(KeyEvent.KEYCODE_G, 'g', repeat = 1))
+    }
+
+    @Test
+    fun `system keys pass while the entry is open`() {
+        start()
+        val volumeUp = entry.onKeyDown(KeyEvent.KEYCODE_VOLUME_UP, 0, 0, 0, systemKey = true)
+        assertEquals(UnicodeEntryResult.Pass, volumeUp)
+        assertEquals(UnicodeEntryResult.Pass, entry.onKeyUp(KeyEvent.KEYCODE_VOLUME_UP, 0))
+        assertEquals("", entry.digits)
+    }
+
+    @Test
+    fun `number row keys that type digits only with shift count by their place`() {
+        start()
+        // On AZERTY the 1 key types & and the 2 key é, and Ctrl hides what Shift makes of them.
+        down(KeyEvent.KEYCODE_1, '&', typed = '\u0000', meta = CTRL_SHIFT)
+        down(KeyEvent.KEYCODE_2, 'é')
+        down(KeyEvent.KEYCODE_3, '"', typed = '3', meta = SHIFT)
+        assertEquals("123", entry.digits)
+    }
+
+    @Test
+    fun `keys of a layout without latin letters count by their place`() {
+        // A Russian keyboard types г, а, and п with the U, F, and G keys.
+        assertEquals(UnicodeEntryResult.Consume(), down(KeyEvent.KEYCODE_U, 'г', typed = '\u0000', meta = CTRL_SHIFT))
+        down(KeyEvent.KEYCODE_F, 'а')
+        down(KeyEvent.KEYCODE_1, '1')
+        down(KeyEvent.KEYCODE_G, 'п')
+        assertEquals("f1", entry.digits)
+    }
+
+    @Test
+    fun `a key that types a latin letter counts as that letter wherever it is`() {
+        assertEquals(UnicodeEntryResult.Pass, down(KeyEvent.KEYCODE_U, 'g', meta = CTRL_SHIFT))
+        assertEquals(UnicodeEntryResult.Consume(), down(KeyEvent.KEYCODE_F, 'u', meta = CTRL_SHIFT))
+        down(KeyEvent.KEYCODE_F, 'u')
+        down(KeyEvent.KEYCODE_U, 'f')
+        assertEquals("f", entry.digits)
     }
 
     @Test

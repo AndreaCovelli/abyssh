@@ -392,7 +392,15 @@ class TerminalInputView(context: Context) : EditText(context) {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         trackCapsLock(event)
-        val entry = unicodeEntry.onKeyDown(keyCode, event.getUnicodeChar(0), event.unicodeChar, event.metaState)
+        val entry = unicodeEntry.onKeyDown(
+            keyCode = keyCode,
+            plainChar = event.getUnicodeChar(0),
+            typedChar = event.unicodeChar,
+            metaState = event.metaState,
+            repeatCount = event.repeatCount,
+            // A volume key that types an arrow is a key like any other.
+            systemKey = event.isSystem && !(volumeKeysAsArrows && KeyMapper.volumeArrow(keyCode, event.metaState) != null),
+        )
         if (applyUnicodeEntry(entry)) return true
         handleShortcutChordDown(keyCode, event)?.let { return it }
         if (confirmsComposition(event)) return true
