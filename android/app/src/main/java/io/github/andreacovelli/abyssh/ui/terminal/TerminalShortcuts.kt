@@ -87,7 +87,8 @@ internal fun isPrefixChord(keyCode: Int, metaState: Int): Boolean {
  * every ⌘ chord for itself unless an app captures the keyboard, and capturing it breaks
  * the system's own ⌘ shortcuts. Only plain ⌘ counts: with Shift, Ctrl, or Alt held too,
  * the chord stays the system's. Ctrl+Shift+C, V, and F keep copying, pasting, and
- * searching. [plainChar] is what the key types with no modifiers.
+ * searching, and Ctrl+Shift+U types a character by its code point ([UnicodeEntry]).
+ * [plainChar] is what the key types with no modifiers.
  */
 internal fun shortcutChordKey(metaState: Int, plainChar: Int): Char? {
     if (plainChar <= ' '.code || plainChar > Char.MAX_VALUE.code) return null
@@ -102,5 +103,5 @@ internal fun shortcutChordKey(metaState: Int, plainChar: Int): Char? {
 
 internal fun shortcutChordKey(event: KeyEvent): Char? = shortcutChordKey(event.metaState, event.getUnicodeChar(0))
 
-// The Ctrl+Shift chords the terminal handles itself: copy, paste, and search.
-private val TERMINAL_CTRL_SHIFT_KEYS = setOf('c', 'v', 'f')
+// The Ctrl+Shift chords the terminal handles itself: copy, paste, search, and Unicode entry.
+private val TERMINAL_CTRL_SHIFT_KEYS = setOf('c', 'v', 'f', 'u')

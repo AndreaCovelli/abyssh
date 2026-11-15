@@ -574,6 +574,7 @@ private fun TerminalFooter(
                     .semantics { liveRegion = LiveRegionMode.Polite },
             )
         }
+        input.unicodeEntry?.let { digits -> TerminalUnicodeEntry(digits) }
         KeyboardAccessoryBar(
             entries = host.settings.accessoryLayout,
             modifierState = input.modifierState,

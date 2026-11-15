@@ -53,6 +53,10 @@ internal class TerminalInputController(
     /** Whether a physical keyboard's Caps Lock is on, as of its last key event. */
     var capsLockOn by mutableStateOf(false)
         private set
+
+    /** The hex digits of a Ctrl+Shift+U entry under way, or null when none is. */
+    var unicodeEntry by mutableStateOf<String?>(null)
+        private set
     var inputView: TerminalInputView? = null
 
     // The screen sets these on every composition. The input view keeps the callbacks it
@@ -93,6 +97,7 @@ internal class TerminalInputController(
         // bindings are set, and they're rebuilt when settings change.
         onPrefixChord = { if (live) abysshKeys.togglePrefix() }
         onCapsLockChanged = { capsLockOn = it }
+        onUnicodeEntryChanged = { unicodeEntry = it }
         setOnFocusChangeListener { _, hasFocus -> onFocusChanged(hasFocus) }
         inputView = this
     }

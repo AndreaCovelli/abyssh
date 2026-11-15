@@ -316,6 +316,7 @@
     <string name="terminal_host_fallback">Server</string>
     <string name="terminal_connecting_to">Connecting to %1$s</string>
     <string name="terminal_copied_selection">Copied selection</string>
+    <string name="terminal_unicode_entry_hint">Hex digits, then Space or Enter to type it. Esc cancels.</string>
     <plurals name="terminal_uploaded">
         <item quantity="one">Uploaded %1$d file</item>
         <item quantity="other">Uploaded %1$d files</item>
