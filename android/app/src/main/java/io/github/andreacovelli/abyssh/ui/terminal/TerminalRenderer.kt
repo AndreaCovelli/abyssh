@@ -1,6 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
 import android.graphics.Canvas
+import androidx.core.graphics.withSave
 import androidx.core.graphics.withTranslation
 import android.graphics.Paint
 import android.graphics.Picture
@@ -22,6 +23,13 @@ private const val CURSOR_UNDERLINE_FRACTION: Float = 0.15f
 // How far a run's measured width may differ from its cells before it is drawn cell by cell.
 private const val RUN_WIDTH_TOLERANCE_PX: Float = 0.5f
 private const val ASCII_MAX: Int = 0x7E
+
+/**
+ * How much to shrink glyphs [advance] wide to fit in [room]: 1 when they fit, to within
+ * [RUN_WIDTH_TOLERANCE_PX]. Narrower glyphs keep their size.
+ */
+internal fun glyphFitScale(advance: Float, room: Float): Float =
+    if (advance <= room + RUN_WIDTH_TOLERANCE_PX || room <= 0f) 1f else room / advance
 
 /** Colors the canvas adds to the snapshot's own, as ARGB ints. */
 internal data class TerminalCanvasColors(
@@ -80,6 +88,9 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
 
     // Where each cell of the current run starts in [text]; one entry past the run's end.
     private var cellOffsets = IntArray(256)
+
+    // How many cells each cell of the current run covers: 2 for a wide character, else 1.
+    private var cellSpans = IntArray(256)
     private val fillPaint = Paint().apply {
         isAntiAlias = false
         style = Paint.Style.FILL
@@ -192,12 +203,14 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         val cellWidth = cell.width
         val baseline = cell.baseline
         if (cellOffsets.size <= end) cellOffsets = IntArray(cells.cols + 1)
+        if (cellSpans.size < end) cellSpans = IntArray(cells.cols)
         // The primary font's ASCII glyphs are one cell wide, so only other runs are measured,
         // and runs its ligatures may join.
         var ascii = choice == PAINT_PRIMARY && !paints.ligatures
         text.setLength(0)
         for (col in start until end) {
             cellOffsets[col] = text.length
+            cellSpans[col] = if (col + 1 < cells.cols && row.isSpacerContinuation(col + 1)) 2 else 1
             val codepoint = row.codepoints[col]
             if (codepoint > ASCII_MAX || row.hasGraphemeExtras(col)) ascii = false
             // Later cells holding a space are the spacer halves of wide characters.
@@ -245,7 +258,38 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         for (col in start until end) {
             val from = cellOffsets[col]
             val to = cellOffsets[col + 1]
-            if (to > from) glyphs.draw(canvas, glyphs.shape(text, from, to, paint), col * cell.width + slant, cell.baseline, paint)
+            if (to <= from) continue
+            val run = glyphs.shape(text, from, to, paint)
+            drawFitted(canvas, run.advance, col, cell, slant) { x -> glyphs.draw(canvas, run, x, cell.baseline, paint) }
+        }
+    }
+
+    /**
+     * Calls [draw] with the x to draw the glyphs of the cell at [col] from, shrunk to the
+     * cell's width, centered on the row, when [advance] says they are wider. A fallback
+     * font's symbol, such as Claude Code's spinner star, can be wider than the primary
+     * font's cells, and would cover the next cell.
+     */
+    private inline fun drawFitted(
+        canvas: Canvas,
+        advance: Float,
+        col: Int,
+        cell: TerminalCellMetrics,
+        slant: Float,
+        draw: (x: Float) -> Unit,
+    ) {
+        val x = col * cell.width + slant
+        val scale = glyphFitScale(advance, cellSpans[col] * cell.width)
+        if (scale == 1f) {
+            draw(x)
+            return
+        }
+        val middle = cell.height / 2f
+        canvas.withSave {
+            translate(x, middle)
+            scale(scale, scale)
+            translate(0f, -middle)
+            draw(0f)
         }
     }
 
@@ -271,7 +315,10 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         for (col in start until end) {
             val from = cellOffsets[col]
             val to = cellOffsets[col + 1]
-            if (to > from) canvas.drawText(text, from, to, col * cell.width + slant, cell.baseline, paint)
+            if (to <= from) continue
+            drawFitted(canvas, paint.measureText(text, from, to), col, cell, slant) { x ->
+                canvas.drawText(text, from, to, x, cell.baseline, paint)
+            }
         }
     }
 
