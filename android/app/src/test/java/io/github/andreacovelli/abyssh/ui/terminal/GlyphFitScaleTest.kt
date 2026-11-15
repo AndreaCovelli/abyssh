@@ -1,5 +1,7 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
+import io.github.andreacovelli.abyssh.service.terminal.TerminalRow
+import io.github.andreacovelli.abyssh.service.terminal.TerminalSnapshot
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -31,4 +33,33 @@ class GlyphFitScaleTest {
     fun `no room keeps the glyph as it is`() {
         assertEquals(1f, glyphFitScale(advance = 10f, room = 0f))
     }
+
+    @Test
+    fun `a glyph has its own cell before another character and in the last column`() {
+        val row = row("ab")
+
+        assertEquals(1, row.glyphRoomCells(0))
+        assertEquals(1, row.glyphRoomCells(1))
+    }
+
+    @Test
+    fun `a glyph before a blank cell has that cell too`() {
+        assertEquals(2, row("a b").glyphRoomCells(0))
+        assertEquals(2, row("a\u0000b").glyphRoomCells(0))
+    }
+
+    @Test
+    fun `a wide character has its two cells, and no blank cell after them`() {
+        val spacer = TerminalSnapshot.CELL_FLAG_SPACER.toByte()
+        val row = row("W  ", flags = byteArrayOf(0, spacer, 0))
+
+        assertEquals(2, row.glyphRoomCells(0))
+    }
+
+    private fun row(text: String, flags: ByteArray = ByteArray(text.length)) = TerminalRow(
+        codepoints = IntArray(text.length) { text[it].code },
+        fgArgb = IntArray(text.length),
+        bgArgb = IntArray(text.length),
+        flags = flags,
+    )
 }

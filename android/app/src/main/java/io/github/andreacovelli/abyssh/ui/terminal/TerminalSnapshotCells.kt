@@ -27,6 +27,17 @@ internal fun TerminalSnapshot.hasGraphemeExtras(cellIndex: Int): Boolean =
 internal fun TerminalRow.isSpacerContinuation(col: Int): Boolean =
     (flags[col].toInt() and TerminalSnapshot.CELL_FLAG_SPACER) != 0
 
+/**
+ * How many cells the glyph at [col] may fill: both cells of a wide character, or its own
+ * and the next when that one is blank. A blank cell after a wide character is not counted.
+ */
+internal fun TerminalRow.glyphRoomCells(col: Int): Int {
+    val next = col + 1
+    if (next >= codepoints.size) return 1
+    val codepoint = codepoints[next]
+    return if (isSpacerContinuation(next) || codepoint == 0 || codepoint == ' '.code) 2 else 1
+}
+
 /** The text in a cell: its codepoint plus any grapheme extras. */
 internal fun TerminalRow.glyphAt(col: Int): String {
     val codepoint = codepoints[col]

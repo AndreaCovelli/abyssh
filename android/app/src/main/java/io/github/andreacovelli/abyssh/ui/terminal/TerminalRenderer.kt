@@ -89,8 +89,9 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
     // Where each cell of the current run starts in [text]; one entry past the run's end.
     private var cellOffsets = IntArray(256)
 
-    // How many cells each cell of the current run covers: 2 for a wide character, else 1.
-    private var cellSpans = IntArray(256)
+    // How many cells the glyph of each cell of the current run may fill: 2 for a wide
+    // character or before a blank cell, else 1.
+    private var cellRooms = IntArray(256)
     private val fillPaint = Paint().apply {
         isAntiAlias = false
         style = Paint.Style.FILL
@@ -203,14 +204,14 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         val cellWidth = cell.width
         val baseline = cell.baseline
         if (cellOffsets.size <= end) cellOffsets = IntArray(cells.cols + 1)
-        if (cellSpans.size < end) cellSpans = IntArray(cells.cols)
+        if (cellRooms.size < end) cellRooms = IntArray(cells.cols)
         // The primary font's ASCII glyphs are one cell wide, so only other runs are measured,
         // and runs its ligatures may join.
         var ascii = choice == PAINT_PRIMARY && !paints.ligatures
         text.setLength(0)
         for (col in start until end) {
             cellOffsets[col] = text.length
-            cellSpans[col] = if (col + 1 < cells.cols && row.isSpacerContinuation(col + 1)) 2 else 1
+            cellRooms[col] = row.glyphRoomCells(col)
             val codepoint = row.codepoints[col]
             if (codepoint > ASCII_MAX || row.hasGraphemeExtras(col)) ascii = false
             // Later cells holding a space are the spacer halves of wide characters.
@@ -259,27 +260,29 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
             val from = cellOffsets[col]
             val to = cellOffsets[col + 1]
             if (to <= from) continue
-            val run = glyphs.shape(text, from, to, paint)
-            drawFitted(canvas, run.advance, col, cell, slant) { x -> glyphs.draw(canvas, run, x, cell.baseline, paint) }
+            val cellRun = glyphs.shape(text, from, to, paint)
+            drawFitted(canvas, cellRun.advance, cellRooms[col] * cell.width, col * cell.width + slant, cell) { x ->
+                glyphs.draw(canvas, cellRun, x, cell.baseline, paint)
+            }
         }
     }
 
     /**
-     * Calls [draw] with the x to draw the glyphs of the cell at [col] from, shrunk to the
-     * cell's width, centered on the row, when [advance] says they are wider. A fallback
-     * font's symbol, such as Claude Code's spinner star, can be wider than the primary
-     * font's cells, and would cover the next cell.
+     * Calls [draw] with the x to draw one cell's glyphs from, on a row at the canvas
+     * origin: [x], or 0 on a canvas that shrinks them to [room], centered on the row, when
+     * [advance] says they are wider. A fallback font's symbol, such as Claude Code's
+     * spinner star, can be wider than the primary font's cells, and would cover the
+     * character after it. Before a blank cell, [room] takes that cell in.
      */
     private inline fun drawFitted(
         canvas: Canvas,
         advance: Float,
-        col: Int,
+        room: Float,
+        x: Float,
         cell: TerminalCellMetrics,
-        slant: Float,
         draw: (x: Float) -> Unit,
     ) {
-        val x = col * cell.width + slant
-        val scale = glyphFitScale(advance, cellSpans[col] * cell.width)
+        val scale = glyphFitScale(advance, room)
         if (scale == 1f) {
             draw(x)
             return
@@ -316,7 +319,7 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
             val from = cellOffsets[col]
             val to = cellOffsets[col + 1]
             if (to <= from) continue
-            drawFitted(canvas, paint.measureText(text, from, to), col, cell, slant) { x ->
+            drawFitted(canvas, paint.measureText(text, from, to), cellRooms[col] * cell.width, col * cell.width + slant, cell) { x ->
                 canvas.drawText(text, from, to, x, cell.baseline, paint)
             }
         }
@@ -373,10 +376,15 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         val next = snapshot.cursorX + 1
         // On a wide character the cursor covers both of its cells.
         val span = if (next < snapshot.cols && row.isSpacerContinuation(next)) 2 else 1
-        drawCursorShape(canvas, frame, left, top, frame.cell.width * span)
+        val width = frame.cell.width * span
+        drawCursorShape(canvas, frame, left, top, width)
         val cursorText = frame.colors.cursorText ?: return
         if (snapshot.cursorStyle == TerminalSnapshot.CURSOR_STYLE_BLOCK) {
-            drawCursorGlyph(canvas, frame, paints, cursorText, left, top)
+            // A glyph that reaches into a blank next cell keeps its own color there.
+            canvas.withTranslation(0f, top) {
+                clipRect(left, 0f, left + width, frame.cell.height)
+                drawCursorGlyph(this, frame, paints, cursorText, left)
+            }
         }
     }
 
@@ -404,14 +412,16 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         }
     }
 
-    /** Redraws the character under a block cursor in the cursor text color. */
+    /**
+     * Redraws the character under a block cursor in the cursor text color, on the cursor's
+     * row at the canvas origin, at the size the row drew it.
+     */
     private fun drawCursorGlyph(
         canvas: Canvas,
         frame: TerminalFrame,
         paints: TerminalTextPaints,
         color: Int,
         left: Float,
-        top: Float,
     ) {
         val snapshot = frame.snapshot
         val row = snapshot.rowData[snapshot.cursorY]
@@ -421,14 +431,19 @@ internal class TerminalRenderer(private val fonts: TerminalFonts) {
         if (frame.blinkTextHidden && (row.flags[col].toInt() and TerminalSnapshot.CELL_FLAG_BLINK) != 0) return
         val choice = fonts.choiceAt(row, col)
         if (choice == PAINT_SPRITE) {
-            sprites.draw(canvas, codepoint, left, top, frame.cell, color)
+            sprites.draw(canvas, codepoint, left, 0f, frame.cell, color)
             return
         }
         val glyph = if (row.hasGraphemeExtras(col)) row.glyphAt(col) else fonts.glyphFor(codepoint)
         // The same face as the cell, but in the cursor text color at its own alpha.
         val paint = paints.forChoice(choice, row.flags[col].toInt() and TEXT_STYLE_MASK)
         paint.color = color
-        canvas.drawText(glyph, left, top + frame.cell.baseline, paint)
+        val cell = frame.cell
+        // The row's shift for faked italics, so the glyph lands on the one it recolors.
+        val slant = paint.textSkewX * cell.baseline / 2f
+        drawFitted(canvas, paint.measureText(glyph), row.glyphRoomCells(col) * cell.width, left + slant, cell) { x ->
+            canvas.drawText(glyph, x, cell.baseline, paint)
+        }
     }
 }
 
