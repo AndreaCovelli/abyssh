@@ -9,6 +9,7 @@ import android.content.ContextWrapper
 import android.app.Activity
 
 import android.content.Context
+import android.graphics.Rect
 import android.os.Build
 import android.os.SystemClock
 import android.text.Editable
@@ -110,6 +111,10 @@ class TerminalInputView(context: Context) : EditText(context) {
     private var compositionEnterKeyCode = KeyEvent.KEYCODE_UNKNOWN
 
     private val deadKeys = DeadKeyComposer()
+
+    /** Reports the hex digits of a Ctrl+Shift+U entry as they change, and null when it ends. */
+    var onUnicodeEntryChanged: ((String?) -> Unit)? = null
+    private val unicodeEntry = UnicodeEntry { onUnicodeEntryChanged?.invoke(it) }
 
     /**
      * When true, suppress IME text input. Used to prevent double-sends
@@ -363,8 +368,40 @@ class TerminalInputView(context: Context) : EditText(context) {
         return result is DeadKeyResult.Consume
     }
 
+    /**
+     * Types the text of a Ctrl+Shift+U entry, if any. Returns true when the key is used up;
+     * otherwise it goes on as usual.
+     */
+    private fun applyUnicodeEntry(result: UnicodeEntryResult): Boolean {
+        val text = when (result) {
+            UnicodeEntryResult.Pass -> return false
+            is UnicodeEntryResult.Consume -> result.text
+            is UnicodeEntryResult.TypeThenPass -> result.text
+        }
+        if (text != null) {
+            clearSuppression()
+            emitTerminalText(text)
+        }
+        return result is UnicodeEntryResult.Consume
+    }
+
+    override fun onFocusChanged(focused: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
+        super.onFocusChanged(focused, direction, previouslyFocusedRect)
+        if (!focused) unicodeEntry.cancel()
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         trackCapsLock(event)
+        val entry = unicodeEntry.onKeyDown(
+            keyCode = keyCode,
+            plainChar = event.getUnicodeChar(0),
+            typedChar = event.unicodeChar,
+            metaState = event.metaState,
+            repeatCount = event.repeatCount,
+            // A volume key that types an arrow is a key like any other.
+            systemKey = event.isSystem && !(volumeKeysAsArrows && KeyMapper.volumeArrow(keyCode, event.metaState) != null),
+        )
+        if (applyUnicodeEntry(entry)) return true
         handleShortcutChordDown(keyCode, event)?.let { return it }
         if (confirmsComposition(event)) return true
         if (composeDeadKey(keyCode, event)) return true
@@ -398,6 +435,7 @@ class TerminalInputView(context: Context) : EditText(context) {
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         trackCapsLock(event)
+        if (applyUnicodeEntry(unicodeEntry.onKeyUp(keyCode, event.metaState))) return true
         handleShortcutChordUp(keyCode)?.let { return it }
         if (confirmsComposition(event)) return true
         if (deadKeys.onKeyUp(keyCode)) return true

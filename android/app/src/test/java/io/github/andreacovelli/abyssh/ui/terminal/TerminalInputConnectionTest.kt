@@ -167,6 +167,37 @@ class TerminalInputConnectionTest {
     }
 
     @Test
+    fun `a backspace held past the end of a unicode entry deletes nothing`() {
+        val actions = mutableListOf<Int>()
+        view.onTerminalKey = { _, _, _, action, _ -> actions += action }
+        val entries = mutableListOf<String?>()
+        view.onUnicodeEntryChanged = { entries += it }
+
+        assertTrue(view.onKeyDown(KeyEvent.KEYCODE_U, keyDown(KeyEvent.KEYCODE_U, meta = CTRL_SHIFT)))
+        assertTrue(view.onKeyDown(KeyEvent.KEYCODE_DEL, keyDown(KeyEvent.KEYCODE_DEL)))
+        assertEquals(listOf("", null), entries)
+        assertTrue(view.onKeyDown(KeyEvent.KEYCODE_DEL, keyDown(KeyEvent.KEYCODE_DEL, repeat = 1)))
+        assertTrue(view.onKeyUp(KeyEvent.KEYCODE_DEL, KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DEL)))
+
+        assertEquals(emptyList<Int>(), actions)
+        assertEquals("", sent.toString())
+    }
+
+    @Test
+    fun `volume keys work during a unicode entry unless they are arrows`() {
+        val entries = mutableListOf<String?>()
+        view.onUnicodeEntryChanged = { entries += it }
+        assertTrue(view.onKeyDown(KeyEvent.KEYCODE_U, keyDown(KeyEvent.KEYCODE_U, meta = CTRL_SHIFT)))
+
+        assertFalse(view.onKeyDown(KeyEvent.KEYCODE_VOLUME_UP, keyDown(KeyEvent.KEYCODE_VOLUME_UP)))
+
+        view.volumeKeysAsArrows = true
+        assertTrue(view.onKeyDown(KeyEvent.KEYCODE_VOLUME_DOWN, keyDown(KeyEvent.KEYCODE_VOLUME_DOWN)))
+        assertEquals(emptyList<Int>(), keys)
+        assertEquals(listOf<String?>(""), entries)
+    }
+
+    @Test
     fun `caret moves outside a batch become arrow keys`() {
         connection.setSelection(5, 5)
         connection.setSelection(3, 3)
@@ -254,6 +285,9 @@ class TerminalInputConnectionTest {
         assertEquals("", view.editableText.toString())
     }
 
+    private fun keyDown(keyCode: Int, meta: Int = 0, repeat: Int = 0) =
+        KeyEvent(0L, 0L, KeyEvent.ACTION_DOWN, keyCode, repeat, meta)
+
     private fun swipeTyping() {
         view.imeMode = TerminalImeMode.SwipeTyping
         connection = checkNotNull(view.onCreateInputConnection(EditorInfo()))
@@ -264,5 +298,6 @@ class TerminalInputConnectionTest {
         const val FORWARD_DELETE = "\u001b[3~"
         val LEFT = TerminalSpecialKey.Left.engineKey
         val RIGHT = TerminalSpecialKey.Right.engineKey
+        const val CTRL_SHIFT = KeyEvent.META_CTRL_ON or KeyEvent.META_SHIFT_ON
     }
 }

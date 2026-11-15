@@ -113,11 +113,12 @@ class TerminalShortcutsTest {
     }
 
     @Test
-    fun `ctrl shift copy, paste, and search stay the terminal's`() {
+    fun `ctrl shift copy, paste, search, and unicode entry stay the terminal's`() {
         val ctrlShift = KeyEvent.META_CTRL_ON or KeyEvent.META_SHIFT_ON
         assertNull(shortcutChordKey(ctrlShift, 'c'.code))
         assertNull(shortcutChordKey(ctrlShift, 'v'.code))
         assertNull(shortcutChordKey(ctrlShift, 'f'.code))
+        assertNull(shortcutChordKey(ctrlShift, 'u'.code))
     }
 
     @Test
