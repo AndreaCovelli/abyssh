@@ -1,6 +1,5 @@
 package io.github.andreacovelli.abyssh.ui.terminal
 
-import androidx.compose.foundation.layout.widthIn
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -15,15 +14,20 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,9 +37,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -44,40 +51,26 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.layout.Placeable
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.ScrollableDefaults
-import androidx.compose.foundation.gestures.ScrollableState
-import androidx.compose.foundation.gestures.scrollable
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
-import androidx.compose.foundation.gestures.horizontalDrag
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.semantics.ScrollAxisRange
-import androidx.compose.ui.semantics.horizontalScrollAxisRange
-import kotlin.math.roundToInt
-import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.ui.components.AbyssKey
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.theme.AbyssColors
-import androidx.compose.material3.LocalContentColor
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.takeOrElse
 import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 import kotlinx.coroutines.withTimeoutOrNull
 
 private const val INITIAL_REPEAT_DELAY_MS = 400L
 private const val REPEAT_INTERVAL_MS = 50L
 
-// Extra space before the end-session key, on top of the row's spacing, so it is harder to
-// hit by mistake.
-private val END_SESSION_GAP = 8.dp
+// The keys of a group's popover keep their size: the popover scrolls instead.
+private val POPOVER_KEY_PADDING = PaddingValues(horizontal = 10.dp, vertical = 3.dp)
+private val POPOVER_KEY_HEIGHT = 30.dp
 
+/**
+ * The terminal's accessory keys, as a row when [position] is the top or the bottom and as
+ * a column when it is a side. A group's keys open next to the bar, on the terminal's side.
+ */
 @Composable
 fun KeyboardAccessoryBar(
     entries: List<ResolvedAccessoryEntry>,
@@ -93,52 +86,24 @@ fun KeyboardAccessoryBar(
     onEndSession: (() -> Unit)? = null,
     endSessionLabel: String? = null,
     useSingleRow: Boolean = false,
-    horizontalPadding: Dp = 8.dp,
-    verticalPadding: Dp = 6.dp,
-    topPadding: Dp = verticalPadding,
+    position: AccessoryBarPosition = AccessoryBarPosition.Bottom,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
 ) {
-    // A minimum, so keys grow with the system font size.
-    val buttonHeight = 30.dp
-    val buttonPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 3.dp, bottom = 3.dp)
-    // A shared minimum width keeps one-glyph keys (arrows, icons) as wide as Esc or Tab.
-    val keyModifier = Modifier.widthIn(min = 40.dp)
+    val vertical = position.isVertical
+    val keyPadding = stripKeyPadding(vertical)
     // Shift lights up while Caps Lock is on, though it sends no Shift of its own.
     val shownModifiers =
         if (capsLockOn) modifierState.copy(shift = true, locked = modifierState.locked + TerminalModifier.Shift) else modifierState
     var expandedGroupId by remember { mutableStateOf<String?>(null) }
-    val onChildAction: (AccessoryAction) -> Unit = { action ->
-        onAction(action)
+    val expandedGroup = entries.firstNotNullOfOrNull { entry ->
+        (entry as? ResolvedAccessoryEntry.Group)?.group?.takeIf { it.id == expandedGroupId }
     }
 
-    Column(modifier = modifier) {
-        expandedGroupId?.let { groupId ->
-            val expandedGroup =
-                entries.firstOrNull { it is ResolvedAccessoryEntry.Group && it.group.id == groupId }
-                    as? ResolvedAccessoryEntry.Group
-            if (expandedGroup != null) {
-                GroupPopover(
-                    group = expandedGroup.group,
-                    modifierState = shownModifiers,
-                    onAction = onChildAction,
-                    buttonHeight = buttonHeight,
-                    buttonPadding = buttonPadding,
-                    horizontalPadding = horizontalPadding,
-                )
-            }
-        }
-
-        val keys: List<@Composable () -> Unit> = buildList {
-            add {
-                ShortcutsButton(
-                    onAbysshKey = onAbysshKey,
-                    active = abysshKeyActive,
-                    buttonHeight = buttonHeight,
-                    buttonPadding = buttonPadding,
-                    modifier = keyModifier,
-                )
-            }
-            entries.forEach { entry ->
-                add {
+    val keys = buildList {
+        add(StripKey { ShortcutsButton(onAbysshKey = onAbysshKey, active = abysshKeyActive, buttonPadding = keyPadding) })
+        entries.forEach { entry ->
+            add(
+                StripKey {
                     AccessoryEntry(
                         entry = entry,
                         expanded = expandedGroupId == entry.id,
@@ -147,155 +112,55 @@ fun KeyboardAccessoryBar(
                         onToggleGroup = { id ->
                             expandedGroupId = if (expandedGroupId == id) null else id
                         },
-                        buttonHeight = buttonHeight,
-                        buttonPadding = buttonPadding,
-                        modifier = keyModifier,
+                        buttonPadding = keyPadding,
                     )
-                }
-            }
-            add {
-                FilesButton(
-                    onOpenFiles = onOpenFiles,
-                    buttonHeight = buttonHeight,
-                    buttonPadding = buttonPadding,
-                    modifier = keyModifier,
-                )
-            }
-            add {
-                ZoomButton(
-                    onZoom = onZoom,
-                    active = zoomActive,
-                    buttonHeight = buttonHeight,
-                    buttonPadding = buttonPadding,
-                    modifier = keyModifier,
-                )
-            }
-            add {
+                },
+            )
+        }
+        add(StripKey { FilesButton(onOpenFiles = onOpenFiles, buttonPadding = keyPadding) })
+        add(StripKey { ZoomButton(onZoom = onZoom, active = zoomActive, buttonPadding = keyPadding) })
+        // Set apart from the other keys, so it is harder to hit by mistake.
+        add(
+            StripKey(setApart = true) {
                 EndSessionButton(
                     onEndSession = onEndSession,
                     label = endSessionLabel ?: stringResource(R.string.terminal_disconnect),
-                    buttonHeight = buttonHeight,
-                    buttonPadding = buttonPadding,
-                    modifier = Modifier.padding(start = END_SESSION_GAP).then(keyModifier),
+                    buttonPadding = keyPadding,
                 )
-            }
-        }
-        val rowModifier = Modifier
-            .fillMaxWidth()
-            .padding(start = horizontalPadding, end = horizontalPadding, top = topPadding, bottom = verticalPadding)
-        if (useSingleRow) {
-            ScrollingKeyRow(keys, modifier = rowModifier)
-        } else {
-            TwoKeyRows(keys, modifier = rowModifier)
-        }
-    }
-}
-
-private val KEY_SPACING = 6.dp
-
-@Composable
-private fun ScrollingKeyRow(keys: List<@Composable () -> Unit>, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(KEY_SPACING),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        keys.forEach { it() }
-    }
-}
-
-/**
- * The keys that fit on the first row, and the rest on a second row that scrolls sideways,
- * so a long layout or a large font never hides a key. Both rows are one layout, which
- * measures every key to split them, so each key is composed once; only a drag that
- * starts on the second row scrolls it.
- */
-@Composable
-private fun TwoKeyRows(keys: List<@Composable () -> Unit>, modifier: Modifier = Modifier) {
-    val scroll = remember { SecondRowScroll() }
-    val reverse = ScrollableDefaults.reverseDirection(LocalLayoutDirection.current, Orientation.Horizontal, false)
-    Layout(
-        contents = keys,
-        modifier = modifier
-            .clipToBounds()
-            .scrollable(scroll.state, Orientation.Horizontal, reverseDirection = reverse)
-            .semantics {
-                horizontalScrollAxisRange = ScrollAxisRange(value = { scroll.offset }, maxValue = { scroll.maxOffset })
-            }
-            // Sees each move before the scroll does: a drag that starts on the first row is
-            // taken here once it passes the touch slop, so it scrolls nothing.
-            .pointerInput(scroll) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    if (down.position.y >= scroll.top) return@awaitEachGesture
-                    val drag = awaitHorizontalTouchSlopOrCancellation(down.id) { change, _ -> change.consume() }
-                    if (drag != null) horizontalDrag(drag.id) { it.consume() }
-                }
             },
-    ) { measurables, constraints ->
-        // Each key's placeables, empty for one that shows nothing, such as Files with no handler.
-        val placeables = measurables.map { key -> key.map { it.measure(Constraints()) } }
-        val widths = placeables.map { key -> key.maxOfOrNull { it.width } }
-        val spacing = KEY_SPACING.roundToPx()
-        val split = firstRowKeyCount(widths, constraints.maxWidth, spacing)
-        val first = placeables.take(split).filter { it.isNotEmpty() }
-        val second = placeables.drop(split).filter { it.isNotEmpty() }
-        val firstHeight = rowHeight(first)
-        val width = constraints.maxWidth
-        scroll.top = if (second.isEmpty()) Int.MAX_VALUE else firstHeight + spacing
-        scroll.maxOffset = (rowWidth(second, spacing) - width).coerceAtLeast(0).toFloat()
-        val height = if (second.isEmpty()) firstHeight else scroll.top + rowHeight(second)
-        layout(width, height.coerceAtLeast(constraints.minHeight)) {
-            placeRow(first, 0, 0, firstHeight, spacing)
-            val offset = scroll.offset.coerceAtMost(scroll.maxOffset).roundToInt()
-            placeRow(second, -offset, scroll.top, rowHeight(second), spacing)
+        )
+    }
+    val strip: @Composable () -> Unit = {
+        AccessoryKeyStrip(
+            keys = keys,
+            vertical = vertical,
+            singleLine = useSingleRow,
+            modifier = (if (vertical) Modifier.fillMaxHeight() else Modifier.fillMaxWidth()).padding(contentPadding),
+        )
+    }
+    val popover: @Composable () -> Unit = {
+        expandedGroup?.let { group ->
+            if (vertical) {
+                GroupPopoverColumn(group = group, modifierState = shownModifiers, onAction = onAction)
+            } else {
+                GroupPopover(group = group, modifierState = shownModifiers, onAction = onAction)
+            }
         }
     }
-}
-
-/** How far the second row of [TwoKeyRows] is scrolled. */
-private class SecondRowScroll {
-    var offset by mutableFloatStateOf(0f)
-        private set
-
-    // Set by each measure: how far the row can scroll, and where it starts.
-    var maxOffset = 0f
-    var top = Int.MAX_VALUE
-
-    val state = ScrollableState { delta ->
-        val target = (offset + delta).coerceIn(0f, maxOffset)
-        val consumed = target - offset
-        offset = target
-        consumed
+    // Left and right are sides of the screen, whichever way the text runs.
+    val stripAtRowStart = (position == AccessoryBarPosition.Left) == (LocalLayoutDirection.current == LayoutDirection.Ltr)
+    when {
+        vertical -> Row(modifier = modifier) {
+            if (stripAtRowStart) strip()
+            popover()
+            if (!stripAtRowStart) strip()
+        }
+        else -> Column(modifier = modifier) {
+            if (position == AccessoryBarPosition.Top) strip()
+            popover()
+            if (position != AccessoryBarPosition.Top) strip()
+        }
     }
-}
-
-private fun rowWidth(keys: List<List<Placeable>>, spacing: Int): Int =
-    keys.sumOf { key -> key.maxOf { it.width } } + spacing * (keys.size - 1).coerceAtLeast(0)
-
-private fun rowHeight(keys: List<List<Placeable>>): Int = keys.maxOfOrNull { key -> key.maxOf { it.height } } ?: 0
-
-/** Places [keys] side by side from ([x], [y]), each centered in a row [height] tall. */
-private fun Placeable.PlacementScope.placeRow(keys: List<List<Placeable>>, x: Int, y: Int, height: Int, spacing: Int) {
-    var left = x
-    keys.forEach { key ->
-        key.forEach { it.placeRelative(left, y + (height - it.height) / 2) }
-        left += key.maxOf { it.width } + spacing
-    }
-}
-
-/** How many of the keys with [widths] fit on a row [maxWidth] wide; at least one. */
-internal fun firstRowKeyCount(widths: List<Int?>, maxWidth: Int, spacing: Int): Int {
-    var used = 0
-    var shown = 0
-    widths.forEachIndexed { index, width ->
-        if (width == null) return@forEachIndexed
-        val next = if (shown == 0) width else used + spacing + width
-        if (next > maxWidth && shown > 0) return index
-        used = next
-        shown++
-    }
-    return widths.size
 }
 
 @Composable
@@ -303,9 +168,6 @@ private fun GroupPopover(
     group: AccessoryKeyGroup,
     modifierState: ModifierState,
     onAction: (AccessoryAction) -> Unit,
-    buttonHeight: Dp,
-    buttonPadding: PaddingValues,
-    horizontalPadding: Dp,
 ) {
     val colors = AbyssColors.current
     AnimatedVisibility(
@@ -316,7 +178,7 @@ private fun GroupPopover(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = horizontalPadding, vertical = 4.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(colors.surfaceVariant)
                 .padding(horizontal = 6.dp, vertical = 6.dp)
@@ -329,10 +191,40 @@ private fun GroupPopover(
                     item = child,
                     modifierState = modifierState,
                     onAction = onAction,
-                    buttonHeight = buttonHeight,
-                    buttonPadding = buttonPadding,
+                    buttonPadding = POPOVER_KEY_PADDING,
+                    modifier = Modifier.heightIn(min = POPOVER_KEY_HEIGHT),
                 )
             }
+        }
+    }
+}
+
+/** A group's keys beside a bar that runs down a side: a column of keys of one width. */
+@Composable
+private fun GroupPopoverColumn(
+    group: AccessoryKeyGroup,
+    modifierState: ModifierState,
+    onAction: (AccessoryAction) -> Unit,
+) {
+    val colors = AbyssColors.current
+    Column(
+        modifier = Modifier
+            .padding(horizontal = 4.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(colors.surfaceVariant)
+            .padding(6.dp)
+            .verticalScroll(rememberScrollState())
+            .width(IntrinsicSize.Max),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        group.children.forEach { child ->
+            AccessoryButton(
+                item = child,
+                modifierState = modifierState,
+                onAction = onAction,
+                buttonPadding = POPOVER_KEY_PADDING,
+                modifier = Modifier.fillMaxWidth().heightIn(min = POPOVER_KEY_HEIGHT),
+            )
         }
     }
 }
@@ -344,7 +236,6 @@ private fun AccessoryEntry(
     modifierState: ModifierState,
     onAction: (AccessoryAction) -> Unit,
     onToggleGroup: (String) -> Unit,
-    buttonHeight: Dp,
     buttonPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
@@ -354,7 +245,6 @@ private fun AccessoryEntry(
                 item = entry.item,
                 modifierState = modifierState,
                 onAction = onAction,
-                buttonHeight = buttonHeight,
                 buttonPadding = buttonPadding,
                 modifier = modifier,
             )
@@ -363,7 +253,6 @@ private fun AccessoryEntry(
                 group = entry.group,
                 expanded = expanded,
                 onToggle = { onToggleGroup(entry.group.id) },
-                buttonHeight = buttonHeight,
                 buttonPadding = buttonPadding,
                 modifier = modifier,
             )
@@ -375,14 +264,13 @@ private fun GroupButton(
     group: AccessoryKeyGroup,
     expanded: Boolean,
     onToggle: () -> Unit,
-    buttonHeight: Dp,
     buttonPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
     AbyssKey(
         onClick = onToggle,
         active = expanded,
-        modifier = modifier.heightIn(min = buttonHeight),
+        modifier = modifier,
         contentPadding = buttonPadding,
     ) {
         AbyssText(group.label, style = AbyssTypography.current.label)
@@ -394,7 +282,6 @@ private fun AccessoryButton(
     item: AccessoryKeyItem,
     modifierState: ModifierState,
     onAction: (AccessoryAction) -> Unit,
-    buttonHeight: Dp,
     buttonPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
@@ -404,7 +291,6 @@ private fun AccessoryButton(
         RepeatableAccessoryButton(
             item = item,
             onAction = onAction,
-            buttonHeight = buttonHeight,
             buttonPadding = buttonPadding,
             modifier = modifier,
         )
@@ -421,7 +307,6 @@ private fun AccessoryButton(
             active = locked,
             armed = armed,
             modifier = modifier
-                .heightIn(min = buttonHeight)
                 .then(if (state != null) Modifier.semantics { stateDescription = state } else Modifier),
             contentPadding = buttonPadding,
         ) {
@@ -438,7 +323,6 @@ private fun AccessoryButton(
 private fun ShortcutsButton(
     onAbysshKey: (() -> Unit)?,
     active: Boolean,
-    buttonHeight: Dp,
     buttonPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
@@ -447,7 +331,6 @@ private fun ShortcutsButton(
         icon = R.drawable.ic_bolt,
         contentDescription = stringResource(R.string.accessory_shortcuts),
         onClick = onAbysshKey,
-        buttonHeight = buttonHeight,
         buttonPadding = buttonPadding,
         modifier = modifier,
         active = active,
@@ -457,7 +340,6 @@ private fun ShortcutsButton(
 @Composable
 private fun FilesButton(
     onOpenFiles: (() -> Unit)?,
-    buttonHeight: Dp,
     buttonPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
@@ -466,7 +348,6 @@ private fun FilesButton(
         icon = R.drawable.ic_folder,
         contentDescription = stringResource(R.string.accessory_open_files),
         onClick = onOpenFiles,
-        buttonHeight = buttonHeight,
         buttonPadding = buttonPadding,
         modifier = modifier,
     )
@@ -477,7 +358,6 @@ private fun FilesButton(
 private fun ZoomButton(
     onZoom: (() -> Unit)?,
     active: Boolean,
-    buttonHeight: Dp,
     buttonPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
@@ -486,7 +366,6 @@ private fun ZoomButton(
         icon = R.drawable.ic_zoom_in,
         contentDescription = stringResource(R.string.accessory_zoom),
         onClick = onZoom,
-        buttonHeight = buttonHeight,
         buttonPadding = buttonPadding,
         modifier = modifier,
         active = active,
@@ -498,7 +377,6 @@ private fun ZoomButton(
 private fun EndSessionButton(
     onEndSession: (() -> Unit)?,
     label: String,
-    buttonHeight: Dp,
     buttonPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
@@ -507,7 +385,6 @@ private fun EndSessionButton(
         icon = R.drawable.ic_close,
         contentDescription = label,
         onClick = onEndSession,
-        buttonHeight = buttonHeight,
         buttonPadding = buttonPadding,
         modifier = modifier,
         tint = AbyssColors.current.warning,
@@ -519,7 +396,6 @@ private fun AccessoryIconKey(
     @DrawableRes icon: Int,
     contentDescription: String,
     onClick: () -> Unit,
-    buttonHeight: Dp,
     buttonPadding: PaddingValues,
     modifier: Modifier = Modifier,
     active: Boolean = false,
@@ -528,7 +404,7 @@ private fun AccessoryIconKey(
     AbyssKey(
         onClick = onClick,
         active = active,
-        modifier = modifier.heightIn(min = buttonHeight),
+        modifier = modifier,
         contentPadding = buttonPadding,
     ) {
         Icon(
@@ -544,7 +420,6 @@ private fun AccessoryIconKey(
 private fun RepeatableAccessoryButton(
     item: AccessoryKeyItem,
     onAction: (AccessoryAction) -> Unit,
-    buttonHeight: Dp,
     buttonPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
@@ -555,7 +430,6 @@ private fun RepeatableAccessoryButton(
 
     Box(
         modifier = modifier
-            .heightIn(min = buttonHeight)
             .pointerInput(item.action) {
                 awaitEachGesture {
                     awaitFirstDown().consume()
@@ -598,7 +472,6 @@ private fun RepeatableAccessoryButton(
         propagateMinConstraints = true,
     ) {
         AbyssKey(
-            modifier = Modifier.heightIn(min = buttonHeight),
             pressed = pressed,
             contentPadding = buttonPadding,
         ) {

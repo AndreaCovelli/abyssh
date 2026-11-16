@@ -20,6 +20,7 @@ import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.ui.components.OnScreenKeyboardPolicy
 import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
 import io.github.andreacovelli.abyssh.ui.terminal.AbysshKeyBindings
+import io.github.andreacovelli.abyssh.ui.terminal.AccessoryBarPositions
 import io.github.andreacovelli.abyssh.ui.terminal.BuiltinCommand
 import io.github.andreacovelli.abyssh.ui.terminal.ResolvedAccessoryEntry
 import io.github.andreacovelli.abyssh.ui.terminal.ShortcutMenuLayout
@@ -37,6 +38,7 @@ internal data class TerminalUiSettings(
     val tabMode: TerminalTabMode,
     val accessoryLayout: List<ResolvedAccessoryEntry>,
     val singleRowAccessoryBar: Boolean,
+    val accessoryBarPositions: AccessoryBarPositions,
     val customKeyGroups: List<TerminalCustomKeyGroup>,
     val builtinShortcuts: Map<String, String>,
     val shortcutMenuLayout: ShortcutMenuLayout,
@@ -68,6 +70,7 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
     val layoutIds by repo.accessoryLayoutIds.collectAsStateWithLifecycle()
     val accessoryLayout = remember(layoutIds) { TerminalAccessoryLayoutStore.resolveSelectedLayout(layoutIds) }
     val singleRow by repo.accessoryBarSingleRow.collectAsStateWithLifecycle()
+    val barPositions by repo.accessoryBar.positions.collectAsStateWithLifecycle()
     val customKeyGroups by repo.terminalCustomKeyGroups.collectAsStateWithLifecycle()
     val builtinShortcuts by repo.builtinShortcuts.collectAsStateWithLifecycle()
     val shortcutMenuLayout by repo.shortcutMenu.layout.collectAsStateWithLifecycle()
@@ -87,6 +90,7 @@ internal fun rememberTerminalUiSettings(repo: SettingsRepository): TerminalUiSet
         tabMode = tabMode,
         accessoryLayout = accessoryLayout,
         singleRowAccessoryBar = singleRow,
+        accessoryBarPositions = barPositions,
         customKeyGroups = customKeyGroups,
         builtinShortcuts = builtinShortcuts,
         shortcutMenuLayout = shortcutMenuLayout,

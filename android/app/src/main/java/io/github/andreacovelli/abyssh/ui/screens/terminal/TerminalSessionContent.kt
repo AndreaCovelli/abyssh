@@ -3,6 +3,7 @@ package io.github.andreacovelli.abyssh.ui.screens.terminal
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.widget.Toast
 import androidx.core.net.toUri
 import androidx.compose.animation.AnimatedVisibility
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -45,8 +47,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -57,6 +61,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LifecycleStartEffect
@@ -73,6 +78,7 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssButtonVariant
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
 import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
+import io.github.andreacovelli.abyssh.ui.terminal.AccessoryBarPosition
 import io.github.andreacovelli.abyssh.ui.terminal.KeyboardAccessoryBar
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCanvas
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalGridProbe
@@ -131,26 +137,41 @@ internal fun TerminalSessionContent(
                 .imePadding(),
         ) {
             host.tabStrip?.invoke()
-            when {
-                waiting == null && host.tabStrip != null && tabs.isEmpty() -> Box(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    TerminalNoSessions(onNewConnection = host.onNewConnection)
+            val showsKeys = waiting != null || selectedPane == ConnectionTab.Terminal
+            val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+            // Null while the files pane shows, which has no use for the keys.
+            val barPosition = host.settings.accessoryBarPositions.forOrientation(isLandscape).takeIf { showsKeys }
+            // While the session opens the keys take their room, but there is nothing to type into.
+            val accessoryBar: @Composable () -> Unit = {
+                barPosition?.let { position ->
+                    WaitingDim(waiting != null) { TerminalAccessoryBar(vm, host, input, files, position) }
                 }
-                waiting == null && selectedPane == ConnectionTab.Files && files.supported ->
-                    TerminalFilesPane(vm, Modifier.weight(1f))
-                // One call for a session that opens and one that is open, so the input view,
-                // and with it the keyboard, stays when the terminal shows.
-                else -> TerminalPane(vm, sessionState, snapshot, host, input, waiting, Modifier.weight(1f))
             }
-            // The footer leaves only a small gap above its keys, so the terminal gets the height.
-            if (waiting != null || selectedPane == ConnectionTab.Terminal) {
-                // While the session opens the keys take their room, but there is nothing to type into.
-                Box(if (waiting == null) Modifier else Modifier.alpha(WAITING_FOOTER_ALPHA).clearAndSetSemantics {}) {
-                    TerminalFooter(vm, host, input, files)
-                    if (waiting != null) Box(Modifier.matchParentSize().pointerInput(Unit) {})
+            // Left and right are sides of the screen, whichever way the text runs.
+            val startSide =
+                if (LocalLayoutDirection.current == LayoutDirection.Ltr) AccessoryBarPosition.Left else AccessoryBarPosition.Right
+            if (barPosition == AccessoryBarPosition.Top) accessoryBar()
+            Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                if (barPosition?.isVertical == true && barPosition == startSide) accessoryBar()
+                val paneModifier = Modifier.weight(1f).fillMaxHeight()
+                when {
+                    waiting == null && host.tabStrip != null && tabs.isEmpty() ->
+                        Box(modifier = paneModifier, contentAlignment = Alignment.Center) {
+                            TerminalNoSessions(onNewConnection = host.onNewConnection)
+                        }
+                    waiting == null && selectedPane == ConnectionTab.Files && files.supported ->
+                        TerminalFilesPane(vm, paneModifier)
+                    // One call for a session that opens and one that is open, so the input view,
+                    // and with it the keyboard, stays when the terminal shows.
+                    else -> TerminalPane(vm, sessionState, snapshot, host, input, waiting, paneModifier)
                 }
+                if (barPosition?.isVertical == true && barPosition != startSide) accessoryBar()
+            }
+            if (barPosition != null) {
+                WaitingDim(waiting != null) {
+                    TerminalFooter(vm, input, files, keysBelow = barPosition == AccessoryBarPosition.Bottom)
+                }
+                if (barPosition == AccessoryBarPosition.Bottom) accessoryBar()
             } else {
                 Spacer(modifier = Modifier.height(6.dp))
             }
@@ -534,21 +555,41 @@ private fun TerminalStatusBadges(
     }
 }
 
+/** Shows [content] faint and out of reach while the session opens ([waiting]). */
 @Composable
-private fun TerminalFooter(
-    vm: TerminalViewModel,
-    host: TerminalSessionHost,
-    input: TerminalInputController,
-    files: FilesShortcut,
-) {
-    val colors = AbyssColors.current
-    val typography = AbyssTypography.current
+private fun WaitingDim(waiting: Boolean, content: @Composable () -> Unit) {
+    Box(if (waiting) Modifier.alpha(WAITING_FOOTER_ALPHA).clearAndSetSemantics {} else Modifier) {
+        content()
+        if (waiting) Box(Modifier.matchParentSize().pointerInput(Unit) {})
+    }
+}
+
+/** The name of the active tab's host when tabs of several hosts are open, which the footer then shows. */
+@Composable
+private fun shownHostName(vm: TerminalViewModel): String? {
     val tabs by vm.tabs.collectAsStateWithLifecycle()
     val activeTab by vm.activeTab.collectAsStateWithLifecycle()
     val activeHostCount = remember(tabs) { tabs.map { it.spec.hostId ?: it.spec.sessionKey }.distinct().size }
-    val hostName = activeTab?.spec?.hostLabel()
-    val shownHostName = hostName?.takeIf { activeHostCount > 1 }
-    Column(modifier = Modifier.fillMaxWidth()) {
+    return activeTab?.spec?.hostLabel()?.takeIf { activeHostCount > 1 }
+}
+
+/**
+ * What shows under the terminal: the host's name, a message about the file browser, and
+ * the code point being typed. With the [keysBelow] it leaves only a small gap above them,
+ * so the terminal gets the height.
+ */
+@Composable
+private fun TerminalFooter(
+    vm: TerminalViewModel,
+    input: TerminalInputController,
+    files: FilesShortcut,
+    keysBelow: Boolean,
+) {
+    val colors = AbyssColors.current
+    val typography = AbyssTypography.current
+    val shownHostName = shownHostName(vm)
+    // Without the keys below, the bottom of the screen comes next.
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = if (keysBelow || shownHostName == null) 0.dp else 2.dp)) {
         shownHostName?.let { name ->
             // Trimmed to its glyphs, so the label adds little more than its text to the gap above the keys.
             AbyssText(
@@ -575,26 +616,46 @@ private fun TerminalFooter(
             )
         }
         input.unicodeEntry?.let { digits -> TerminalUnicodeEntry(digits) }
-        KeyboardAccessoryBar(
-            entries = host.settings.accessoryLayout,
-            modifierState = input.modifierState,
-            capsLockOn = input.capsLockOn,
-            onAction = { action -> input.dispatchAccessoryAction(action) },
-            onZoom = host.overlay.zoom::toggle,
-            zoomActive = host.overlay.zoom.active,
-            onAbysshKey = {
-                host.abysshKeys.togglePrefix()
-                input.requestFocus()
-            },
-            abysshKeyActive = host.abysshKeys.isPrefixActive,
-            onOpenFiles = { files.open() },
-            onEndSession = host.onEndSession,
-            endSessionLabel = activeTab?.let { stringResource(endTabLabel(it)) },
-            useSingleRow = host.settings.singleRowAccessoryBar,
-            topPadding = if (shownHostName != null) 3.dp else 2.dp,
-            modifier = Modifier.padding(bottom = 2.dp),
-        )
     }
+}
+
+/** The accessory keys on the edge of the terminal the settings give them. */
+@Composable
+private fun TerminalAccessoryBar(
+    vm: TerminalViewModel,
+    host: TerminalSessionHost,
+    input: TerminalInputController,
+    files: FilesShortcut,
+    position: AccessoryBarPosition,
+) {
+    val activeTab by vm.activeTab.collectAsStateWithLifecycle()
+    val contentPadding = when (position) {
+        // Only a small gap above the keys, and a little more under the host's name.
+        AccessoryBarPosition.Bottom ->
+            PaddingValues(start = 8.dp, end = 8.dp, top = if (shownHostName(vm) != null) 3.dp else 2.dp, bottom = 8.dp)
+        AccessoryBarPosition.Top -> PaddingValues(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 4.dp)
+        AccessoryBarPosition.Left -> PaddingValues(start = 6.dp, end = 4.dp, top = 4.dp, bottom = 4.dp)
+        AccessoryBarPosition.Right -> PaddingValues(start = 4.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
+    }
+    KeyboardAccessoryBar(
+        entries = host.settings.accessoryLayout,
+        modifierState = input.modifierState,
+        capsLockOn = input.capsLockOn,
+        onAction = { action -> input.dispatchAccessoryAction(action) },
+        onZoom = host.overlay.zoom::toggle,
+        zoomActive = host.overlay.zoom.active,
+        onAbysshKey = {
+            host.abysshKeys.togglePrefix()
+            input.requestFocus()
+        },
+        abysshKeyActive = host.abysshKeys.isPrefixActive,
+        onOpenFiles = { files.open() },
+        onEndSession = host.onEndSession,
+        endSessionLabel = activeTab?.let { stringResource(endTabLabel(it)) },
+        useSingleRow = host.settings.singleRowAccessoryBar,
+        position = position,
+        contentPadding = contentPadding,
+    )
 }
 
 private val TIGHT_LINE_HEIGHT = LineHeightStyle(alignment = LineHeightStyle.Alignment.Center, trim = LineHeightStyle.Trim.Both)

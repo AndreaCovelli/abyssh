@@ -52,6 +52,8 @@ import io.github.andreacovelli.abyssh.ui.components.AbyssSectionHeader
 import io.github.andreacovelli.abyssh.ui.components.AbyssText
 import io.github.andreacovelli.abyssh.ui.components.AbyssTextField
 import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalTabMode
+import io.github.andreacovelli.abyssh.ui.terminal.AccessoryBarPosition
+import io.github.andreacovelli.abyssh.ui.terminal.AccessoryBarPositions
 import io.github.andreacovelli.abyssh.ui.terminal.KeyboardAccessoryBar
 import io.github.andreacovelli.abyssh.ui.terminal.ModifierState
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalAccessoryLayoutStore
@@ -80,6 +82,8 @@ internal fun TerminalSettings(
             layoutIds = state.accessoryLayoutIds,
             singleRow = state.accessoryBarSingleRow,
             onSingleRowChanged = actions::setAccessoryBarSingleRow,
+            positions = state.accessoryBarPositions,
+            positionActions = actions.accessoryBar,
             onCustomize = { onOpenSheet(SettingsSheet.AccessoryLayout) },
         )
         CustomActionsCard(
@@ -392,6 +396,8 @@ private fun AccessoryKeysCard(
     layoutIds: List<String>,
     singleRow: Boolean,
     onSingleRowChanged: (Boolean) -> Unit,
+    positions: AccessoryBarPositions,
+    positionActions: AccessoryBarActions,
     onCustomize: () -> Unit,
 ) {
     val colors = AbyssColors.current
@@ -420,6 +426,7 @@ private fun AccessoryKeysCard(
                 checked = singleRow,
                 onCheckedChange = onSingleRowChanged,
             )
+            AccessoryBarPositionRows(positions = positions, actions = positionActions)
             if (selectedEntries.isEmpty()) {
                 AbyssText(
                     stringResource(R.string.settings_accessory_keys_hint),
@@ -443,6 +450,41 @@ private fun AccessoryKeysCard(
             }
         }
     }
+}
+
+/** Where the accessory bar sits, chosen for portrait and for landscape. */
+@Composable
+private fun AccessoryBarPositionRows(positions: AccessoryBarPositions, actions: AccessoryBarActions) {
+    val colors = AbyssColors.current
+    val typography = AbyssTypography.current
+    val labels = mapOf(
+        AccessoryBarPosition.Bottom to stringResource(R.string.settings_bar_position_bottom),
+        AccessoryBarPosition.Top to stringResource(R.string.settings_bar_position_top),
+        AccessoryBarPosition.Left to stringResource(R.string.settings_bar_position_left),
+        AccessoryBarPosition.Right to stringResource(R.string.settings_bar_position_right),
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        AbyssText(stringResource(R.string.settings_bar_position), style = typography.label)
+        AbyssText(
+            stringResource(R.string.settings_bar_position_hint),
+            style = typography.bodySmall,
+            color = colors.textMuted,
+        )
+    }
+    AbyssText(stringResource(R.string.settings_bar_position_portrait), style = typography.bodySmall, color = colors.textSecondary)
+    AbyssSegmentedControl(
+        options = AccessoryBarPosition.entries,
+        labels = labels,
+        selected = positions.portrait,
+        onSelect = actions::setPortraitPosition,
+    )
+    AbyssText(stringResource(R.string.settings_bar_position_landscape), style = typography.bodySmall, color = colors.textSecondary)
+    AbyssSegmentedControl(
+        options = AccessoryBarPosition.entries,
+        labels = labels,
+        selected = positions.landscape,
+        onSelect = actions::setLandscapePosition,
+    )
 }
 
 @Composable
