@@ -11,7 +11,6 @@ import androidx.compose.runtime.setValue
 import io.github.andreacovelli.abyssh.R
 import io.github.andreacovelli.abyssh.service.terminal.TabSession
 import io.github.andreacovelli.abyssh.ui.components.copyToClipboard
-import io.github.andreacovelli.abyssh.ui.screens.files.ConnectionTab
 import io.github.andreacovelli.abyssh.ui.terminal.AbysshKeyBindings
 import io.github.andreacovelli.abyssh.ui.terminal.AccessoryAction
 import io.github.andreacovelli.abyssh.ui.terminal.GhosttyKey
@@ -63,7 +62,6 @@ internal class TerminalInputController(
     // was created with, so they read the current values from here.
     var abysshKeys = AbysshKeyBindings(emptyList(), emptyMap())
     var ctrlVPastes = false
-    var tabMode = TerminalTabMode.Classic
     var allTabs: List<TabSession> = emptyList()
     var routeTabs: List<TabSession> = emptyList()
 
@@ -263,25 +261,21 @@ internal class TerminalInputController(
             return
         }
         val switcherTabs = if (overlay.isSwitcherOpen) overlay.switcherTabs(allTabs, routeTabs) else null
-        if (switcherTabs.isNullOrEmpty() && handleAbysshShortcutKey(key, codepoint, action, charCode)) return
+        if (handleAbysshShortcutKey(key, codepoint, action, charCode)) return
         val allMods = mods or modifierState.terminalMods()
         if (switcherTabs.isNullOrEmpty() && key !in MODIFIER_KEYS && tmuxPrefix.handleKey(codepoint, allMods, action, charCode)) {
             spendModifiers()
             heldShortcutKey = key
             return
         }
-        if (switcherTabs != null && handleSwitcherKey(key, codepoint, action, switcherTabs)) return
+        if (switcherTabs != null && handleSwitcherKey(key, action, switcherTabs)) return
         forwardKey(key, codepoint, allMods, action, charCode)
         // A modifier key pressed on a hardware keyboard joins the held ones rather than using them.
         if (action == GhosttyKeyAction.Press && key !in MODIFIER_KEYS) spendModifiers()
     }
 
     /** A hardware shortcut chord: the same command as tapping the shortcuts key and then [key]. */
-    private fun onShortcutChord(key: Char): Boolean {
-        if (!live) return false
-        val switcherTabs = if (overlay.isSwitcherOpen) overlay.switcherTabs(allTabs, routeTabs) else null
-        return if (switcherTabs.isNullOrEmpty()) abysshKeys.runShortcut(key) else runSwitcherCommand(key)
-    }
+    private fun onShortcutChord(key: Char): Boolean = live && abysshKeys.runShortcut(key)
 
     private fun onFocusChanged(hasFocus: Boolean) {
         if (live) input.onFocusChanged(hasFocus)
@@ -305,7 +299,7 @@ internal class TerminalInputController(
     }
 
     /** Whether the open switcher took the key. With tabs listed it takes every repeat and release. */
-    private fun handleSwitcherKey(key: Int, codepoint: Int, action: Int, tabs: List<TabSession>): Boolean {
+    private fun handleSwitcherKey(key: Int, action: Int, tabs: List<TabSession>): Boolean {
         val press = action == GhosttyKeyAction.Press
         if (tabs.isEmpty()) {
             val dismiss = press && key == TerminalSpecialKey.Escape.engineKey
@@ -313,29 +307,11 @@ internal class TerminalInputController(
             return dismiss
         }
         if (!press) return true
-        var consumed = false
-        if (abysshKeys.isPrefixActive) {
-            runSwitcherCommand(codepoint.toChar().lowercaseChar())
-            abysshKeys.reset()
-            consumed = true
-        }
-        switcherKeyFor(key)?.let { switcherKey ->
-            overlay.applySwitcherKey(switcherKey, tabs) { tab -> vm.selectTab(tab.id) }
-            consumed = true
-        }
-        return consumed
-    }
-
-    private fun runSwitcherCommand(command: Char): Boolean {
-        when (command) {
-            'n' -> {
-                vm.duplicateTab()
-                vm.files.selectPane(ConnectionTab.Terminal)
-                overlay.closeSwitcher()
-            }
-            't' -> overlay.openSwitcher(tabMode)
-            else -> return false
-        }
+        // A printable key after the prefix already ran its command; any other key ends the prefix.
+        val endsPrefix = abysshKeys.isPrefixActive && key !in MODIFIER_KEYS
+        if (endsPrefix) abysshKeys.reset()
+        val switcherKey = switcherKeyFor(key) ?: return endsPrefix
+        overlay.applySwitcherKey(switcherKey, tabs) { tab -> vm.selectTab(tab.id) }
         return true
     }
 
