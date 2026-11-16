@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalTabMode
+import io.github.andreacovelli.abyssh.ui.terminal.AccessoryBarPosition
+import io.github.andreacovelli.abyssh.ui.terminal.AccessoryBarPositions
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -151,5 +153,30 @@ class SettingsRepositoryTest {
         val repo = newRepository()
         assertEquals(TerminalTabMode.Classic, repo.terminalTabMode.first())
         assertEquals(SettingsRepository.DEFAULT_THEME_MODE, repo.theme.mode.first())
+    }
+
+    @Test
+    fun `the accessory bar keeps a position for each orientation`() = runBlocking {
+        clearPrefs()
+        assertEquals(AccessoryBarPositions(), newRepository().accessoryBar.positions.first())
+
+        val repo = newRepository()
+        repo.accessoryBar.setLandscapePosition(AccessoryBarPosition.Right)
+        repo.accessoryBar.setPortraitPosition(AccessoryBarPosition.Top)
+
+        val expected = AccessoryBarPositions(portrait = AccessoryBarPosition.Top, landscape = AccessoryBarPosition.Right)
+        assertEquals(expected, repo.accessoryBar.positions.first())
+        assertEquals(expected, newRepository().accessoryBar.positions.first())
+    }
+
+    @Test
+    fun `an unknown accessory bar position falls back to the bottom`() = runBlocking {
+        clearPrefs()
+        context.getSharedPreferences("abyssh_settings", Context.MODE_PRIVATE)
+            .edit()
+            .putString("terminal_accessory_bar_position_portrait", "Diagonal")
+            .commit()
+
+        assertEquals(AccessoryBarPosition.Bottom, newRepository().accessoryBar.positions.first().portrait)
     }
 }

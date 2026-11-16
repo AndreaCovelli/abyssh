@@ -38,6 +38,9 @@ class SettingsRepository(context: Context) {
     /** The order of the ⚡ shortcut menu and the items it hides. */
     val shortcutMenu = ShortcutMenuSettings(prefs)
 
+    /** Where the accessory bar sits in portrait and in landscape. */
+    val accessoryBar = AccessoryBarSettings(prefs)
+
 
     private val _fontName = MutableStateFlow(
         AbyssFontOption.fromId(prefs.getString(KEY_FONT, DEFAULT_FONT)).id,

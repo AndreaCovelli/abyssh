@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import io.github.andreacovelli.abyssh.data.repository.SettingsRepository
 import io.github.andreacovelli.abyssh.model.EchoPredictionMode
 import io.github.andreacovelli.abyssh.ui.screens.terminal.TerminalTabMode
+import io.github.andreacovelli.abyssh.ui.terminal.AccessoryBarPosition
+import io.github.andreacovelli.abyssh.ui.terminal.AccessoryBarPositions
 import io.github.andreacovelli.abyssh.ui.terminal.DEFAULT_WORD_SEPARATORS
 import io.github.andreacovelli.abyssh.ui.terminal.ShortcutMenuLayout
 import io.github.andreacovelli.abyssh.ui.terminal.TerminalCustomKeyGroup
@@ -35,6 +37,7 @@ data class TerminalSettingsState(
     val tabMode: TerminalTabMode = TerminalTabMode.Classic,
     val accessoryLayoutIds: List<String> = emptyList(),
     val accessoryBarSingleRow: Boolean = false,
+    val accessoryBarPositions: AccessoryBarPositions = AccessoryBarPositions(),
     val customKeyGroups: List<TerminalCustomKeyGroup> = emptyList(),
     val showCustomActionsFab: Boolean = false,
     val builtinShortcuts: Map<String, String> = emptyMap(),
@@ -103,6 +106,13 @@ interface TerminalSettingsActions {
     val text: TerminalTextActions
     val menu: ShortcutMenuActions
     val connection: TerminalConnectionActions
+    val accessoryBar: AccessoryBarActions
+}
+
+/** Where the accessory bar sits in each orientation of the screen. */
+interface AccessoryBarActions {
+    fun setPortraitPosition(position: AccessoryBarPosition)
+    fun setLandscapePosition(position: AccessoryBarPosition)
 }
 
 /** How a tab's connection behaves while the tab is hidden. */
@@ -145,6 +155,7 @@ class SettingsViewModel(
                 settings.appLockEnabled, settings.requireAuthOnConnect, settings.terminalFontSize,
                 settings.terminalScrollbackMb,
                 settings.terminalTabMode, settings.accessoryLayoutIds, settings.accessoryBarSingleRow,
+                settings.accessoryBar.positions,
                 settings.terminalCustomKeyGroups, settings.showCustomActionsFab, settings.builtinShortcuts,
                 settings.shortcutMenu.layout,
                 settings.localShellEnabled, settings.remoteClipboardWriteEnabled, settings.ctrlVPastes,
@@ -175,6 +186,7 @@ class SettingsViewModel(
             tabMode = settings.terminalTabMode.value,
             accessoryLayoutIds = settings.accessoryLayoutIds.value,
             accessoryBarSingleRow = settings.accessoryBarSingleRow.value,
+            accessoryBarPositions = settings.accessoryBar.positions.value,
             customKeyGroups = settings.terminalCustomKeyGroups.value,
             showCustomActionsFab = settings.showCustomActionsFab.value,
             builtinShortcuts = settings.builtinShortcuts.value,
@@ -236,6 +248,11 @@ class SettingsViewModel(
 
     override val connection = object : TerminalConnectionActions {
         override fun setPauseHiddenOutput(enabled: Boolean) = settings.setPauseHiddenOutput(enabled)
+    }
+
+    override val accessoryBar = object : AccessoryBarActions {
+        override fun setPortraitPosition(position: AccessoryBarPosition) = settings.accessoryBar.setPortraitPosition(position)
+        override fun setLandscapePosition(position: AccessoryBarPosition) = settings.accessoryBar.setLandscapePosition(position)
     }
 
     override val text = object : TerminalTextActions {

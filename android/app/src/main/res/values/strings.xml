@@ -155,7 +155,15 @@
     </plurals>
     <string name="action_customize">Customize</string>
     <string name="settings_single_row_bar">Single-row accessory bar</string>
-    <string name="settings_single_row_bar_hint">Off = two rows (default), on = one horizontal row</string>
+    <string name="settings_single_row_bar_hint">Keep the keys on one line, which scrolls when they don\'t fit. When off, they wrap onto a second line.</string>
+    <string name="settings_bar_position">Accessory bar position</string>
+    <string name="settings_bar_position_hint">On the left or right, the keys form a column beside the terminal.</string>
+    <string name="settings_bar_position_portrait">Portrait</string>
+    <string name="settings_bar_position_landscape">Landscape</string>
+    <string name="settings_bar_position_bottom">Bottom</string>
+    <string name="settings_bar_position_top">Top</string>
+    <string name="settings_bar_position_left">Left</string>
+    <string name="settings_bar_position_right">Right</string>
     <string name="settings_accessory_keys_hint">Choose the accessory keys you want in the terminal bar.</string>
     <string name="settings_custom_actions">Custom actions</string>
     <string name="settings_no_custom_actions">No custom actions</string>

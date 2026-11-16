@@ -390,4 +390,76 @@ class AccessoryLogicTest {
         // One key wider than the row still goes on it.
         assertEquals(1, firstRowKeyCount(listOf(200, 40), maxWidth = 100, spacing = 6))
     }
+
+    // ── Squeezing keys that don't fit ─────────────────────────────────────
+
+    private val normalKeys = KeyMetrics(padding = 10f, minSize = 40f, spacing = 6f, setApartGap = 8f)
+    private val tightKeys = KeyMetrics(padding = 4f, minSize = 28f, spacing = 3f, setApartGap = 4f)
+
+    private fun plan(contents: List<Int?>, available: Int, singleLine: Boolean = false, setApart: List<Boolean>? = null) =
+        planStrip(contents, setApart ?: contents.map { false }, available, singleLine, normalKeys, tightKeys)
+
+    @Test
+    fun `keys that fit are not squeezed`() {
+        // 40 + 6 + 50 + 6 + 40 = 142.
+        val plan = plan(listOf(10, 30, 10), available = 142)
+
+        assertEquals(listOf<Int?>(40, 50, 40), plan.sizes)
+        assertEquals(6, plan.spacing)
+        assertEquals(3, plan.firstLineCount)
+    }
+
+    @Test
+    fun `keys that don't fit squeeze only as far as it takes`() {
+        // Fully squeezed they take 28 + 3 + 38 + 3 + 28 = 100.
+        val plan = plan(listOf(10, 30, 10), available = 120)
+
+        assertEquals(3, plan.firstLineCount)
+        assertTrue(plan.length() <= 120)
+        assertTrue("length ${plan.length()}", plan.length() >= 117)
+        assertTrue(plan.sizes.filterNotNull().all { it in 28..50 })
+        assertEquals(100, plan(listOf(10, 30, 10), available = 100).length())
+    }
+
+    @Test
+    fun `keys that don't fit even squeezed keep their size and wrap`() {
+        val plan = plan(listOf(10, 30, 10), available = 99)
+
+        assertEquals(listOf<Int?>(40, 50, 40), plan.sizes)
+        assertEquals(6, plan.spacing)
+        // 40 + 6 + 50 = 96.
+        assertEquals(2, plan.firstLineCount)
+    }
+
+    @Test
+    fun `a single line keeps keys that don't fit at their size`() {
+        val plan = plan(listOf(10, 30, 10), available = 99, singleLine = true)
+
+        assertEquals(listOf<Int?>(40, 50, 40), plan.sizes)
+        assertEquals(3, plan.firstLineCount)
+    }
+
+    @Test
+    fun `a key that shows nothing takes no room and one set apart takes more`() {
+        // 40 + 6 + (8 + 40) = 94.
+        val plan = plan(listOf(10, null, 10), available = 94, setApart = listOf(false, false, true))
+
+        assertEquals(listOf(40, null, 40), plan.sizes)
+        assertEquals(listOf(0, 0, 8), plan.leads)
+        assertEquals(94, plan.length())
+        // One pixel less and the gap squeezes too.
+        val squeezed = plan(listOf(10, null, 10), available = 93, setApart = listOf(false, false, true))
+        assertEquals(3, squeezed.firstLineCount)
+        assertTrue(squeezed.length() <= 93)
+    }
+
+    @Test
+    fun `squeezeToFit finds the least squeeze that fits`() {
+        val length = { squeeze: Float -> 100 - (50 * squeeze).toInt() }
+
+        assertEquals(0f, squeezeToFit(100, length))
+        assertEquals(0.5f, squeezeToFit(75, length) ?: -1f, 0.01f)
+        assertEquals(1f, squeezeToFit(50, length))
+        assertNull(squeezeToFit(49, length))
+    }
 }
