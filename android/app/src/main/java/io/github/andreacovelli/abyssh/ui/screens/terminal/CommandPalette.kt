@@ -154,8 +154,12 @@ fun CommandPalette(
                     }
                     shortcutMenu(Modifier.align(Alignment.BottomStart))
                 }
+                // Only the bottom and sides: the top inset would open a gap between the
+                // keys and the shortcut menu above them.
                 accessoryBar(
-                    Modifier.windowInsetsPadding(WindowInsets.safeDrawing)
+                    Modifier.windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
+                    )
                         .background(colors.background.copy(alpha = 0.92f)),
                 )
             }
