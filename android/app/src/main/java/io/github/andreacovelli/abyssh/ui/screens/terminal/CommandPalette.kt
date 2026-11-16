@@ -67,8 +67,9 @@ import io.github.andreacovelli.abyssh.ui.theme.AbyssTypography
 /**
  * Full-screen tab switcher for the current host. [accessoryBar] draws the keyboard
  * accessory bar along the bottom edge and receives the modifier that places it;
- * [multiplexerPanel] draws below the tab list, and the panel scrolls when it is taller
- * than the space above the accessory bar.
+ * [shortcutMenu] draws over the panel, at the bottom-left corner just above the bar, and
+ * receives the modifier that places it; [multiplexerPanel] draws below the tab list, and
+ * the panel scrolls when it is taller than the space above the accessory bar.
  */
 @Composable
 fun CommandPalette(
@@ -82,6 +83,7 @@ fun CommandPalette(
     onAddTab: () -> Unit,
     onDismiss: () -> Unit,
     accessoryBar: @Composable (Modifier) -> Unit,
+    shortcutMenu: @Composable (Modifier) -> Unit = {},
     multiplexerPanel: @Composable () -> Unit = {},
 ) {
     val colors = AbyssColors.current
@@ -150,6 +152,7 @@ fun CommandPalette(
                         )
                         multiplexerPanel()
                     }
+                    shortcutMenu(Modifier.align(Alignment.BottomStart))
                 }
                 accessoryBar(
                     Modifier.windowInsetsPadding(WindowInsets.safeDrawing)

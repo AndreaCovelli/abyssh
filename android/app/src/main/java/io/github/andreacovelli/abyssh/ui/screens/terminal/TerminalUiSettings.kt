@@ -177,7 +177,6 @@ internal fun rememberAbysshKeys(
             BuiltinCommand.NewTab to {
                 vm.duplicateTab()
                 vm.files.selectPane(ConnectionTab.Terminal)
-                overlay.showTabSheet = false
             },
             // Closes the tab as the tab strip does; a tmux window's tab detaches its session.
             BuiltinCommand.Close to { vm.activeTabId.value?.let(endSession::requestClose) },
@@ -197,11 +196,36 @@ internal fun rememberAbysshKeys(
             if (showsTmuxWindow) tmuxCommandHandlers(vm, overlay) else emptyMap()
         AbysshKeyBindings.build(
             builtinShortcuts = settings.builtinShortcuts,
-            builtinCommandHandlers = handlers,
+            builtinCommandHandlers = handlers.mapValues { (command, run) -> closingSwitcher(overlay, command, run) },
             customGroups = settings.customKeyGroups,
-            onDispatchAction = vm.input::sendCustomAction,
-            onSelectAmongActions = { actions -> overlay.fabFilteredActions = actions },
+            onDispatchAction = { action ->
+                overlay.closeSwitcher()
+                vm.input.sendCustomAction(action)
+            },
+            onSelectAmongActions = { actions ->
+                overlay.closeSwitcher()
+                overlay.fabFilteredActions = actions
+            },
             menuLayout = settings.shortcutMenuLayout,
         )
     }
 }
+
+/**
+ * Closes an open tab switcher before [run], so the command's result shows in the
+ * terminal. Tabs only closes it, and the commands that close a tab leave it open to
+ * manage the rest.
+ */
+internal fun closingSwitcher(overlay: TerminalOverlayState, command: BuiltinCommand, run: () -> Unit): () -> Unit =
+    when (command) {
+        BuiltinCommand.Close, BuiltinCommand.KillWindow -> run
+        BuiltinCommand.Tabs -> {
+            { if (overlay.isSwitcherOpen) overlay.closeSwitcher() else run() }
+        }
+        else -> {
+            {
+                overlay.closeSwitcher()
+                run()
+            }
+        }
+    }

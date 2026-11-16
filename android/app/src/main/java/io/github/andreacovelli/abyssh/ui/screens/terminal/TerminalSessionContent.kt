@@ -121,7 +121,6 @@ internal fun TerminalSessionContent(
     SideEffect {
         input.abysshKeys = host.abysshKeys
         input.ctrlVPastes = host.settings.ctrlVPastes
-        input.tabMode = host.settings.tabMode
         input.allTabs = tabs
         input.routeTabs = host.routeTabs
         input.live = waiting == null
@@ -670,6 +669,8 @@ private fun TerminalPaletteSheet(
 ) {
     val overlay = host.overlay
     val activeTabId by vm.activeTabId.collectAsStateWithLifecycle()
+    // A prefix left on when the palette closes would open the shortcut menu over the terminal.
+    DisposableEffect(host.abysshKeys) { onDispose { host.abysshKeys.reset() } }
     CommandPalette(
         tabs = host.routeTabs,
         activeTabId = activeTabId,
@@ -702,6 +703,9 @@ private fun TerminalPaletteSheet(
                 useSingleRow = host.settings.singleRowAccessoryBar,
                 modifier = barModifier,
             )
+        },
+        shortcutMenu = { menuModifier ->
+            AbysshShortcutMenu(host.abysshKeys, menuModifier.padding(start = 8.dp, bottom = 8.dp))
         },
         multiplexerPanel = { TerminalMultiplexerPanel(vm, onDismiss = { overlay.showTabSheet = false }) },
     )
