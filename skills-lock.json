@@ -5,19 +5,22 @@
       "source": "AndreaCovelli/my-skills",
       "sourceType": "github",
       "skillPath": "skills/gh-cli/SKILL.md",
-      "computedHash": "65b4fff2cf843c474e316a3e7d31fb3cc4da26bcaafbb4e97eda854ca8c0ba32"
+      "computedHash": "65b4fff2cf843c474e316a3e7d31fb3cc4da26bcaafbb4e97eda854ca8c0ba32",
+      "commit": "c3c82f75e331cf3187889edcaa245ea0d1a49d8c"
     },
     "github-actions": {
       "source": "AndreaCovelli/my-skills",
       "sourceType": "github",
       "skillPath": "skills/github-actions/SKILL.md",
-      "computedHash": "3c08e6847c27e4a2cae7ea0cde22545e6f2cb34243612f607504c12e31107f32"
+      "computedHash": "3c08e6847c27e4a2cae7ea0cde22545e6f2cb34243612f607504c12e31107f32",
+      "commit": "c3c82f75e331cf3187889edcaa245ea0d1a49d8c"
     },
     "pr-feedback": {
       "source": "AndreaCovelli/my-skills",
       "sourceType": "github",
       "skillPath": "skills/pr-feedback/SKILL.md",
-      "computedHash": "77e6508577a52af50e74a7a9f1c58c13edf2f4417344964484255f0c5a09ae50"
+      "computedHash": "77e6508577a52af50e74a7a9f1c58c13edf2f4417344964484255f0c5a09ae50",
+      "commit": "c3c82f75e331cf3187889edcaa245ea0d1a49d8c"
     }
   }
 }
